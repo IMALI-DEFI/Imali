@@ -18,21 +18,21 @@ import {
   FaSlidersH, FaFileExport, FaFileImport, FaPrint,
   FaBrain, FaFire, FaBolt, FaWaveSquare, FaGlobe, FaCloud,
   FaPlug, FaCode, FaMobile, FaLaptop, FaPaintBrush,
-  FaFileCode, FaBug, FaRocket, FaShieldVirus
+  FaFileCode, FaBug, FaRocket, FaShieldVirus, FaBars, FaTimes as FaTimesIcon
 } from "react-icons/fa";
 import BotAPI from "../utils/BotAPI";
 import CandlestickChart from "../components/charts/CandlestickChart";
 import * as candleGenerator from "../utils/demoCandleGenerator";
 
-// Glass Card Component
-const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white/5" }) => (
-  <div className={`relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
+// Glass Card Component - Mobile responsive
+const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white/5", contentClassName = "p-3 sm:p-4 md:p-6" }) => (
+  <div className={`relative overflow-hidden rounded-xl sm:rounded-2xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
     <div className="absolute inset-0 bg-white/5" />
-    <div className="relative z-10">{children}</div>
+    <div className={`relative z-10 ${contentClassName}`}>{children}</div>
   </div>
 );
 
-// Live Ticker - Generic platform events
+// Live Ticker - Mobile responsive
 const LiveTicker = ({ activities }) => {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -55,16 +55,16 @@ const LiveTicker = ({ activities }) => {
   if (!messages.length) return null;
 
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-4 py-2 text-xs text-purple-400 backdrop-blur-sm">
-      <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse" />
-      <span className={`transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
+    <div className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-2 py-1 sm:px-3 sm:py-1.5 md:px-4 md:py-2 text-[10px] sm:text-xs text-purple-400 backdrop-blur-sm max-w-[200px] sm:max-w-none">
+      <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />
+      <span className={`transition-opacity duration-300 truncate ${visible ? "opacity-100" : "opacity-0"}`}>
         {messages[index]}
       </span>
     </div>
   );
 };
 
-// AI Insights Panel - Generic platform insights
+// AI Insights Panel - Mobile responsive
 const AIInsightsPanel = ({ data }) => {
   const [insights, setInsights] = useState({
     summary: "Analyzing platform activity...",
@@ -110,53 +110,53 @@ const AIInsightsPanel = ({ data }) => {
   }, [data]);
 
   return (
-    <GlassCard className="p-6 border-purple-500/20" gradient="from-purple-500/10 to-blue-500/10">
-      <div className="flex items-center gap-3 mb-4">
-        <FaBrain className="text-purple-400 text-xl" />
-        <h3 className="text-lg font-bold text-white">AI Insights</h3>
-        <span className="ml-auto text-xs text-emerald-400 animate-pulse">● LIVE</span>
+    <GlassCard className="border-purple-500/20" gradient="from-purple-500/10 to-blue-500/10">
+      <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <FaBrain className="text-purple-400 text-lg sm:text-xl flex-shrink-0" />
+        <h3 className="text-base sm:text-lg font-bold text-white">AI Insights</h3>
+        <span className="ml-auto text-[10px] sm:text-xs text-emerald-400 animate-pulse">● LIVE</span>
       </div>
       
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-xs text-white/40">Top Signal</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-lg font-bold text-white">{insights.topSignal}</span>
-            <span className={`text-sm font-bold ${insights.topAction === 'GROWING' ? 'text-emerald-400' : insights.topAction === 'INCREASING' ? 'text-emerald-400' : insights.topAction === 'DECLINING' ? 'text-red-400' : 'text-yellow-400'}`}>
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3">
+          <p className="text-[10px] sm:text-xs text-white/40 truncate">Top Signal</p>
+          <div className="flex items-center gap-1 sm:gap-2 mt-0.5 sm:mt-1">
+            <span className="text-sm sm:text-lg font-bold text-white truncate">{insights.topSignal}</span>
+            <span className={`text-[10px] sm:text-sm font-bold flex-shrink-0 ${insights.topAction === 'GROWING' ? 'text-emerald-400' : insights.topAction === 'INCREASING' ? 'text-emerald-400' : insights.topAction === 'DECLINING' ? 'text-red-400' : 'text-yellow-400'}`}>
               {insights.topAction}
             </span>
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-xs text-white/40">Confidence</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xl font-bold text-white">{insights.confidence}%</span>
-            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3">
+          <p className="text-[10px] sm:text-xs text-white/40 truncate">Confidence</p>
+          <div className="flex items-center gap-1 sm:gap-2 mt-0.5 sm:mt-1">
+            <span className="text-sm sm:text-xl font-bold text-white">{insights.confidence}%</span>
+            <div className="flex-1 h-1 sm:h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-purple-400 to-emerald-400 rounded-full" style={{ width: `${insights.confidence}%` }} />
             </div>
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-xs text-white/40">Monitoring</p>
-          <p className="text-lg font-bold text-white">{insights.scanning} metrics</p>
+        <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3">
+          <p className="text-[10px] sm:text-xs text-white/40 truncate">Monitoring</p>
+          <p className="text-sm sm:text-lg font-bold text-white">{insights.scanning}</p>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-xs text-white/40">Risk Level</p>
-          <p className={`text-lg font-bold ${insights.risk === 'Low' ? 'text-emerald-400' : insights.risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>
+        <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3">
+          <p className="text-[10px] sm:text-xs text-white/40 truncate">Risk Level</p>
+          <p className={`text-sm sm:text-lg font-bold ${insights.risk === 'Low' ? 'text-emerald-400' : insights.risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>
             {insights.risk}
           </p>
         </div>
       </div>
       
-      <div className="mt-3 p-3 bg-white/5 rounded-xl">
-        <p className="text-sm text-white/80">{insights.summary}</p>
+      <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-white/5 rounded-lg sm:rounded-xl">
+        <p className="text-xs sm:text-sm text-white/80 truncate">{insights.summary}</p>
       </div>
       
-      <div className="mt-2 space-y-1">
+      <div className="mt-1 sm:mt-2 space-y-0.5 sm:space-y-1">
         {insights.recommendations.map((rec, idx) => (
-          <div key={idx} className="flex items-start gap-2 text-xs text-white/60">
-            <FaCheckCircle className="text-emerald-400 text-[10px] mt-0.5 flex-shrink-0" />
-            <span>{rec}</span>
+          <div key={idx} className="flex items-start gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/60">
+            <FaCheckCircle className="text-emerald-400 text-[8px] sm:text-[10px] mt-0.5 flex-shrink-0" />
+            <span className="truncate">{rec}</span>
           </div>
         ))}
       </div>
@@ -164,7 +164,7 @@ const AIInsightsPanel = ({ data }) => {
   );
 };
 
-// Platform Metrics - Generic platform metrics
+// Platform Metrics - Mobile responsive
 const PlatformMetrics = ({ data }) => {
   const metrics = [
     { label: "Users", value: data?.totalUsers || 132, color: "text-cyan-400", icon: <FaUsers /> },
@@ -174,14 +174,14 @@ const PlatformMetrics = ({ data }) => {
   ];
 
   return (
-    <GlassCard className="p-6" gradient="from-white/5 to-white/5">
-      <h3 className="text-sm font-semibold text-white mb-4">Platform Metrics</h3>
-      <div className="grid grid-cols-2 gap-4">
+    <GlassCard>
+      <h3 className="text-sm font-semibold text-white mb-3 sm:mb-4">Platform Metrics</h3>
+      <div className="grid grid-cols-2 gap-2 sm:gap-4">
         {metrics.map((item) => (
-          <div key={item.label} className="bg-white/5 rounded-xl p-3 text-center">
-            <div className="text-2xl text-purple-400 mb-1">{item.icon}</div>
-            <p className="text-2xl font-bold text-white">{item.value.toLocaleString()}</p>
-            <p className="text-xs text-white/40">{item.label}</p>
+          <div key={item.label} className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center">
+            <div className="text-xl sm:text-2xl text-purple-400 mb-0.5 sm:mb-1">{item.icon}</div>
+            <p className="text-lg sm:text-2xl font-bold text-white">{item.value.toLocaleString()}</p>
+            <p className="text-[10px] sm:text-xs text-white/40 truncate">{item.label}</p>
           </div>
         ))}
       </div>
@@ -189,7 +189,7 @@ const PlatformMetrics = ({ data }) => {
   );
 };
 
-// Subscription Metrics
+// Subscription Metrics - Mobile responsive
 const SubscriptionMetrics = ({ data }) => {
   const metrics = [
     { label: "Free", value: data?.freeUsers || 132, color: "text-cyan-400" },
@@ -201,37 +201,35 @@ const SubscriptionMetrics = ({ data }) => {
   const maxValue = Math.max(...metrics.map(m => m.value));
 
   return (
-    <GlassCard className="p-6" gradient="from-white/5 to-white/5">
-      <h3 className="text-sm font-semibold text-white mb-4">Subscription Distribution</h3>
-      <div className="space-y-3">
+    <GlassCard>
+      <h3 className="text-sm font-semibold text-white mb-3 sm:mb-4">Subscription Distribution</h3>
+      <div className="space-y-2 sm:space-y-3">
         {metrics.map((item) => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="text-sm text-white/60">{item.label}</span>
-            <div className="flex items-center gap-3 flex-1 mx-4">
-              <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                <div className={`h-full bg-gradient-to-r ${item.color.replace('text-', 'from-')} to-${item.color.replace('text-', 'to-')}`} 
-                     style={{ width: `${(item.value / maxValue) * 100}%` }} />
-              </div>
+          <div key={item.label} className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-white/60 w-12 sm:w-16 truncate">{item.label}</span>
+            <div className="flex-1 h-1.5 sm:h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className={`h-full bg-gradient-to-r ${item.color.replace('text-', 'from-')} to-${item.color.replace('text-', 'to-')}`} 
+                   style={{ width: `${(item.value / maxValue) * 100}%` }} />
             </div>
-            <span className={`font-bold ${item.color}`}>{item.value}</span>
+            <span className={`text-xs sm:text-sm font-bold ${item.color}`}>{item.value}</span>
           </div>
         ))}
       </div>
-      <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+      <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/10 flex justify-between">
         <div>
-          <p className="text-xs text-white/40">MRR</p>
-          <p className="text-lg font-bold text-white">${data?.mrr || 2540}</p>
+          <p className="text-[10px] sm:text-xs text-white/40">MRR</p>
+          <p className="text-base sm:text-lg font-bold text-white">${data?.mrr || 2540}</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-white/40">ARR</p>
-          <p className="text-lg font-bold text-emerald-400">${data?.arr || 30480}</p>
+          <p className="text-[10px] sm:text-xs text-white/40">ARR</p>
+          <p className="text-base sm:text-lg font-bold text-emerald-400">${data?.arr || 30480}</p>
         </div>
       </div>
     </GlassCard>
   );
 };
 
-// Platform Feature Usage
+// Platform Feature Usage - Mobile responsive
 const FeatureUsage = ({ data }) => {
   const features = [
     { label: "User Management", usage: 95, color: "bg-purple-500" },
@@ -243,19 +241,19 @@ const FeatureUsage = ({ data }) => {
   ];
 
   return (
-    <GlassCard className="p-6" gradient="from-white/5 to-white/5">
-      <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-        <FaChartLine className="text-emerald-400" />
+    <GlassCard>
+      <h3 className="text-sm font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+        <FaChartLine className="text-emerald-400 text-base sm:text-lg" />
         Feature Adoption
       </h3>
-      <div className="space-y-2.5">
+      <div className="space-y-1.5 sm:space-y-2.5">
         {features.map((item, idx) => (
-          <div key={idx} className="flex items-center gap-3">
-            <span className="text-xs text-white/40 w-28 text-right">{item.label}</span>
-            <div className="flex-1 h-5 bg-white/5 rounded-lg overflow-hidden relative">
+          <div key={idx} className="flex items-center gap-2 sm:gap-3">
+            <span className="text-[10px] sm:text-xs text-white/40 w-16 sm:w-28 text-right truncate">{item.label}</span>
+            <div className="flex-1 h-4 sm:h-5 bg-white/5 rounded-lg overflow-hidden relative">
               <div className={`h-full ${item.color} transition-all duration-1000`} 
                    style={{ width: `${item.usage}%` }} />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-white">
+              <span className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 text-[8px] sm:text-xs font-bold text-white">
                 {item.usage}%
               </span>
             </div>
@@ -266,12 +264,12 @@ const FeatureUsage = ({ data }) => {
   );
 };
 
-// Recent Activity
+// Recent Activity - Mobile responsive
 const RecentActivity = ({ activities }) => {
   if (!activities || activities.length === 0) {
     return (
-      <GlassCard className="p-6" gradient="from-white/5 to-white/5">
-        <h3 className="text-sm font-semibold text-white mb-4">Recent Activity</h3>
+      <GlassCard>
+        <h3 className="text-sm font-semibold text-white mb-3 sm:mb-4">Recent Activity</h3>
         <p className="text-sm text-white/40">No recent activity</p>
       </GlassCard>
     );
@@ -290,24 +288,24 @@ const RecentActivity = ({ activities }) => {
   };
 
   return (
-    <GlassCard className="p-6" gradient="from-white/5 to-white/5">
-      <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-        <FaClock className="text-purple-400" />
+    <GlassCard>
+      <h3 className="text-sm font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+        <FaClock className="text-purple-400 text-base sm:text-lg" />
         Recent Activity
       </h3>
-      <div className="space-y-2 max-h-60 overflow-y-auto">
+      <div className="space-y-1.5 sm:space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
         {activities.slice(0, 10).map((item, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: idx * 0.05 }}
-            className="flex items-center gap-3 p-2 bg-white/5 rounded-lg hover:bg-white/10 transition"
+            className="flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 bg-white/5 rounded-lg hover:bg-white/10 transition"
           >
-            <span className="text-lg">{getActivityIcon(item.type)}</span>
-            <span className="text-xs text-white/40">{item.time}</span>
-            <span className="text-xs font-medium text-white flex-1">{item.user}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${
+            <span className="text-base sm:text-lg flex-shrink-0">{getActivityIcon(item.type)}</span>
+            <span className="text-[10px] sm:text-xs text-white/40 flex-shrink-0">{item.time}</span>
+            <span className="text-[10px] sm:text-xs font-medium text-white flex-1 truncate">{item.user}</span>
+            <span className={`text-[8px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0 ${
               item.type === 'user' ? 'bg-emerald-500/10 text-emerald-400' :
               item.type === 'subscription' ? 'bg-blue-500/10 text-blue-400' :
               item.type === 'api' ? 'bg-purple-500/10 text-purple-400' :
@@ -322,6 +320,26 @@ const RecentActivity = ({ activities }) => {
     </GlassCard>
   );
 };
+
+// Stat Card - Mobile responsive
+const StatCard = ({ stat, onClick }) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: stat.delay || 0 }}
+    className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4 hover:border-white/20 transition cursor-pointer"
+    onClick={() => onClick(`Viewing ${stat.label}`, "info")}
+  >
+    <div className="flex items-center justify-between mb-1 sm:mb-2">
+      <span className="text-[10px] sm:text-sm text-white/40 truncate">{stat.label}</span>
+      <span className="text-base sm:text-xl flex-shrink-0">{stat.icon}</span>
+    </div>
+    <p className="text-lg sm:text-2xl font-bold">
+      <CountUp end={typeof stat.value === 'string' ? parseFloat(stat.value.replace(/[^0-9.]/g, '')) || 0 : stat.value} duration={2} separator="," />
+    </p>
+    <p className="text-[8px] sm:text-xs text-white/40 mt-0.5 sm:mt-1 truncate">{stat.change}</p>
+  </motion.div>
+);
 
 const AdminPlatformDemo = () => {
   const navigate = useNavigate();
@@ -339,6 +357,7 @@ const AdminPlatformDemo = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const itemsPerPage = 5;
 
   // Real data states
@@ -366,7 +385,7 @@ const AdminPlatformDemo = () => {
   const [liveActivities, setLiveActivities] = useState([]);
   const [featureMetrics, setFeatureMetrics] = useState([]);
 
-  // Candlestick data - still useful for showing chart capabilities
+  // Candlestick data
   const [candles] = useState(() => 
     candleGenerator.createInitialCandles({ count: 60, startPrice: 67420, intervalSeconds: 60 })
   );
@@ -378,14 +397,12 @@ const AdminPlatformDemo = () => {
     try {
       setLoading(true);
       
-      // Fetch data from BotAPI
       const [meRes, usersRes, activityRes] = await Promise.allSettled([
         BotAPI.getMe?.(true),
         BotAPI.getOrganizationUsers?.(true),
         BotAPI.getAuditLogs?.({ limit: 50 })
       ]);
 
-      // Process user data
       const userData = usersRes.status === 'fulfilled' ? usersRes.value : null;
       if (userData?.users) {
         setUsers(userData.users.map(u => ({
@@ -418,7 +435,6 @@ const AdminPlatformDemo = () => {
         }));
       }
 
-      // Process activity logs
       if (activityRes.status === 'fulfilled' && activityRes.value?.logs) {
         const logs = activityRes.value.logs || [];
         const formatted = logs.map(log => ({
@@ -433,7 +449,6 @@ const AdminPlatformDemo = () => {
         }));
         setRecentActivity(formatted);
         
-        // Count new signups
         const today = new Date();
         const todaySignups = logs.filter(log => {
           if (!log.created_at) return false;
@@ -450,7 +465,6 @@ const AdminPlatformDemo = () => {
         }));
       }
 
-      // Generate live activities
       const events = [
         { event: "API Request", details: "2.4k requests this hour" },
         { event: "User Activity", details: "48 users online" },
@@ -459,7 +473,6 @@ const AdminPlatformDemo = () => {
       ];
       setLiveActivities(events);
 
-      // Feature metrics
       const features = [
         { name: "User Management", usage: 95 },
         { name: "Billing", usage: 78 },
@@ -478,7 +491,7 @@ const AdminPlatformDemo = () => {
     }
   }, []);
 
-  // Candlestick animation (kept for chart demonstration)
+  // Candlestick animation
   useEffect(() => {
     const interval = setInterval(() => {
       tickRef.current += 1;
@@ -602,201 +615,223 @@ const AdminPlatformDemo = () => {
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       
       {/* Navigation Bar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-b border-white/5 px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link to="/admin-platform" className="text-xl font-bold flex items-center gap-2">
-            <FaCubes className="text-purple-500" />
-            <span className="bg-gradient-to-r from-white to-purple-300 bg-clip-text text-transparent">Admin<span className="text-purple-500">Platform</span></span>
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-b border-white/5 px-3 sm:px-4 md:px-6 h-14 sm:h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="lg:hidden text-white/60 hover:text-white transition p-1.5"
+          >
+            <FaBars className="text-lg sm:text-xl" />
+          </button>
+          
+          <Link to="/admin-platform" className="text-base sm:text-xl font-bold flex items-center gap-1.5 sm:gap-2">
+            <FaCubes className="text-purple-500 text-sm sm:text-lg" />
+            <span className="bg-gradient-to-r from-white to-purple-300 bg-clip-text text-transparent hidden xs:inline">Admin<span className="text-purple-500">Platform</span></span>
           </Link>
-          <span className="text-xs text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full">LIVE PREVIEW</span>
+          <span className="text-[8px] sm:text-xs text-purple-400 border border-purple-500/20 px-1.5 sm:px-2 py-0.5 rounded-full">LIVE</span>
         </div>
-        <div className="hidden md:flex items-center gap-4">
-          <Link to="/" className="text-sm text-white/60 hover:text-white transition">Home</Link>
-          <Link to="/admin-platform" className="text-sm text-white/60 hover:text-white transition">Back to Landing</Link>
+        
+        <div className="hidden md:flex items-center gap-3 sm:gap-4">
+          <Link to="/" className="text-xs sm:text-sm text-white/60 hover:text-white transition">Home</Link>
+          <Link to="/admin-platform" className="text-xs sm:text-sm text-white/60 hover:text-white transition">Back to Landing</Link>
         </div>
-        <div className="flex items-center gap-3">
-          <LiveTicker activities={liveActivities} />
+        
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          <div className="hidden sm:block">
+            <LiveTicker activities={liveActivities} />
+          </div>
           <button 
             onClick={handleRefresh}
-            className="text-white/40 hover:text-white transition"
+            className="text-white/40 hover:text-white transition p-1.5"
             disabled={isRefreshing}
           >
-            <FaSync className={`${isRefreshing ? 'animate-spin' : ''}`} />
+            <FaSync className={`text-xs sm:text-sm ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
-          <FaBell className="text-white/40 hover:text-white cursor-pointer transition" />
-          <FaUserCircle className="text-2xl text-purple-400 cursor-pointer" />
+          <FaBell className="text-white/40 hover:text-white cursor-pointer transition text-sm sm:text-base" />
+          <FaUserCircle className="text-xl sm:text-2xl text-purple-400 cursor-pointer" />
         </div>
       </nav>
 
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/70 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Main Content */}
-      <div className="pt-16 flex">
-        {/* Sidebar */}
-        <div className="w-64 min-h-screen bg-slate-900/50 border-r border-white/5 p-4 fixed left-0 top-16 overflow-y-auto">
-          <div className="mb-6">
-            <div className="flex items-center gap-3 px-3 py-2 bg-purple-500/10 rounded-xl border border-purple-500/20">
-              <FaUserCircle className="text-2xl text-purple-400" />
-              <div>
-                <p className="text-sm font-semibold">Admin User</p>
-                <p className="text-xs text-white/40">admin@platform.com</p>
+      <div className="pt-14 sm:pt-16 flex">
+        {/* Sidebar - Mobile responsive */}
+        <div className={`
+          fixed lg:static top-14 sm:top-16 left-0 z-40 w-64 sm:w-72 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] 
+          bg-slate-900/95 border-r border-white/5 p-3 sm:p-4 overflow-y-auto transition-transform duration-300
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}>
+          <div className="flex items-center justify-between lg:hidden mb-4">
+            <span className="text-sm font-semibold text-white">Menu</span>
+            <button onClick={() => setSidebarOpen(false)} className="text-white/60 hover:text-white">
+              <FaTimesIcon />
+            </button>
+          </div>
+
+          <div className="mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-purple-500/10 rounded-xl border border-purple-500/20">
+              <FaUserCircle className="text-xl sm:text-2xl text-purple-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-semibold truncate">Admin User</p>
+                <p className="text-[10px] sm:text-xs text-white/40 truncate">admin@platform.com</p>
               </div>
             </div>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <div className="bg-white/5 rounded-xl p-3 text-center hover:bg-white/10 transition cursor-pointer">
-              <FaUsers className="text-purple-400 mx-auto text-lg" />
-              <p className="text-sm font-bold mt-1">{dashboardData.totalUsers}</p>
-              <p className="text-[10px] text-white/40">users</p>
+          <div className="mb-3 sm:mb-4 grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center hover:bg-white/10 transition cursor-pointer">
+              <FaUsers className="text-purple-400 mx-auto text-base sm:text-lg" />
+              <p className="text-xs sm:text-sm font-bold mt-0.5 sm:mt-1">{dashboardData.totalUsers}</p>
+              <p className="text-[8px] sm:text-[10px] text-white/40">users</p>
             </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center hover:bg-white/10 transition cursor-pointer">
-              <FaDollarSign className="text-emerald-400 mx-auto text-lg" />
-              <p className="text-sm font-bold mt-1">${(dashboardData.mrr || 0).toLocaleString()}</p>
-              <p className="text-[10px] text-white/40">MRR</p>
+            <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-3 text-center hover:bg-white/10 transition cursor-pointer">
+              <FaDollarSign className="text-emerald-400 mx-auto text-base sm:text-lg" />
+              <p className="text-xs sm:text-sm font-bold mt-0.5 sm:mt-1">${(dashboardData.mrr || 0).toLocaleString()}</p>
+              <p className="text-[8px] sm:text-[10px] text-white/40">MRR</p>
             </div>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-0.5 sm:space-y-1">
             {menuItems.map((item) => (
               <button
                 key={item.label}
                 onClick={() => {
                   setActiveTab(item.section);
                   showNotification(`Switched to ${item.label}`, "info");
+                  setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition ${
                   activeTab === item.section
                     ? "bg-purple-500/20 text-purple-400"
                     : "text-white/60 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <span className="text-lg">{item.icon}</span>
-                {item.label}
+                <span className="text-base sm:text-lg">{item.icon}</span>
+                <span className="truncate">{item.label}</span>
                 {item.section === "overview" && (
-                  <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">Live</span>
+                  <span className="ml-auto text-[8px] sm:text-[10px] bg-emerald-500/20 text-emerald-400 px-1 sm:px-1.5 py-0.5 rounded-full">Live</span>
                 )}
               </button>
             ))}
           </nav>
 
-          <div className="mt-6 border-t border-white/5 pt-4 space-y-1">
+          <div className="mt-4 sm:mt-6 border-t border-white/5 pt-3 sm:pt-4 space-y-0.5 sm:space-y-1">
             <button 
               onClick={() => showNotification("AI Assistant analyzing...", "info")}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:bg-white/5 hover:text-white transition"
+              className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm text-white/40 hover:bg-white/5 hover:text-white transition"
             >
-              <FaRobot className="text-lg" />
+              <FaRobot className="text-base sm:text-lg" />
               AI Assistant
             </button>
             <button 
               onClick={() => navigate("/admin-platform")}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:bg-white/5 hover:text-white transition"
+              className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm text-white/40 hover:bg-white/5 hover:text-white transition"
             >
-              <FaArrowRight className="text-lg" />
+              <FaArrowRight className="text-base sm:text-lg" />
               Back to Landing
             </button>
           </div>
         </div>
 
         {/* Main Content Area */}
-        <div className="ml-64 flex-1 p-6">
+        <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
           {/* Header */}
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
             <div>
-              <h1 className="text-2xl font-bold">Platform Dashboard</h1>
-              <p className="text-sm text-white/40">Complete platform oversight and management</p>
+              <h1 className="text-lg sm:text-2xl font-bold">Platform Dashboard</h1>
+              <p className="text-xs sm:text-sm text-white/40 truncate">Complete platform oversight and management</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
               <button 
                 onClick={handleRefresh}
-                className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition flex items-center gap-2"
+                className="px-2 sm:px-4 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-lg text-[10px] sm:text-sm hover:bg-white/10 transition flex items-center gap-1.5 sm:gap-2"
                 disabled={isRefreshing}
               >
-                {isRefreshing ? <FaSpinner className="animate-spin" /> : <FaSync />}
-                {isRefreshing ? "Refreshing..." : "Refresh"}
+                {isRefreshing ? <FaSpinner className="animate-spin text-xs sm:text-sm" /> : <FaSync className="text-xs sm:text-sm" />}
+                <span className="hidden xs:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
               </button>
               <button 
                 onClick={() => showNotification("Exporting data...", "info")}
-                className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition"
+                className="px-2 sm:px-4 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-lg text-[10px] sm:text-sm hover:bg-white/10 transition"
               >
-                <FaDownload className="inline mr-2" /> Export
+                <FaDownload className="inline mr-1 sm:mr-2 text-xs sm:text-sm" />
+                <span className="hidden xs:inline">Export</span>
               </button>
             </div>
           </div>
 
           {/* Live Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
             {[
-              { label: "Total Users", value: dashboardData.totalUsers, icon: <FaUsers className="text-purple-400" />, change: `${dashboardData.newSignups || 0} new today` },
-              { label: "API Calls", value: dashboardData.apiCalls || 2847, icon: <FaCode className="text-blue-400" />, change: `${dashboardData.activeUsers || 0} active users` },
-              { label: "MRR", value: `$${dashboardData.mrr || 0}`, icon: <FaDollarSign className="text-emerald-400" />, change: `${dashboardData.proUsers || 0} Pro • ${dashboardData.businessUsers || 0} Business` },
-              { label: "Organizations", value: dashboardData.organizations || 24, icon: <FaBuilding className="text-amber-400" />, change: `${dashboardData.integrations || 0} integrations` },
+              { label: "Total Users", value: dashboardData.totalUsers, icon: <FaUsers className="text-purple-400" />, change: `${dashboardData.newSignups || 0} new today`, delay: 0.1 },
+              { label: "API Calls", value: dashboardData.apiCalls || 2847, icon: <FaCode className="text-blue-400" />, change: `${dashboardData.activeUsers || 0} active users`, delay: 0.2 },
+              { label: "MRR", value: `$${dashboardData.mrr || 0}`, icon: <FaDollarSign className="text-emerald-400" />, change: `${dashboardData.proUsers || 0} Pro • ${dashboardData.businessUsers || 0} Business`, delay: 0.3 },
+              { label: "Organizations", value: dashboardData.organizations || 24, icon: <FaBuilding className="text-amber-400" />, change: `${dashboardData.integrations || 0} integrations`, delay: 0.4 },
             ].map((stat, i) => (
-              <motion.div 
-                key={i} 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="bg-white/5 border border-white/10 rounded-xl p-4 hover:border-white/20 transition cursor-pointer"
-                onClick={() => showNotification(`Viewing ${stat.label}`, "info")}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-white/40">{stat.label}</span>
-                  <span className="text-xl">{stat.icon}</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  <CountUp end={typeof stat.value === 'string' ? parseFloat(stat.value.replace(/[^0-9.]/g, '')) || 0 : stat.value} duration={2} separator="," />
-                </p>
-                <p className="text-xs text-white/40 mt-1">{stat.change}</p>
-              </motion.div>
+              <StatCard key={i} stat={{ ...stat, delay: (i + 1) * 0.1 }} onClick={showNotification} />
             ))}
           </div>
 
           {/* AI Insights + Candlestick Chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <div className="lg:col-span-2">
-              <GlassCard className="p-4" gradient="from-white/5 to-white/5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white">Market Data (Demo Chart)</h3>
-                  <span className="text-xs text-emerald-400 animate-pulse">● LIVE</span>
+              <GlassCard>
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <h3 className="text-xs sm:text-sm font-semibold text-white">Market Data (Demo Chart)</h3>
+                  <span className="text-[10px] sm:text-xs text-emerald-400 animate-pulse">● LIVE</span>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+                <div className="rounded-lg sm:rounded-xl border border-white/10 bg-black/30 p-1.5 sm:p-2">
                   <CandlestickChart 
                     data={candles} 
                     liveCandle={liveCandle} 
-                    height={300} 
+                    height={window.innerWidth < 640 ? 200 : 300} 
                   />
                 </div>
-                <p className="text-xs text-white/30 mt-2 text-center">Example candlestick chart - Replace with your own data</p>
+                <p className="text-[8px] sm:text-xs text-white/30 mt-1 sm:mt-2 text-center">Example candlestick chart - Replace with your own data</p>
               </GlassCard>
             </div>
             <AIInsightsPanel data={dashboardData} />
           </div>
 
           {/* Platform Metrics + Feature Usage */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <PlatformMetrics data={dashboardData} />
             <FeatureUsage data={dashboardData} />
           </div>
 
           {/* Subscription Metrics + Recent Activity */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <SubscriptionMetrics data={dashboardData} />
             <RecentActivity activities={recentActivity} />
           </div>
 
           {/* User Management Table */}
-          <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 overflow-x-hidden">
             <button 
               onClick={() => toggleSection('users')}
               className="w-full flex items-center justify-between"
             >
-              <div className="flex items-center gap-3">
-                <FaUsers className="text-purple-400" />
-                <h3 className="font-semibold">User Management</h3>
-                <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <FaUsers className="text-purple-400 text-sm sm:text-base flex-shrink-0" />
+                <h3 className="font-semibold text-sm sm:text-base truncate">User Management</h3>
+                <span className="text-[10px] sm:text-xs text-white/40 bg-white/5 px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
                   {users.length} users
                 </span>
               </div>
-              {expandedSections.users ? <FaChevronUp className="text-white/40" /> : <FaChevronDown className="text-white/40" />}
+              {expandedSections.users ? <FaChevronUp className="text-white/40 text-xs sm:text-sm flex-shrink-0" /> : <FaChevronDown className="text-white/40 text-xs sm:text-sm flex-shrink-0" />}
             </button>
 
             <AnimatePresence>
@@ -806,25 +841,26 @@ const AdminPlatformDemo = () => {
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
                 >
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <div className="flex-1 min-w-[200px]">
+                  <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <div className="flex-1 min-w-[150px]">
                       <div className="relative">
-                        <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
+                        <FaSearch className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-white/30 text-xs sm:text-sm" />
                         <input
                           type="text"
                           placeholder="Search users..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-purple-500 focus:outline-none"
+                          className="w-full pl-7 sm:pl-9 pr-2 sm:pr-3 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-lg text-xs sm:text-sm text-white placeholder:text-white/30 focus:border-purple-500 focus:outline-none"
                         />
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5 sm:gap-2">
                       <select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:border-purple-500 focus:outline-none"
+                        className="px-2 sm:px-3 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-lg text-xs sm:text-sm text-white focus:border-purple-500 focus:outline-none"
                       >
                         <option value="all">All Tiers</option>
                         <option value="Enterprise">Enterprise</option>
@@ -837,53 +873,53 @@ const AdminPlatformDemo = () => {
                     </div>
                   </div>
 
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="mt-3 sm:mt-4 overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm min-w-[600px]">
                       <thead>
                         <tr className="text-left text-white/40 border-b border-white/5">
-                          <th className="pb-2 font-medium">Name</th>
-                          <th className="pb-2 font-medium">Email</th>
-                          <th className="pb-2 font-medium">Tier</th>
-                          <th className="pb-2 font-medium">Status</th>
-                          <th className="pb-2 font-medium">Joined</th>
-                          <th className="pb-2 font-medium">Actions</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium">Name</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium hidden sm:table-cell">Email</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium">Tier</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium">Status</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium hidden md:table-cell">Joined</th>
+                          <th className="pb-1.5 sm:pb-2 font-medium">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {paginatedUsers.map((user) => (
                           <tr key={user.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition">
-                            <td className="py-2 font-medium">{user.name}</td>
-                            <td className="py-2 text-white/60">{user.email}</td>
-                            <td className="py-2">
-                              <span className={`px-2 py-0.5 rounded-full text-xs ${getTierColor(user.tier)}`}>
+                            <td className="py-1.5 sm:py-2 font-medium truncate max-w-[60px] sm:max-w-none">{user.name}</td>
+                            <td className="py-1.5 sm:py-2 text-white/60 hidden sm:table-cell truncate max-w-[120px]">{user.email}</td>
+                            <td className="py-1.5 sm:py-2">
+                              <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[8px] sm:text-xs ${getTierColor(user.tier)}`}>
                                 {user.tier}
                               </span>
                             </td>
-                            <td className="py-2">
-                              <span className={`px-2 py-0.5 rounded-full text-xs ${getStatusColor(user.status)}`}>
+                            <td className="py-1.5 sm:py-2">
+                              <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[8px] sm:text-xs ${getStatusColor(user.status)}`}>
                                 {user.status}
                               </span>
                             </td>
-                            <td className="py-2 text-white/40 text-xs">{user.joined}</td>
-                            <td className="py-2">
-                              <div className="flex gap-2">
+                            <td className="py-1.5 sm:py-2 text-white/40 text-[10px] sm:text-xs hidden md:table-cell">{user.joined}</td>
+                            <td className="py-1.5 sm:py-2">
+                              <div className="flex gap-1 sm:gap-2">
                                 <button 
                                   onClick={() => handleUserAction('view', user)}
-                                  className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400 hover:bg-blue-500/20 transition"
+                                  className="p-1 sm:p-1.5 bg-blue-500/10 rounded-lg text-blue-400 hover:bg-blue-500/20 transition"
                                 >
-                                  <FaEye className="text-xs" />
+                                  <FaEye className="text-[10px] sm:text-xs" />
                                 </button>
                                 <button 
                                   onClick={() => handleUserAction('edit', user)}
-                                  className="p-1.5 bg-amber-500/10 rounded-lg text-amber-400 hover:bg-amber-500/20 transition"
+                                  className="p-1 sm:p-1.5 bg-amber-500/10 rounded-lg text-amber-400 hover:bg-amber-500/20 transition"
                                 >
-                                  <FaEdit className="text-xs" />
+                                  <FaEdit className="text-[10px] sm:text-xs" />
                                 </button>
                                 <button 
                                   onClick={() => handleUserAction('delete', user)}
-                                  className="p-1.5 bg-red-500/10 rounded-lg text-red-400 hover:bg-red-500/20 transition"
+                                  className="p-1 sm:p-1.5 bg-red-500/10 rounded-lg text-red-400 hover:bg-red-500/20 transition"
                                 >
-                                  <FaTrash className="text-xs" />
+                                  <FaTrash className="text-[10px] sm:text-xs" />
                                 </button>
                               </div>
                             </td>
@@ -894,25 +930,25 @@ const AdminPlatformDemo = () => {
                   </div>
 
                   {totalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between">
-                      <p className="text-xs text-white/40">
+                    <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+                      <p className="text-[10px] sm:text-xs text-white/40">
                         Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} users
                       </p>
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5 sm:gap-2">
                         <button
                           onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                           disabled={currentPage === 1}
-                          className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition"
+                          className="px-2 sm:px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] sm:text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition"
                         >
                           Previous
                         </button>
-                        <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-sm">
+                        <span className="px-2 sm:px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-[10px] sm:text-sm">
                           {currentPage} / {totalPages}
                         </span>
                         <button
                           onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                           disabled={currentPage === totalPages}
-                          className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition"
+                          className="px-2 sm:px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] sm:text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition"
                         >
                           Next
                         </button>
@@ -925,43 +961,43 @@ const AdminPlatformDemo = () => {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <p className="text-sm font-semibold">⚡ Quick Actions</p>
-              <p className="text-xs text-white/40 mb-3">Common admin tasks</p>
-              <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+              <p className="text-xs sm:text-sm font-semibold">⚡ Quick Actions</p>
+              <p className="text-[10px] sm:text-xs text-white/40 mb-2 sm:mb-3">Common admin tasks</p>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 <button 
                   onClick={handleRefresh}
-                  className="px-3 py-1.5 bg-purple-600 rounded-lg text-xs hover:bg-purple-500 transition"
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-600 rounded-lg text-[10px] sm:text-xs hover:bg-purple-500 transition"
                 >
                   Refresh Metrics
                 </button>
                 <button 
                   onClick={() => showNotification("Generating report...", "info")}
-                  className="px-3 py-1.5 bg-white/10 rounded-lg text-xs hover:bg-white/20 transition"
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 bg-white/10 rounded-lg text-[10px] sm:text-xs hover:bg-white/20 transition"
                 >
                   Generate Report
                 </button>
                 <button 
                   onClick={() => showNotification("Exporting data...", "info")}
-                  className="px-3 py-1.5 bg-white/10 rounded-lg text-xs hover:bg-white/20 transition"
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 bg-white/10 rounded-lg text-[10px] sm:text-xs hover:bg-white/20 transition"
                 >
                   Export Data
                 </button>
               </div>
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <p className="text-sm font-semibold">⚙️ System Status</p>
-              <p className="text-xs text-white/40 mb-3">All systems operational</p>
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1 text-xs text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+              <p className="text-xs sm:text-sm font-semibold">⚙️ System Status</p>
+              <p className="text-[10px] sm:text-xs text-white/40 mb-2 sm:mb-3">All systems operational</p>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                <span className="flex items-center gap-1 text-[10px] sm:text-xs text-emerald-400">
+                  <span className="h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full bg-emerald-400 animate-pulse" />
                   Healthy
                 </span>
-                <span className="text-xs text-white/40">Uptime: 99.9%</span>
+                <span className="text-[10px] sm:text-xs text-white/40">Uptime: 99.9%</span>
                 <button 
                   onClick={() => showNotification("Checking system status...", "info")}
-                  className="text-xs text-purple-400 hover:text-purple-300 transition"
+                  className="text-[10px] sm:text-xs text-purple-400 hover:text-purple-300 transition"
                 >
                   Check Status
                 </button>
@@ -970,19 +1006,19 @@ const AdminPlatformDemo = () => {
           </div>
 
           {/* Demo Footer */}
-          <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <FaRobot className="text-purple-400 text-xl" />
-              <div>
-                <p className="text-sm font-semibold">Live Platform Preview</p>
-                <p className="text-xs text-white/40">Real data from your platform instance</p>
+          <div className="p-3 sm:p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <FaRobot className="text-purple-400 text-lg sm:text-xl flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-semibold truncate">Live Platform Preview</p>
+                <p className="text-[10px] sm:text-xs text-white/40 truncate">Real data from your platform instance</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/admin-platform/signup" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 rounded-lg text-sm hover:shadow-lg hover:shadow-purple-500/25 transition flex items-center gap-2">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <Link to="/admin-platform/signup" className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-purple-600 to-purple-500 rounded-lg text-[10px] sm:text-sm hover:shadow-lg hover:shadow-purple-500/25 transition flex items-center gap-1.5 sm:gap-2">
                 <FaArrowRight /> Get Started
               </Link>
-              <Link to="/admin-platform" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition">
+              <Link to="/admin-platform" className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-lg text-[10px] sm:text-sm hover:bg-white/10 transition">
                 Back to Landing
               </Link>
             </div>
@@ -990,18 +1026,18 @@ const AdminPlatformDemo = () => {
         </div>
       </div>
 
-      {/* User Detail Modal */}
+      {/* User Detail Modal - Mobile responsive */}
       <AnimatePresence>
         {showUserModal && selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-slate-900 border border-white/10 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6"
+              className="bg-slate-900 border border-white/10 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6"
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">User Details</h2>
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-base sm:text-xl font-bold">User Details</h2>
                 <button 
                   onClick={() => setShowUserModal(false)}
                   className="text-white/40 hover:text-white transition"
@@ -1010,54 +1046,54 @@ const AdminPlatformDemo = () => {
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <FaUserCircle className="text-6xl text-purple-400" />
-                  <div>
-                    <h3 className="text-lg font-semibold">{selectedUser.name}</h3>
-                    <p className="text-white/60">{selectedUser.email}</p>
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <FaUserCircle className="text-4xl sm:text-6xl text-purple-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-base sm:text-lg font-semibold truncate">{selectedUser.name}</h3>
+                    <p className="text-xs sm:text-sm text-white/60 truncate">{selectedUser.email}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/40">Tier</p>
-                    <p className="font-semibold">{selectedUser.tier}</p>
+                <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                  <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-white/40">Tier</p>
+                    <p className="font-semibold text-sm sm:text-base">{selectedUser.tier}</p>
                   </div>
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/40">Status</p>
-                    <p className={`font-semibold ${selectedUser.status === 'Active' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-white/40">Status</p>
+                    <p className={`font-semibold text-sm sm:text-base ${selectedUser.status === 'Active' ? 'text-emerald-400' : 'text-red-400'}`}>
                       {selectedUser.status}
                     </p>
                   </div>
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/40">Joined</p>
-                    <p className="font-semibold">{selectedUser.joined}</p>
+                  <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-white/40">Joined</p>
+                    <p className="font-semibold text-sm sm:text-base">{selectedUser.joined}</p>
                   </div>
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/40">Role</p>
-                    <p className="font-semibold">Member</p>
+                  <div className="bg-white/5 rounded-lg sm:rounded-xl p-2 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-white/40">Role</p>
+                    <p className="font-semibold text-sm sm:text-base">Member</p>
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t border-white/10">
+                <div className="flex flex-wrap gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-white/10">
                   <button 
                     onClick={() => {
                       setShowUserModal(false);
                       showNotification(`Editing ${selectedUser.email}`, "info");
                     }}
-                    className="flex-1 px-4 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"
+                    className="flex-1 min-w-[80px] px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition text-xs sm:text-sm"
                   >
-                    <FaEdit className="inline mr-2" /> Edit User
+                    <FaEdit className="inline mr-1 sm:mr-2 text-xs" /> Edit
                   </button>
                   <button 
                     onClick={() => {
                       setShowUserModal(false);
                       showNotification(`Viewing ${selectedUser.email}'s activity`, "info");
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition"
+                    className="flex-1 min-w-[80px] px-2 sm:px-3 py-1.5 sm:py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition text-xs sm:text-sm"
                   >
-                    <FaChartLine className="inline mr-2" /> View Activity
+                    <FaChartLine className="inline mr-1 sm:mr-2 text-xs" /> Activity
                   </button>
                   <button 
                     onClick={() => {
@@ -1067,9 +1103,9 @@ const AdminPlatformDemo = () => {
                         showNotification(`User ${selectedUser.email} deleted`, "success");
                       }
                     }}
-                    className="flex-1 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
+                    className="flex-1 min-w-[80px] px-2 sm:px-3 py-1.5 sm:py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition text-xs sm:text-sm"
                   >
-                    <FaTrash className="inline mr-2" /> Delete
+                    <FaTrash className="inline mr-1 sm:mr-2 text-xs" /> Delete
                   </button>
                 </div>
               </div>
