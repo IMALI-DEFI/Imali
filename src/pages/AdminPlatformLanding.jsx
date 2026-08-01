@@ -24,6 +24,96 @@ const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white
   </div>
 );
 
+// Pricing Card Component
+const PricingCard = ({ plan, onSelect }) => {
+  const isPopular = plan.popular;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: plan.delay || 0 }}
+      viewport={{ once: true }}
+      className={`relative rounded-2xl p-8 text-center ${
+        isPopular 
+          ? 'border-2 border-purple-500/30 bg-gradient-to-br from-purple-600/10 to-purple-900/10 shadow-xl shadow-purple-500/10' 
+          : 'border border-white/10 bg-white/5'
+      }`}
+    >
+      {isPopular && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full text-xs font-bold text-white shadow-lg shadow-purple-500/30">
+            <FaStar className="text-yellow-300" /> Most Popular
+          </span>
+        </div>
+      )}
+
+      <div className="mb-6">
+        <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
+        <div className="mt-3">
+          <span className="text-4xl font-bold text-white">{plan.price}</span>
+          {plan.period && <span className="text-white/50 text-sm ml-1">{plan.period}</span>}
+        </div>
+        <p className="text-sm text-white/50 mt-1">{plan.description}</p>
+      </div>
+
+      <ul className="text-left space-y-2.5 mb-8">
+        {plan.features.map((feature, idx) => (
+          <li key={idx} className="flex items-start gap-2.5 text-sm text-white/70">
+            <FaCheck className="text-purple-400 mt-0.5 flex-shrink-0" />
+            <span>{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        onClick={() => onSelect(plan.id)}
+        className={`w-full py-3.5 rounded-xl font-semibold transition-all duration-300 ${
+          isPopular
+            ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:shadow-lg hover:shadow-purple-500/30 hover:scale-[1.02]'
+            : 'bg-white/10 text-white hover:bg-white/20 hover:scale-[1.02]'
+        }`}
+      >
+        {plan.id === 'enterprise' ? 'Contact Sales' : 'Start Free Trial'}
+        {plan.id !== 'enterprise' && <FaArrowRight className="inline ml-2 text-xs" />}
+      </button>
+    </motion.div>
+  );
+};
+
+// FAQ Item Component
+const FAQItem = ({ question, answer, isOpen, onClick }) => (
+  <motion.div 
+    className="border-b border-white/5 last:border-0 py-4"
+    initial={{ opacity: 0 }}
+    whileInView={{ opacity: 1 }}
+    viewport={{ once: true }}
+  >
+    <button
+      onClick={onClick}
+      className="flex items-center justify-between w-full text-left group"
+    >
+      <span className="text-white font-medium group-hover:text-purple-400 transition">{question}</span>
+      <span className={`text-white/50 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+        <FaArrowDown className="text-xs" />
+      </span>
+    </button>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="overflow-hidden"
+        >
+          <p className="pt-3 text-sm text-white/50">{answer}</p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </motion.div>
+);
+
 // Feature Card
 const FeatureCard = ({ icon, title, desc, problem, delay = 0 }) => (
   <motion.div
@@ -457,7 +547,7 @@ const AdminPlatformLanding = () => {
         </div>
       </section>
 
-      {/* Stats Section - Real Metrics */}
+      {/* Stats Section */}
       <section className="py-8 px-6 max-w-5xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="text-center">
