@@ -45,7 +45,6 @@ import {
   FaExchangeAlt,
   FaShieldAlt,
   FaBell,
-  FaBrain,
   FaUsers,
   FaEnvelope,
 } from "react-icons/fa";
@@ -223,15 +222,55 @@ const FALLBACK_STRATEGIES = [
 ];
 
 const SETTINGS_TABS = [
-  { id: "billing", icon: <FaCreditCard />, label: "Billing", route: "/billing" },
-  { id: "trading", icon: <FaPlug />, label: "Trading Accounts", route: "/connect-okx" },
-  { id: "wallets", icon: <FaWallet />, label: "Wallets", route: "/connect-wallet" },
-  { id: "activation", icon: <FaExchangeAlt />, label: "Activation", route: "/activation" },
-  { id: "security", icon: <FaShieldAlt />, label: "Security", route: "/settings/security" },
-  { id: "notifications", icon: <FaBell />, label: "Notifications", route: "/settings/notifications" },
-  { id: "api", icon: <FaKey />, label: "API Keys", route: "/settings/api" },
-  { id: "automation", icon: <FaRobot />, label: "Automation", route: "/settings/automation" },
-};
+  {
+    id: "billing",
+    icon: <FaCreditCard />,
+    label: "Billing",
+    route: "/billing",
+  },
+  {
+    id: "trading",
+    icon: <FaPlug />,
+    label: "Trading Accounts",
+    route: "/connect-okx",
+  },
+  {
+    id: "wallets",
+    icon: <FaWallet />,
+    label: "Wallets",
+    route: "/connect-wallet",
+  },
+  {
+    id: "activation",
+    icon: <FaExchangeAlt />,
+    label: "Activation",
+    route: "/activation",
+  },
+  {
+    id: "security",
+    icon: <FaShieldAlt />,
+    label: "Security",
+    route: "/settings/security",
+  },
+  {
+    id: "notifications",
+    icon: <FaBell />,
+    label: "Notifications",
+    route: "/settings/notifications",
+  },
+  {
+    id: "api",
+    icon: <FaKey />,
+    label: "API Keys",
+    route: "/settings/api",
+  },
+  {
+    id: "automation",
+    icon: <FaRobot />,
+    label: "Automation",
+    route: "/settings/automation",
+  },
+];
 
 const ASSET_NAMES = {
   USD: "Cash",
