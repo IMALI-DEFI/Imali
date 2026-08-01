@@ -105,6 +105,10 @@ const Documentation = () => {
 
   const activeContent = content[activeSection] || content['getting-started'];
 
+  const codeExample = `curl -X POST https://api.imali-defi.com/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"email": "user@example.com", "password": "your-password"}'`;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
       {/* Header */}
@@ -146,7 +150,7 @@ const Documentation = () => {
           <p className="text-white/50 text-sm mt-1">Everything you need to build with Admin Platform</p>
         </div>
 
-        {/* Quick Nav - One line */}
+        {/* Quick Nav */}
         <div className="flex flex-wrap justify-center gap-2 mb-8">
           {sections.map((section) => (
             <button
@@ -164,9 +168,9 @@ const Documentation = () => {
           ))}
         </div>
 
-        {/* Main Content - One panel at a time */}
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar - Compact */}
+          {/* Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-20 space-y-1">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-3">Sections</h4>
@@ -188,7 +192,7 @@ const Documentation = () => {
             </div>
           </div>
 
-          {/* Content - Single panel */}
+          {/* Content */}
           <div className="lg:col-span-3">
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
@@ -217,7 +221,7 @@ const Documentation = () => {
               </div>
             </div>
 
-            {/* Code Example - Compact */}
+            {/* Code Example - Fixed */}
             <div className="mt-4 bg-white/5 border border-white/10 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
                 <div className="flex items-center gap-2">
@@ -229,7 +233,7 @@ const Documentation = () => {
                   <span className="text-[10px] text-white/30 ml-2">Quick Example</span>
                 </div>
                 <button 
-                  onClick={() => copyToClipboard('curl -X POST https://api.imali-defi.com/api/auth/login \\\n  -H "Content-Type: application/json" \\\n  -d \'{"email": "user@example.com", "password": "your-password"}\'')}
+                  onClick={() => copyToClipboard(codeExample)}
                   className="text-white/30 hover:text-white transition text-xs flex items-center gap-1"
                 >
                   {copied ? <FaCheck className="text-emerald-400" /> : <FaCopy />}
@@ -237,15 +241,13 @@ const Documentation = () => {
                 </button>
               </div>
               <div className="p-3 bg-slate-950/50 overflow-x-auto">
-                <code className="text-xs text-emerald-300 font-mono whitespace-nowrap">
-                  curl -X POST https://api.imali-defi.com/api/auth/login \
-                  -H "Content-Type: application/json" \
-                  -d '{"email": "user@example.com", "password": "your-password"}'
+                <code className="text-xs text-emerald-300 font-mono whitespace-pre-wrap break-all">
+                  {codeExample}
                 </code>
               </div>
             </div>
 
-            {/* Help - Compact */}
+            {/* Help */}
             <div className="mt-4 bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 rounded-xl p-4 text-center">
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <FaRobot className="text-2xl text-purple-400" />
