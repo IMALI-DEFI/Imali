@@ -93,11 +93,11 @@ function buildActivitySeries(trades = []) {
   });
 }
 
-// Glass Card Component
+// Glass Card Component - Mobile responsive
 const GlassCard = ({ children, className = "", gradient = "from-emerald-500/10 to-cyan-500/10" }) => (
-  <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
+  <div className={`relative overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
     <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
-    <div className="relative z-10">{children}</div>
+    <div className="relative z-10 p-4 sm:p-6">{children}</div>
   </div>
 );
 
@@ -108,11 +108,11 @@ function PromoMeter({ promo }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-between text-sm">
+      <div className="flex justify-between text-xs sm:text-sm">
         <span className="text-white/50">{promo.loading ? "Loading..." : `${promo.claimed} of ${promo.limit} spots claimed`}</span>
         <span className={`font-bold ${urgency}`}>{promo.loading ? "..." : `${promo.spotsLeft} left`}</span>
       </div>
-      <div className="h-3 overflow-hidden rounded-full bg-white/10">
+      <div className="h-2 sm:h-3 overflow-hidden rounded-full bg-white/10">
         <motion.div 
           className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
           initial={{ width: 0 }}
@@ -124,7 +124,7 @@ function PromoMeter({ promo }) {
   );
 }
 
-// Floating Market Prices
+// Floating Market Prices - Mobile responsive
 const FloatingPrices = () => {
   const prices = [
     { symbol: "BTC", price: 67420, change: "+2.4%" },
@@ -136,18 +136,18 @@ const FloatingPrices = () => {
   ];
 
   return (
-    <div className="flex flex-wrap justify-center gap-2 md:gap-4 py-2">
+    <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-4 py-1.5 sm:py-2 px-2">
       {prices.map((item) => (
         <motion.div
           key={item.symbol}
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: Math.random() * 0.5 }}
-          className="glass-pill rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs md:text-sm"
+          className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 sm:px-3 sm:py-1.5 md:px-4 md:py-2 text-[10px] sm:text-xs md:text-sm"
         >
           <span className="font-bold text-white">{item.symbol}</span>
-          <span className="ml-2 text-white/70">${item.price.toLocaleString()}</span>
-          <span className={`ml-2 ${item.change.startsWith('+') ? 'text-emerald-400' : 'text-red-400'}`}>
+          <span className="ml-1 sm:ml-2 text-white/70 text-[10px] sm:text-xs">${item.price.toLocaleString()}</span>
+          <span className={`ml-1 sm:ml-2 ${item.change.startsWith('+') ? 'text-emerald-400' : 'text-red-400'} text-[10px] sm:text-xs`}>
             {item.change}
           </span>
         </motion.div>
@@ -156,7 +156,7 @@ const FloatingPrices = () => {
   );
 };
 
-// AI Thinking Panel
+// AI Thinking Panel - Mobile responsive
 const AIThinkingPanel = () => {
   const [signal, setSignal] = useState({
     regime: "Bullish",
@@ -179,74 +179,77 @@ const AIThinkingPanel = () => {
   }, []);
 
   return (
-    <GlassCard className="p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <FaBrain className="text-cyan-400 text-xl" />
-        <h3 className="text-lg font-bold text-white">AI Analysis</h3>
-      </div>
-      
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <span className="text-white/60">Market Regime</span>
-          <span className={`font-bold ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
-            {signal.regime}
-          </span>
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-5 md:p-6">
+      <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+          <FaBrain className="text-cyan-400 text-lg sm:text-xl" />
+          <h3 className="text-base sm:text-lg font-bold text-white">AI Analysis</h3>
         </div>
         
-        <div>
-          <div className="flex justify-between text-sm">
-            <span className="text-white/60">Confidence</span>
-            <span className="text-white font-bold">{signal.confidence}%</span>
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex justify-between items-center">
+            <span className="text-white/60 text-xs sm:text-sm">Market Regime</span>
+            <span className={`font-bold text-sm sm:text-base ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
+              {signal.regime}
+            </span>
           </div>
-          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
-              initial={{ width: 0 }}
-              animate={{ width: `${signal.confidence}%` }}
-              transition={{ duration: 0.5 }}
-            />
+          
+          <div>
+            <div className="flex justify-between text-xs sm:text-sm">
+              <span className="text-white/60">Confidence</span>
+              <span className="text-white font-bold">{signal.confidence}%</span>
+            </div>
+            <div className="mt-1 h-1.5 sm:h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
+                initial={{ width: 0 }}
+                animate={{ width: `${signal.confidence}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+          
+          <div>
+            <span className="text-white/60 text-xs">Reasoning</span>
+            <ul className="mt-1 space-y-0.5">
+              {signal.reasoning.map((item, idx) => (
+                <motion.li
+                  key={idx}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-white/70"
+                >
+                  <FaCheckCircle className="text-emerald-400 text-[8px] sm:text-xs flex-shrink-0" />
+                  <span className="truncate">{item}</span>
+                </motion.li>
+              ))}
+            </ul>
+          </div>
+          
+          <div className="flex justify-between items-center pt-2 sm:pt-3 border-t border-white/10">
+            <span className="text-white/60 text-xs sm:text-sm">Decision</span>
+            <motion.span
+              key={signal.decision}
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              className={`font-bold px-3 py-1 rounded-full text-xs sm:text-sm ${
+                signal.decision === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' :
+                signal.decision === 'SHORT' ? 'bg-red-500/20 text-red-400' :
+                'bg-yellow-500/20 text-yellow-400'
+              }`}
+            >
+              {signal.decision}
+            </motion.span>
           </div>
         </div>
-        
-        <div>
-          <span className="text-white/60 text-sm">Reasoning</span>
-          <ul className="mt-2 space-y-1">
-            {signal.reasoning.map((item, idx) => (
-              <motion.li
-                key={idx}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="flex items-center gap-2 text-sm text-white/80"
-              >
-                <FaCheckCircle className="text-emerald-400 text-xs" />
-                {item}
-              </motion.li>
-            ))}
-          </ul>
-        </div>
-        
-        <div className="flex justify-between items-center pt-3 border-t border-white/10">
-          <span className="text-white/60">Decision</span>
-          <motion.span
-            key={signal.decision}
-            initial={{ scale: 0.8 }}
-            animate={{ scale: 1 }}
-            className={`font-bold px-4 py-1 rounded-full ${
-              signal.decision === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' :
-              signal.decision === 'SHORT' ? 'bg-red-500/20 text-red-400' :
-              'bg-yellow-500/20 text-yellow-400'
-            }`}
-          >
-            {signal.decision}
-          </motion.span>
-        </div>
       </div>
-    </GlassCard>
+    </div>
   );
 };
 
-// Animated Bot Activity
+// Animated Bot Activity - Mobile responsive
 const AnimatedBotActivity = () => {
   const [status, setStatus] = useState({
     active: true,
@@ -274,45 +277,48 @@ const AnimatedBotActivity = () => {
   }, []);
 
   return (
-    <GlassCard className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <FaRobot className="text-emerald-400 text-xl" />
-          <h3 className="text-lg font-bold text-white">Bot Activity</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs text-emerald-400">Active</span>
-        </div>
-      </div>
-      
-      <div className="space-y-4">
-        <div className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/10">
-          <span className="text-white/60 text-sm">Scanning</span>
-          <span className="text-white font-bold">{status.scanning}</span>
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-5 md:p-6">
+      <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="flex items-center gap-2">
+            <FaRobot className="text-emerald-400 text-lg sm:text-xl" />
+            <h3 className="text-base sm:text-lg font-bold text-white">Bot Activity</h3>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] sm:text-xs text-emerald-400">Active</span>
+          </div>
         </div>
         
-        <div className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/10">
-          <span className="text-white/60 text-sm">Confidence</span>
-          <span className="text-white font-bold">{status.confidence}%</span>
-        </div>
-        
-        <div className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/10">
-          <span className="text-white/60 text-sm">Decision</span>
-          <span className={`font-bold ${
-            status.decision === 'BUY' ? 'text-emerald-400' :
-            status.decision === 'SELL' ? 'text-red-400' :
-            'text-yellow-400'
-          }`}>
-            {status.decision}
-          </span>
+        <div className="space-y-2 sm:space-y-3 md:space-y-4">
+          <div className="flex justify-between items-center p-2 sm:p-3 rounded-xl bg-white/5 border border-white/10">
+            <span className="text-white/60 text-xs sm:text-sm">Scanning</span>
+            <span className="text-white font-bold text-xs sm:text-sm">{status.scanning}</span>
+          </div>
+          
+          <div className="flex justify-between items-center p-2 sm:p-3 rounded-xl bg-white/5 border border-white/10">
+            <span className="text-white/60 text-xs sm:text-sm">Confidence</span>
+            <span className="text-white font-bold text-xs sm:text-sm">{status.confidence}%</span>
+          </div>
+          
+          <div className="flex justify-between items-center p-2 sm:p-3 rounded-xl bg-white/5 border border-white/10">
+            <span className="text-white/60 text-xs sm:text-sm">Decision</span>
+            <span className={`font-bold text-xs sm:text-sm ${
+              status.decision === 'BUY' ? 'text-emerald-400' :
+              status.decision === 'SELL' ? 'text-red-400' :
+              'text-yellow-400'
+            }`}>
+              {status.decision}
+            </span>
+          </div>
         </div>
       </div>
-    </GlassCard>
+    </div>
   );
 };
 
-// Animated Trade Feed
+// Animated Trade Feed - Mobile responsive
 const AnimatedTradeFeed = ({ trades = [] }) => {
   const [feed, setFeed] = useState([]);
   
@@ -346,51 +352,54 @@ const AnimatedTradeFeed = ({ trades = [] }) => {
   }, []);
 
   return (
-    <GlassCard className="p-6 max-h-[400px] overflow-y-auto">
-      <div className="flex items-center gap-2 mb-4 sticky top-0 bg-black/50 backdrop-blur py-2 -mt-2 -mx-2 px-2">
-        <FaChartLine className="text-emerald-400 text-xl" />
-        <h3 className="text-lg font-bold text-white">Live Trade Feed</h3>
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl max-h-[350px] sm:max-h-[400px] overflow-y-auto">
+      <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+      <div className="relative z-10 p-4 sm:p-6">
+        <div className="flex items-center gap-2 mb-3 sm:mb-4 sticky top-0 bg-black/50 backdrop-blur py-2 -mt-2 -mx-2 px-2 sm:px-3 rounded-t-2xl">
+          <FaChartLine className="text-emerald-400 text-lg sm:text-xl flex-shrink-0" />
+          <h3 className="text-base sm:text-lg font-bold text-white">Live Trade Feed</h3>
+        </div>
+        
+        <AnimatePresence>
+          {feed.map((trade) => (
+            <motion.div
+              key={trade.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="mb-2 sm:mb-3 p-2 sm:p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition"
+            >
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 sm:gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <span className="text-[10px] sm:text-sm text-white/30">{trade.time}</span>
+                    <span className="font-bold text-sm sm:text-base text-white">{trade.asset}</span>
+                    <span className={`px-1.5 sm:px-2 py-0.5 rounded text-[8px] sm:text-xs font-bold ${
+                      trade.decision === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {trade.decision}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-0.5 sm:mt-1 text-[8px] sm:text-xs">
+                    <span className="text-white/30">Entry: <span className="text-white/60">{trade.entry}</span></span>
+                    <span className="text-white/30">Target: <span className="text-emerald-400/60">{trade.target}</span></span>
+                    <span className="text-white/30">Stop: <span className="text-red-400/60">{trade.stop}</span></span>
+                  </div>
+                </div>
+                <div className="text-left sm:text-right flex sm:block items-center gap-2">
+                  <span className="text-white/30 text-[8px] sm:text-xs">Confidence</span>
+                  <div className="text-xs sm:text-sm font-bold text-white">{trade.confidence}%</div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
-      
-      <AnimatePresence>
-        {feed.map((trade) => (
-          <motion.div
-            key={trade.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="mb-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/40">{trade.time}</span>
-                  <span className="font-bold text-white">{trade.asset}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                    trade.decision === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                  }`}>
-                    {trade.decision}
-                  </span>
-                </div>
-                <div className="flex gap-3 mt-1 text-xs">
-                  <span className="text-white/40">Entry: <span className="text-white">{trade.entry}</span></span>
-                  <span className="text-white/40">Target: <span className="text-emerald-400">{trade.target}</span></span>
-                  <span className="text-white/40">Stop: <span className="text-red-400">{trade.stop}</span></span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-white/40 text-xs">Confidence</span>
-                <div className="text-sm font-bold text-white">{trade.confidence}%</div>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    </GlassCard>
+    </div>
   );
 };
 
-// Hero with Candlestick Background
+// Hero with Candlestick Background - Mobile responsive
 const HeroSection = ({ activity, onClaimClick }) => {
   const [candles] = useState(() => 
     candleGenerator.createInitialCandles({ count: 40, startPrice: 67420, intervalSeconds: 60 })
@@ -413,27 +422,27 @@ const HeroSection = ({ activity, onClaimClick }) => {
   }, []);
 
   return (
-    <section className="relative overflow-hidden min-h-[90vh] flex items-center">
+    <section className="relative overflow-hidden min-h-[80vh] sm:min-h-[85vh] md:min-h-[90vh] flex items-center">
       {/* Animated Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-        <div className="absolute inset-0 opacity-20">
+        <div className="absolute inset-0 opacity-10 sm:opacity-20">
           <CandlestickChart data={candles} liveCandle={liveCandle} height={window.innerHeight * 0.9} />
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-900" />
       </div>
       
       {/* Content */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 py-20">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20">
+        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center">
           {/* Left Column */}
-          <div>
+          <div className="text-center lg:text-left">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400 backdrop-blur-sm">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm text-emerald-400 backdrop-blur-sm">
+                <span className="h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full bg-emerald-400 animate-pulse" />
                 AI-Powered Automated Trading
               </div>
             </motion.div>
@@ -442,7 +451,7 @@ const HeroSection = ({ activity, onClaimClick }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="mt-6 text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight"
+              className="mt-4 sm:mt-6 text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight"
             >
               Learn. Test.
               <br />
@@ -453,7 +462,7 @@ const HeroSection = ({ activity, onClaimClick }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="mt-6 text-xl text-white/70 max-w-xl"
+              className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-white/70 max-w-xl mx-auto lg:mx-0"
             >
               One AI platform for Stocks, Crypto, Futures, and DeFi. 
               Start with a <span className="text-emerald-400 font-bold">$1,000 demo account</span>.
@@ -463,18 +472,18 @@ const HeroSection = ({ activity, onClaimClick }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="mt-8 flex flex-wrap gap-4"
+              className="mt-6 sm:mt-8 flex flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start"
             >
               <Link
                 to="/pricing"
-                className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:scale-105"
+                className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:scale-105"
               >
                 Start Demo
                 <FaArrowRight className="group-hover:translate-x-1 transition" />
               </Link>
               <Link
                 to="/trade-demo"
-                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-8 py-4 text-base font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
               >
                 Try Live Demo
               </Link>
@@ -484,18 +493,18 @@ const HeroSection = ({ activity, onClaimClick }) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.4 }}
-              className="mt-8 flex flex-wrap items-center gap-6 text-sm text-white/50"
+              className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 text-xs sm:text-sm text-white/50"
             >
-              <span className="flex items-center gap-2">
-                <FaCheckCircle className="text-emerald-400" />
+              <span className="flex items-center gap-1.5 sm:gap-2">
+                <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
                 No credit card
               </span>
-              <span className="flex items-center gap-2">
-                <FaCheckCircle className="text-emerald-400" />
+              <span className="flex items-center gap-1.5 sm:gap-2">
+                <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
                 7-day demo
               </span>
-              <span className="flex items-center gap-2">
-                <FaCheckCircle className="text-emerald-400" />
+              <span className="flex items-center gap-1.5 sm:gap-2">
+                <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
                 Cancel anytime
               </span>
             </motion.div>
@@ -506,33 +515,34 @@ const HeroSection = ({ activity, onClaimClick }) => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="space-y-4"
+            className="space-y-4 max-w-md mx-auto lg:mx-0 w-full"
           >
             <AIThinkingPanel />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <AnimatedBotActivity />
-              <GlassCard className="p-6">
-                <div className="text-center">
-                  <div className="text-5xl font-bold text-white">
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-5 md:p-6">
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                <div className="relative z-10 text-center">
+                  <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">
                     <CountUp end={activity.stats.totalTrades} duration={2} separator="," />
                   </div>
-                  <div className="text-sm text-white/50 mt-1">Total Trades</div>
+                  <div className="text-[10px] sm:text-sm text-white/50 mt-0.5 sm:mt-1">Total Trades</div>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+                <div className="relative z-10 mt-3 sm:mt-4 grid grid-cols-2 gap-1.5 sm:gap-2 text-center">
                   <div>
-                    <div className="text-lg font-bold text-emerald-400">
+                    <div className="text-base sm:text-lg font-bold text-emerald-400">
                       <CountUp end={safeNumber(activity.stats.winRate)} duration={2} decimals={1} />%
                     </div>
-                    <div className="text-xs text-white/40">Win Rate</div>
+                    <div className="text-[8px] sm:text-xs text-white/40">Win Rate</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-white">
+                    <div className="text-base sm:text-lg font-bold text-white">
                       <CountUp end={activity.stats.activeBots} duration={2} />
                     </div>
-                    <div className="text-xs text-white/40">Active Bots</div>
+                    <div className="text-[8px] sm:text-xs text-white/40">Active Bots</div>
                   </div>
                 </div>
-              </GlassCard>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -643,24 +653,24 @@ export default function Home() {
     <div className="min-h-screen bg-slate-900 text-white overflow-x-hidden">
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       
-      {/* Sticky Promo Banner */}
+      {/* Sticky Promo Banner - Mobile responsive */}
       <motion.div 
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         className="sticky top-0 z-50 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 shadow-lg"
       >
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl animate-bounce">🎁</span>
-              <div>
-                <p className="text-sm font-bold text-white sm:text-base">🚀 $1,000 Demo Account - 7 Days Free!</p>
-                <p className="text-xs text-white/90 hidden sm:block">No credit card required. Cancel anytime.</p>
+        <div className="mx-auto max-w-7xl px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-3">
+          <div className="flex flex-col xs:flex-row items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="text-xl sm:text-2xl animate-bounce flex-shrink-0">🎁</span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-white truncate">🚀 $1,000 Demo Account - 7 Days Free!</p>
+                <p className="text-[10px] sm:text-xs text-white/90 hidden xs:block">No credit card required. Cancel anytime.</p>
               </div>
             </div>
             <button 
               onClick={() => setShowForm(true)} 
-              className="rounded-full bg-white px-6 py-2 text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100 whitespace-nowrap"
+              className="rounded-full bg-white px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100 whitespace-nowrap flex-shrink-0"
             >
               Claim Demo Access →
             </button>
@@ -672,31 +682,31 @@ export default function Home() {
       <HeroSection activity={activity} onClaimClick={() => setShowForm(true)} />
 
       {/* Floating Market Prices */}
-      <div className="relative z-10 border-y border-white/5 bg-black/20 backdrop-blur-sm py-3">
-        <div className="max-w-7xl mx-auto px-4">
+      <div className="relative z-10 border-y border-white/5 bg-black/20 backdrop-blur-sm py-1.5 sm:py-3">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4">
           <FloatingPrices />
         </div>
       </div>
 
       {/* Features Section - Glass Cards */}
-      <section className="relative z-10 py-16">
-        <div className="max-w-7xl mx-auto px-4">
+      <section className="relative z-10 py-12 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-8 sm:mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
               Start with Demo → <span className="text-emerald-400">Go Live</span>
             </h2>
-            <p className="mt-4 text-lg text-white/60 max-w-2xl mx-auto">
+            <p className="mt-2 sm:mt-4 text-base sm:text-lg text-white/60 max-w-2xl mx-auto px-4">
               From demo to live trading in minutes. No hidden fees, no profit sharing.
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {[
               { num: "01", title: "Start Demo", text: "Sign up for your 7-day demo with $1,000 virtual account. No credit card required.", icon: "🎯" },
               { num: "02", title: "Upgrade to Pro", text: "Choose a monthly subscription. No profit sharing, no hidden fees.", icon: "🚀" },
@@ -708,13 +718,15 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
                 viewport={{ once: true }}
+                className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-6 sm:p-8 text-center"
               >
-                <GlassCard className="p-8 text-center h-full">
-                  <div className="text-5xl mb-4">{step.icon}</div>
-                  <div className="text-4xl font-bold text-white/10 mb-2">{step.num}</div>
-                  <h3 className="text-2xl font-bold text-white mb-3">{step.title}</h3>
-                  <p className="text-white/60">{step.text}</p>
-                </GlassCard>
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                <div className="relative z-10">
+                  <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">{step.icon}</div>
+                  <div className="text-3xl sm:text-4xl font-bold text-white/10 mb-1 sm:mb-2">{step.num}</div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">{step.title}</h3>
+                  <p className="text-sm sm:text-base text-white/60">{step.text}</p>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -722,188 +734,198 @@ export default function Home() {
       </section>
 
       {/* Live Activity Section */}
-      <section className="relative z-10 py-16 bg-black/20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-8">
+      <section className="relative z-10 py-12 sm:py-16 bg-black/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-6 sm:gap-8">
             <AnimatedTradeFeed trades={activity.trades} />
-            <div className="space-y-6">
-              <GlassCard className="p-6">
-                <h3 className="text-lg font-bold text-white mb-4">Available Bots</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { icon: "📊", name: "Futures Bot", desc: "High leverage" },
-                    { icon: "📈", name: "Stock Bot", desc: "Alpaca integration" },
-                    { icon: "🎯", name: "Sniper Bot", desc: "DEX trading" },
-                    { icon: "🔷", name: "OKX Spot", desc: "CEX trading" },
-                  ].map((bot, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: idx * 0.05 }}
-                      viewport={{ once: true }}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center hover:bg-white/10 transition"
-                    >
-                      <span className="text-3xl block mb-2">{bot.icon}</span>
-                      <p className="text-sm font-semibold text-white">{bot.name}</p>
-                      <p className="text-xs text-white/40 mt-1">{bot.desc}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-6">
-                <div className="flex items-center gap-3">
-                  <FaCoins className="text-amber-400 text-xl" />
-                  <div>
-                    <h3 className="font-bold text-white">Referral Rewards</h3>
-                    <p className="text-sm text-white/60">Earn recurring subscription commissions</p>
+            <div className="space-y-4 sm:space-y-6">
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-6">
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                <div className="relative z-10">
+                  <h3 className="text-base sm:text-lg font-bold text-white mb-3 sm:mb-4">Available Bots</h3>
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                    {[
+                      { icon: "📊", name: "Futures Bot", desc: "High leverage" },
+                      { icon: "📈", name: "Stock Bot", desc: "Alpaca integration" },
+                      { icon: "🎯", name: "Sniper Bot", desc: "DEX trading" },
+                      { icon: "🔷", name: "OKX Spot", desc: "CEX trading" },
+                    ].map((bot, idx) => (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: idx * 0.05 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-white/10 bg-white/5 p-3 sm:p-4 text-center hover:bg-white/10 transition"
+                      >
+                        <span className="text-2xl sm:text-3xl block mb-1 sm:mb-2">{bot.icon}</span>
+                        <p className="text-xs sm:text-sm font-semibold text-white truncate">{bot.name}</p>
+                        <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 sm:mt-1 truncate">{bot.desc}</p>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
-                <Link to="/referrals" className="mt-4 inline-flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 transition">
-                  View referral dashboard <FaArrowRight />
-                </Link>
-              </GlassCard>
+              </div>
+
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-6">
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+                <div className="relative z-10 flex items-center gap-2 sm:gap-3">
+                  <FaCoins className="text-amber-400 text-lg sm:text-xl flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-white text-sm sm:text-base truncate">Referral Rewards</h3>
+                    <p className="text-xs sm:text-sm text-white/60 truncate">Earn recurring subscription commissions</p>
+                  </div>
+                </div>
+                <div className="relative z-10 mt-3 sm:mt-4">
+                  <Link to="/referrals" className="inline-flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-amber-400 hover:text-amber-300 transition">
+                    View referral dashboard <FaArrowRight className="text-xs" />
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Promo Form Section */}
-      <section className="relative z-10 py-16">
-        <div className="max-w-3xl mx-auto px-4">
-          <GlassCard className="p-8">
-            <div className="text-center mb-6">
-              <span className="text-5xl block mb-4 animate-pulse">🎁</span>
-              <h3 className="text-2xl font-bold text-white">7-Day Demo Access</h3>
-              <p className="text-white/60 mt-2">Get $1,000 in virtual trading credits. No risk, no credit card required.</p>
-            </div>
+      {/* Promo Form Section - Mobile responsive */}
+      <section className="relative z-10 py-12 sm:py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-5 sm:p-8">
+            <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+            <div className="relative z-10">
+              <div className="text-center mb-4 sm:mb-6">
+                <span className="text-4xl sm:text-5xl block mb-3 sm:mb-4 animate-pulse">🎁</span>
+                <h3 className="text-xl sm:text-2xl font-bold text-white">7-Day Demo Access</h3>
+                <p className="text-sm sm:text-base text-white/60 mt-1 sm:mt-2">Get $1,000 in virtual trading credits. No risk, no credit card required.</p>
+              </div>
 
-            <div className="space-y-3 rounded-2xl bg-white/5 border border-white/10 p-4 mb-6">
-              {[
-                "💰 $1,000 Demo Account",
-                "🤖 Test all automated bots risk-free",
-                "🎯 Learn to trade without losing real money",
-                "🚀 Switch to live trading when you're ready",
-                "✅ Cancel any time, no commitment",
-              ].map((feature, idx) => (
-                <div key={idx} className="flex items-center gap-3 text-sm text-white/70">
-                  <FaCheckCircle className="text-emerald-400 text-xs flex-shrink-0" />
-                  <span>{feature}</span>
-                </div>
-              ))}
-            </div>
-
-            <PromoMeter promo={promo} />
-
-            {!showForm && !claimStatus.success && promo.active && (
-              <button 
-                onClick={() => setShowForm(true)} 
-                className="mt-6 w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-4 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 transition"
-              >
-                🎁 Claim Demo Access Now
-              </button>
-            )}
-
-            {showForm && !claimStatus.success && (
-              <form onSubmit={handleClaimSubmit} className="mt-6 space-y-3">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email address"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white placeholder:text-white/40 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20"
-                  required
-                  autoFocus
-                  disabled={claimStatus.loading}
-                />
-
-                {claimStatus.error && (
-                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-                    ⚠️ {claimStatus.error}
+              <div className="space-y-2 sm:space-y-3 rounded-xl bg-white/5 border border-white/10 p-3 sm:p-4 mb-4 sm:mb-6">
+                {[
+                  "💰 $1,000 Demo Account",
+                  "🤖 Test all automated bots risk-free",
+                  "🎯 Learn to trade without losing real money",
+                  "🚀 Switch to live trading when you're ready",
+                  "✅ Cancel any time, no commitment",
+                ].map((feature, idx) => (
+                  <div key={idx} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-white/70">
+                    <FaCheckCircle className="text-emerald-400 text-[10px] sm:text-xs flex-shrink-0" />
+                    <span className="truncate">{feature}</span>
                   </div>
-                )}
+                ))}
+              </div>
 
-                <div className="flex gap-3">
-                  <button 
-                    type="submit" 
-                    disabled={claimStatus.loading} 
-                    className="flex-1 rounded-2xl bg-emerald-600 py-4 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500 transition"
-                  >
-                    {claimStatus.loading ? "Processing..." : "✅ Start Demo"}
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={resetClaimForm} 
-                    className="px-6 text-sm text-white/40 hover:text-white/60 transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
+              <PromoMeter promo={promo} />
 
-            {claimStatus.success && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-center"
-              >
-                <div className="text-4xl mb-2">🎉</div>
-                <p className="text-lg font-bold text-emerald-400">Demo Access Activated!</p>
-                <p className="mt-1 text-sm text-white/60">
-                  Check your email, then <Link to="/signup?plan=demo&tier=demo" className="text-emerald-400 underline">create your account</Link> to start trading.
-                </p>
-              </motion.div>
-            )}
-          </GlassCard>
+              {!showForm && !claimStatus.success && promo.active && (
+                <button 
+                  onClick={() => setShowForm(true)} 
+                  className="mt-4 sm:mt-6 w-full rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-3 sm:py-4 text-sm sm:text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 transition"
+                >
+                  🎁 Claim Demo Access Now
+                </button>
+              )}
+
+              {showForm && !claimStatus.success && (
+                <form onSubmit={handleClaimSubmit} className="mt-4 sm:mt-6 space-y-3">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email address"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 sm:py-4 text-sm sm:text-base text-white placeholder:text-white/40 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20"
+                    required
+                    autoFocus
+                    disabled={claimStatus.loading}
+                  />
+
+                  {claimStatus.error && (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-2.5 sm:p-3 text-xs sm:text-sm text-red-400">
+                      ⚠️ {claimStatus.error}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 sm:gap-3">
+                    <button 
+                      type="submit" 
+                      disabled={claimStatus.loading} 
+                      className="flex-1 rounded-xl bg-emerald-600 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500 transition"
+                    >
+                      {claimStatus.loading ? "Processing..." : "✅ Start Demo"}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={resetClaimForm} 
+                      className="px-4 sm:px-6 text-xs sm:text-sm text-white/40 hover:text-white/60 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {claimStatus.success && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mt-4 sm:mt-6 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 sm:p-5 text-center"
+                >
+                  <div className="text-3xl sm:text-4xl mb-2">🎉</div>
+                  <p className="text-base sm:text-lg font-bold text-emerald-400">Demo Access Activated!</p>
+                  <p className="mt-1 text-xs sm:text-sm text-white/60">
+                    Check your email, then <Link to="/signup?plan=demo&tier=demo" className="text-emerald-400 underline">create your account</Link> to start trading.
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Referral Link */}
       {userReferralLink && (
-        <section className="relative z-10 py-16 bg-black/20">
-          <div className="max-w-3xl mx-auto px-4">
-            <GlassCard className="p-6 border border-emerald-500/20">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Your Referral Link</p>
-                  <h3 className="text-lg font-bold text-white">Invite developers and traders</h3>
-                  <p className="text-sm text-white/60">Earn recurring subscription commissions.</p>
-                  <code className="mt-2 block break-all text-xs text-emerald-400 bg-white/5 p-2 rounded-lg">{userReferralLink}</code>
+        <section className="relative z-10 py-12 sm:py-16 bg-black/20">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 backdrop-blur-xl shadow-xl p-4 sm:p-6">
+              <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
+              <div className="relative z-10 flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-400">Your Referral Link</p>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Invite developers and traders</h3>
+                  <p className="text-xs sm:text-sm text-white/60">Earn recurring subscription commissions.</p>
+                  <code className="mt-1 sm:mt-2 block break-all text-[10px] sm:text-xs text-emerald-400 bg-white/5 p-1.5 sm:p-2 rounded-lg">{userReferralLink}</code>
                 </div>
                 <Link 
                   to="/referrals" 
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white transition hover:bg-emerald-500"
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl sm:rounded-2xl bg-emerald-600 px-4 sm:px-5 py-2.5 sm:py-3 font-bold text-sm sm:text-base text-white transition hover:bg-emerald-500 flex-shrink-0"
                 >
-                  <FaShareAlt className="mr-2" /> Referral Hub →
+                  <FaShareAlt className="mr-1.5 sm:mr-2" /> Referral Hub →
                 </Link>
               </div>
-            </GlassCard>
+            </div>
           </div>
         </section>
       )}
 
-      {/* Final CTA */}
-      <section className="relative z-10 py-20 bg-gradient-to-r from-emerald-600 to-cyan-600">
-        <div className="max-w-4xl mx-auto px-4 text-center">
+      {/* Final CTA - Mobile responsive */}
+      <section className="relative z-10 py-12 sm:py-16 md:py-20 bg-gradient-to-r from-emerald-600 to-cyan-600">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-white">Ready to Start Trading?</h2>
-            <p className="mt-4 text-lg text-white/90 max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">Ready to Start Trading?</h2>
+            <p className="mt-2 sm:mt-4 text-base sm:text-lg text-white/90 max-w-2xl mx-auto px-4">
               Join thousands of traders using IMALI to automate their trading strategy.
             </p>
             <Link 
               to="/pricing" 
-              className="mt-8 inline-block rounded-full bg-white px-10 py-4 text-base font-bold text-emerald-700 shadow-lg transition hover:scale-105 hover:bg-gray-100"
+              className="mt-6 sm:mt-8 inline-block rounded-full bg-white px-8 sm:px-10 py-3 sm:py-4 text-sm sm:text-base font-bold text-emerald-700 shadow-lg transition hover:scale-105 hover:bg-gray-100"
             >
               Start Your Demo →
             </Link>
-            <p className="mt-4 text-sm text-white/75">No credit card required. Cancel anytime.</p>
+            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/75">No credit card required. Cancel anytime.</p>
           </motion.div>
         </div>
       </section>
