@@ -59,7 +59,7 @@ export default function Header() {
           </NavLink>
 
           <NavLink to="/admin-platform" className={active}>
-            Admin Panel
+            Managed Admin
           </NavLink>
         </nav>
 
@@ -126,7 +126,7 @@ export default function Header() {
             </NavLink>
 
             <NavLink onClick={closeMenu} to="/admin-platform" className={active}>
-              Admin Panel
+              Managed Admin
             </NavLink>
 
             <Link
