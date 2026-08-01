@@ -5,27 +5,97 @@ import {
   FaSearch, FaBook, FaCode, FaLock, FaBuilding, FaCreditCard, 
   FaShieldAlt, FaRocket, FaArrowRight, FaCubes, FaUsers,
   FaChartLine, FaEnvelope, FaServer, FaRobot, FaChevronRight,
-  FaChevronDown, FaExternalLinkAlt, FaCopy, FaCheck
+  FaChevronDown, FaCopy, FaCheck, FaBolt, FaPlug, FaDatabase
 } from 'react-icons/fa';
 
 const Documentation = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
-  const [expandedSections, setExpandedSections] = useState({
-    'getting-started': true,
-    'api': true,
-    'organizations': false,
-    'billing': false,
-    'permissions': false,
-    'authentication': false,
-  });
+  const [activeSection, setActiveSection] = useState('getting-started');
 
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
+  const sections = [
+    { id: 'getting-started', icon: <FaRocket className="text-purple-400" />, title: 'Getting Started', desc: 'Setup and installation in minutes' },
+    { id: 'authentication', icon: <FaLock className="text-emerald-400" />, title: 'Authentication', desc: 'Login, JWT, API keys, SSO' },
+    { id: 'api', icon: <FaCode className="text-blue-400" />, title: 'API Reference', desc: 'REST API, endpoints, webhooks' },
+    { id: 'organizations', icon: <FaBuilding className="text-amber-400" />, title: 'Organizations', desc: 'Teams, roles, permissions' },
+    { id: 'billing', icon: <FaCreditCard className="text-cyan-400" />, title: 'Billing', desc: 'Subscriptions, payments, invoices' },
+    { id: 'permissions', icon: <FaShieldAlt className="text-red-400" />, title: 'Permissions', desc: 'Access control, audit logs' },
+  ];
+
+  const content = {
+    'getting-started': {
+      title: 'Getting Started',
+      description: 'Get up and running with Admin Platform in minutes.',
+      items: [
+        { name: 'Introduction', desc: 'Overview of Admin Platform features and architecture' },
+        { name: 'Quick Start Guide', desc: 'Set up your first admin panel in 10 minutes' },
+        { name: 'Installation', desc: 'Install and configure the platform' },
+        { name: 'Architecture', desc: 'Understand the technology stack and design' },
+      ]
+    },
+    'authentication': {
+      title: 'Authentication',
+      description: 'Secure authentication and identity management.',
+      items: [
+        { name: 'Login Flow', desc: 'How authentication works' },
+        { name: 'API Keys', desc: 'Generate and manage API keys' },
+        { name: 'JWT Tokens', desc: 'JSON Web Token authentication' },
+        { name: 'SSO / SAML', desc: 'Enterprise Single Sign-On' },
+      ]
+    },
+    'api': {
+      title: 'API Reference',
+      description: 'Complete API documentation for developers.',
+      items: [
+        { name: 'REST API Overview', desc: 'Complete API reference' },
+        { name: 'Endpoints', desc: 'All available endpoints' },
+        { name: 'Webhooks', desc: 'Real-time event notifications' },
+        { name: 'Rate Limiting', desc: 'API rate limits and best practices' },
+        { name: 'Error Handling', desc: 'Common error codes and handling' },
+      ]
+    },
+    'organizations': {
+      title: 'Organizations',
+      description: 'Multi-tenant organization management.',
+      items: [
+        { name: 'Creating Organizations', desc: 'Create and configure organizations' },
+        { name: 'Managing Teams', desc: 'Team management and roles' },
+        { name: 'Inviting Users', desc: 'Invite users to your organization' },
+        { name: 'Organization Settings', desc: 'Configure organization preferences' },
+      ]
+    },
+    'billing': {
+      title: 'Billing & Subscriptions',
+      description: 'Payment processing and subscription management.',
+      items: [
+        { name: 'Subscription Plans', desc: 'Available plans and pricing' },
+        { name: 'Payment Methods', desc: 'Add and manage payment methods' },
+        { name: 'Invoices', desc: 'View and download invoices' },
+        { name: 'Upgrade/Downgrade', desc: 'Change your subscription plan' },
+      ]
+    },
+    'permissions': {
+      title: 'Permissions & Roles',
+      description: 'Fine-grained access control and audit logs.',
+      items: [
+        { name: 'Roles Overview', desc: 'Understanding user roles' },
+        { name: 'Permissions Matrix', desc: 'Complete permissions reference' },
+        { name: 'Access Control', desc: 'Fine-grained access control' },
+        { name: 'Audit Logs', desc: 'Track user actions and changes' },
+      ]
+    }
   };
+
+  const filteredSections = searchQuery 
+    ? sections.filter(section => 
+        section.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        section.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        content[section.id].items.some(item => 
+          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.desc.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      )
+    : sections;
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
@@ -33,369 +103,161 @@ const Documentation = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const sections = [
-    {
-      id: 'getting-started',
-      title: 'Getting Started',
-      icon: <FaRocket className="text-purple-400" />,
-      items: [
-        { 
-          name: 'Introduction', 
-          path: '/docs/introduction',
-          description: 'Overview of the Admin Platform and its features'
-        },
-        { 
-          name: 'Quick Start Guide', 
-          path: '/docs/quick-start',
-          description: 'Get up and running in 10 minutes'
-        },
-        { 
-          name: 'Installation', 
-          path: '/docs/installation',
-          description: 'Install and configure the Admin Platform'
-        },
-        { 
-          name: 'Architecture Overview', 
-          path: '/docs/architecture',
-          description: 'Understand the platform architecture'
-        },
-      ]
-    },
-    {
-      id: 'authentication',
-      title: 'Authentication',
-      icon: <FaLock className="text-emerald-400" />,
-      items: [
-        { 
-          name: 'Login Flow', 
-          path: '/docs/auth/login',
-          description: 'How authentication works'
-        },
-        { 
-          name: 'API Keys', 
-          path: '/docs/auth/api-keys',
-          description: 'Generate and manage API keys'
-        },
-        { 
-          name: 'JWT Tokens', 
-          path: '/docs/auth/jwt',
-          description: 'JSON Web Token authentication'
-        },
-        { 
-          name: 'SSO / SAML', 
-          path: '/docs/auth/sso',
-          description: 'Single Sign-On configuration'
-        },
-      ]
-    },
-    {
-      id: 'api',
-      title: 'API Reference',
-      icon: <FaCode className="text-blue-400" />,
-      items: [
-        { 
-          name: 'REST API Overview', 
-          path: '/docs/api/overview',
-          description: 'Complete API reference'
-        },
-        { 
-          name: 'Endpoints', 
-          path: '/docs/api/endpoints',
-          description: 'All available endpoints'
-        },
-        { 
-          name: 'Webhooks', 
-          path: '/docs/api/webhooks',
-          description: 'Real-time event notifications'
-        },
-        { 
-          name: 'Rate Limiting', 
-          path: '/docs/api/rate-limiting',
-          description: 'API rate limits and best practices'
-        },
-        { 
-          name: 'Error Handling', 
-          path: '/docs/api/errors',
-          description: 'Common error codes and handling'
-        },
-      ]
-    },
-    {
-      id: 'organizations',
-      title: 'Organizations',
-      icon: <FaBuilding className="text-amber-400" />,
-      items: [
-        { 
-          name: 'Creating Organizations', 
-          path: '/docs/organizations/create',
-          description: 'Create and configure organizations'
-        },
-        { 
-          name: 'Managing Teams', 
-          path: '/docs/organizations/teams',
-          description: 'Team management and roles'
-        },
-        { 
-          name: 'Inviting Users', 
-          path: '/docs/organizations/invites',
-          description: 'Invite users to your organization'
-        },
-        { 
-          name: 'Organization Settings', 
-          path: '/docs/organizations/settings',
-          description: 'Configure organization preferences'
-        },
-      ]
-    },
-    {
-      id: 'billing',
-      title: 'Billing & Subscriptions',
-      icon: <FaCreditCard className="text-cyan-400" />,
-      items: [
-        { 
-          name: 'Subscription Plans', 
-          path: '/docs/billing/plans',
-          description: 'Available plans and pricing'
-        },
-        { 
-          name: 'Payment Methods', 
-          path: '/docs/billing/payment',
-          description: 'Add and manage payment methods'
-        },
-        { 
-          name: 'Invoices', 
-          path: '/docs/billing/invoices',
-          description: 'View and download invoices'
-        },
-        { 
-          name: 'Upgrade/Downgrade', 
-          path: '/docs/billing/upgrade',
-          description: 'Change your subscription plan'
-        },
-      ]
-    },
-    {
-      id: 'permissions',
-      title: 'Permissions & Roles',
-      icon: <FaShieldAlt className="text-red-400" />,
-      items: [
-        { 
-          name: 'Roles Overview', 
-          path: '/docs/permissions/roles',
-          description: 'Understanding user roles'
-        },
-        { 
-          name: 'Permissions Matrix', 
-          path: '/docs/permissions/matrix',
-          description: 'Complete permissions reference'
-        },
-        { 
-          name: 'Access Control', 
-          path: '/docs/permissions/access-control',
-          description: 'Fine-grained access control'
-        },
-        { 
-          name: 'Audit Logs', 
-          path: '/docs/permissions/audit',
-          description: 'Track user actions and changes'
-        },
-      ]
-    },
-  ];
-
-  const quickLinks = [
-    { label: 'API Reference', icon: <FaCode />, path: '/docs/api/overview' },
-    { label: 'Authentication', icon: <FaLock />, path: '/docs/auth/login' },
-    { label: 'Webhooks', icon: <FaServer />, path: '/docs/api/webhooks' },
-    { label: 'Billing', icon: <FaCreditCard />, path: '/docs/billing/plans' },
-  ];
-
-  const filteredSections = searchQuery 
-    ? sections.map(section => ({
-        ...section,
-        items: section.items.filter(item => 
-          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          section.title.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      })).filter(section => section.items.length > 0)
-    : sections;
+  const activeContent = content[activeSection] || content['getting-started'];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
       {/* Header */}
       <div className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <Link to="/admin-platform" className="text-xl font-bold flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link to="/admin-platform" className="text-lg font-bold flex items-center gap-2">
                 <FaCubes className="text-purple-500" />
-                Admin<span className="text-purple-500">Platform</span>
+                <span className="hidden sm:inline">Admin<span className="text-purple-500">Platform</span></span>
               </Link>
               <span className="text-xs text-white/40 border border-white/10 px-2 py-0.5 rounded">Docs</span>
             </div>
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
+              <div className="relative flex-1">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
                 <input
                   type="text"
-                  placeholder="Search documentation..."
+                  placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                  className="w-full pl-9 pr-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
                 />
               </div>
-              <Link to="/admin-platform" className="text-sm text-white/60 hover:text-white transition whitespace-nowrap">
-                ← Back
-              </Link>
             </div>
+            <Link to="/admin-platform" className="text-sm text-white/40 hover:text-white transition whitespace-nowrap">
+              ← Back
+            </Link>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Hero */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-white via-purple-300 to-purple-600 bg-clip-text text-transparent">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white via-purple-300 to-purple-600 bg-clip-text text-transparent">
             Documentation
           </h1>
-          <p className="text-white/60 mt-4 text-lg max-w-2xl mx-auto">
-            Everything you need to build with Admin Platform. Complete guides, API references, and best practices.
-          </p>
+          <p className="text-white/50 text-sm mt-1">Everything you need to build with Admin Platform</p>
         </div>
 
-        {/* Quick Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-          {quickLinks.map((link, i) => (
-            <Link
-              key={i}
-              to={link.path}
-              className="bg-white/5 border border-white/10 rounded-xl p-4 text-center hover:border-purple-500/30 hover:bg-white/10 transition group"
+        {/* Quick Nav - One line */}
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+                activeSection === section.id
+                  ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
+              }`}
             >
-              <div className="text-2xl text-purple-400 mb-2">{link.icon}</div>
-              <p className="text-sm font-semibold group-hover:text-purple-400 transition">{link.label}</p>
-              <FaArrowRight className="inline text-xs text-white/30 group-hover:text-purple-400 transition mt-1" />
-            </Link>
+              <span className="text-sm">{section.icon}</span>
+              {section.title}
+            </button>
           ))}
         </div>
 
-        {/* Documentation Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar */}
+        {/* Main Content - One panel at a time */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar - Compact */}
           <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-4">Sections</h3>
-              <nav className="space-y-1">
-                {sections.map((section) => (
-                  <button
-                    key={section.id}
-                    onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-white/5 transition text-white/60 hover:text-white"
-                  >
-                    <span className="text-lg">{section.icon}</span>
-                    <span className="flex-1 text-left">{section.title}</span>
-                    {expandedSections[section.id] ? <FaChevronDown className="text-xs" /> : <FaChevronRight className="text-xs" />}
-                  </button>
-                ))}
-              </nav>
+            <div className="sticky top-20 space-y-1">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-3">Sections</h4>
+              {filteredSections.map((section) => (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition ${
+                    activeSection === section.id
+                      ? 'bg-purple-500/10 text-white border border-purple-500/20'
+                      : 'text-white/40 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <span className="text-lg">{section.icon}</span>
+                  <span className="flex-1 text-left truncate">{section.title}</span>
+                  {activeSection === section.id && <FaChevronRight className="text-purple-400 text-xs" />}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Content */}
-          <div className="lg:col-span-3 space-y-8">
-            {filteredSections.map((section) => (
-              <div key={section.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <div 
-                  className="flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-white/5 transition"
-                  onClick={() => toggleSection(section.id)}
-                >
-                  <span className="text-2xl">{section.icon}</span>
-                  <h2 className="text-xl font-bold flex-1">{section.title}</h2>
-                  {expandedSections[section.id] ? <FaChevronDown className="text-white/40" /> : <FaChevronRight className="text-white/40" />}
+          {/* Content - Single panel */}
+          <div className="lg:col-span-3">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-3xl">{sections.find(s => s.id === activeSection)?.icon}</span>
+                <div>
+                  <h2 className="text-xl font-bold">{activeContent.title}</h2>
+                  <p className="text-sm text-white/40">{activeContent.description}</p>
                 </div>
-                
-                {expandedSections[section.id] && (
-                  <div className="border-t border-white/5 divide-y divide-white/5">
-                    {section.items.map((item) => (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        className="block px-6 py-4 hover:bg-white/5 transition group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="font-semibold group-hover:text-purple-400 transition">
-                              {item.name}
-                            </h4>
-                            <p className="text-sm text-white/40 mt-1">{item.description}</p>
-                          </div>
-                          <FaChevronRight className="text-white/20 group-hover:text-purple-400 transition" />
-                        </div>
-                      </Link>
-                    ))}
+              </div>
+
+              <div className="divide-y divide-white/5">
+                {activeContent.items.map((item, idx) => (
+                  <div key={idx} className="py-3 flex items-center justify-between group">
+                    <div>
+                      <h4 className="font-medium text-sm group-hover:text-purple-400 transition">{item.name}</h4>
+                      <p className="text-xs text-white/40">{item.desc}</p>
+                    </div>
+                    <Link 
+                      to={`/docs/${activeSection}/${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                      className="text-white/20 hover:text-purple-400 transition text-sm"
+                    >
+                      <FaArrowRight />
+                    </Link>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
+            </div>
 
-            {filteredSections.length === 0 && (
-              <div className="text-center py-12">
-                <FaSearch className="text-4xl text-white/20 mx-auto mb-4" />
-                <p className="text-white/40">No results found for "{searchQuery}"</p>
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="mt-4 text-purple-400 hover:text-purple-300 transition"
-                >
-                  Clear search
-                </button>
-              </div>
-            )}
-
-            {/* Code Example */}
-            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-6 py-3 border-b border-white/5">
+            {/* Code Example - Compact */}
+            <div className="mt-4 bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-500/50"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/50"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500/50"></div>
+                  <div className="flex gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
                   </div>
-                  <span className="text-xs text-white/40 ml-2">Example: API Authentication</span>
+                  <span className="text-[10px] text-white/30 ml-2">Quick Example</span>
                 </div>
                 <button 
                   onClick={() => copyToClipboard('curl -X POST https://api.imali-defi.com/api/auth/login \\\n  -H "Content-Type: application/json" \\\n  -d \'{"email": "user@example.com", "password": "your-password"}\'')}
-                  className="text-white/40 hover:text-white transition text-sm flex items-center gap-1"
+                  className="text-white/30 hover:text-white transition text-xs flex items-center gap-1"
                 >
                   {copied ? <FaCheck className="text-emerald-400" /> : <FaCopy />}
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-              <div className="p-6 bg-slate-950/50">
-                <pre className="text-sm text-emerald-300 font-mono overflow-x-auto">
-                  <code>{`curl -X POST https://api.imali-defi.com/api/auth/login \\
-  -H "Content-Type: application/json" \\
-  -d '{"email": "user@example.com", "password": "your-password"}'`}</code>
-                </pre>
-                <div className="mt-4 text-xs text-white/40">
-                  <span className="text-emerald-400">✓</span> Returns JWT token for authentication
-                </div>
+              <div className="p-3 bg-slate-950/50 overflow-x-auto">
+                <code className="text-xs text-emerald-300 font-mono whitespace-nowrap">
+                  curl -X POST https://api.imali-defi.com/api/auth/login \
+                  -H "Content-Type: application/json" \
+                  -d '{"email": "user@example.com", "password": "your-password"}'
+                </code>
               </div>
             </div>
 
-            {/* Help Section */}
-            <div className="bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 rounded-xl p-8 text-center">
-              <FaRobot className="text-4xl text-purple-400 mx-auto mb-4" />
-              <h3 className="text-xl font-bold mb-2">Need more help?</h3>
-              <p className="text-white/60 max-w-lg mx-auto">
-                Our team is here to help you get the most out of Admin Platform.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4 mt-6">
-                <a href="mailto:imalidefi@gmail.com" className="px-6 py-2.5 bg-purple-600 rounded-lg text-sm font-semibold hover:bg-purple-500 transition">
-                  Contact Support
-                </a>
-                <Link to="/admin-platform/demo" className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold hover:bg-white/10 transition">
-                  View Demo
-                </Link>
+            {/* Help - Compact */}
+            <div className="mt-4 bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 rounded-xl p-4 text-center">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <FaRobot className="text-2xl text-purple-400" />
+                <span className="text-sm text-white/60">Need help? Our team is here.</span>
+                <div className="flex gap-2">
+                  <a href="mailto:imalidefi@gmail.com" className="px-4 py-1.5 bg-purple-600 rounded-lg text-xs font-semibold hover:bg-purple-500 transition">
+                    Support
+                  </a>
+                  <Link to="/admin-platform/demo" className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-semibold hover:bg-white/10 transition">
+                    Demo
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -403,15 +265,14 @@ const Documentation = () => {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 mt-12 py-8 px-6 text-center text-sm text-white/40">
-        <div className="flex flex-wrap justify-center gap-6 mb-4">
-          <Link to="/admin-platform" className="hover:text-white transition">Admin Platform</Link>
-          <Link to="/docs" className="hover:text-white transition">Documentation</Link>
-          <Link to="/admin-platform/pricing" className="hover:text-white transition">Pricing</Link>
+      <footer className="border-t border-white/5 mt-8 py-4 px-6 text-center text-xs text-white/30">
+        <div className="flex flex-wrap justify-center gap-4 mb-2">
+          <Link to="/admin-platform" className="hover:text-white transition">Platform</Link>
           <Link to="/admin-platform/demo" className="hover:text-white transition">Demo</Link>
+          <Link to="/admin-platform/pricing" className="hover:text-white transition">Pricing</Link>
           <a href="mailto:imalidefi@gmail.com" className="hover:text-white transition">Contact</a>
         </div>
-        <p>&copy; 2026 Admin Platform. Built for developers.</p>
+        <p>&copy; 2026 Admin Platform</p>
       </footer>
     </div>
   );

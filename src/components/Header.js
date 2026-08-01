@@ -57,6 +57,10 @@ export default function Header() {
           <NavLink to="/referrals" className={active}>
             Referral Partner
           </NavLink>
+
+          <NavLink to="/admin-platform" className={active}>
+            Admin Panel
+          </NavLink>
         </nav>
 
         {/* Desktop Buttons */}
@@ -119,6 +123,10 @@ export default function Header() {
 
             <NavLink onClick={closeMenu} to="/referrals" className={active}>
               Referral Partner
+            </NavLink>
+
+            <NavLink onClick={closeMenu} to="/admin-platform" className={active}>
+              Admin Panel
             </NavLink>
 
             <Link
