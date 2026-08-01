@@ -171,6 +171,56 @@ const stopTradingBotByCategory = async (category) => {
   return stopTradingBot(map[category] || "okx");
 };
 
+
+// ─── MARKET DATA ─────────────────────────────────────
+
+static async captureMarketingLead(payload) {
+  return this.request("/api/marketing/leads", {
+    method: "POST",
+    auth: false,
+    body: payload,
+  });
+}
+
+
+static async getMarketAnalysis({
+  exchange = "okx",
+  symbol = "BTC-USDT",
+  strategy = "ai_weighted",
+  timeframe = "5m",
+} = {}) {
+  const params = new URLSearchParams({
+    exchange,
+    symbol,
+    strategy,
+    timeframe,
+  });
+
+  return this.request(`/api/trading/analysis?${params.toString()}`, {
+    method: "GET",
+    auth: true,
+  });
+}
+
+static async getMarketCandles({
+  exchange = "okx",
+  symbol = "BTC-USDT",
+  timeframe = "1m",
+  limit = 100,
+} = {}) {
+  const params = new URLSearchParams({
+    exchange,
+    symbol,
+    timeframe,
+    limit: String(limit),
+  });
+
+  return this.request(`/api/market/candles?${params.toString()}`, {
+    method: "GET",
+    auth: true,
+  });
+}
+
 // ─── STRATEGIES ─────────────────────────────────────
 const getStrategyConfigs = async (skipCache = false) =>
   cachedGet("strategy_configs", 30000, async () => {

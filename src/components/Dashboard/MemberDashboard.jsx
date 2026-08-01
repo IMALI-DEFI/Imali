@@ -1,5 +1,5 @@
 // src/components/Dashboard/MemberDashboard.jsx
-// MODERN FIN TECH REWRITE - Matches TradeDemo styling
+// ENHANCED - With Professional Trading Features
 
 import React, {
   useCallback,
@@ -13,9 +13,10 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import CountUp from "react-countup";
 import toast, { Toaster } from "react-hot-toast";
+import AIThinkingPanel from "./AIThinkingPanel";
 import {
   FaApple,
   FaArrowRight,
@@ -44,8 +45,9 @@ import {
   FaExchangeAlt,
   FaShieldAlt,
   FaBell,
-  FaCode,
   FaBrain,
+  FaUsers,
+  FaEnvelope,
 } from "react-icons/fa";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
@@ -54,19 +56,25 @@ import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
 import nftElite from "../../assets/images/nfts/nft-elite.png";
 
+// Import CandlestickChart
+import CandlestickChart from "../charts/CandlestickChart";
+import * as candleGenerator from "../../utils/demoCandleGenerator";
+
 ChartJS.register(ArcElement, Tooltip);
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
+// Optimized polling intervals
 const POLL_INTERVALS = {
-  BOT_STATUS: 3000,
-  BALANCES: 10000,
-  TRADES: 5000,
+  BOT_STATUS: 5000,
+  BALANCES: 15000,
+  TRADES: 10000,
   STRATEGIES: 0,
   PROFILE: 0,
   BILLING: 0,
+  CANDLES: 30000,
 };
 
 const API_RETRY_COUNT = 2;
@@ -81,11 +89,11 @@ const TIER_RANK = {
 
 const TIER_CONFIG = {
   starter: {
-    name: "Starter",
+    name: "Demo",
     image: nftStarter,
-    alt: "Starter NFT - Free tier access",
-    color: "from-emerald-500/20 to-teal-500/10",
-    borderColor: "border-emerald-500/30",
+    alt: "Demo Access - Free tier",
+    color: "from-cyan-500/20 to-blue-500/10",
+    borderColor: "border-cyan-500/30",
   },
   pro: {
     name: "Pro",
@@ -122,6 +130,7 @@ const TRADING_TYPES = [
     minTier: "starter",
     paperOnlyStarter: true,
     connectRoute: "/connect-okx",
+    upgradeMessage: "Unlock Live Trading",
   },
   {
     id: "futures",
@@ -133,6 +142,7 @@ const TRADING_TYPES = [
     connectionLabel: "OKX Futures API",
     minTier: "elite",
     connectRoute: "/connect-okx",
+    upgradeMessage: "Unlock Futures Trading",
   },
   {
     id: "dex",
@@ -144,6 +154,7 @@ const TRADING_TYPES = [
     connectionLabel: "Wallet / DEX Bot",
     minTier: "elite",
     connectRoute: "/connect-wallet",
+    upgradeMessage: "Unlock DEX Sniper",
   },
   {
     id: "stocks",
@@ -155,6 +166,7 @@ const TRADING_TYPES = [
     connectionLabel: "Alpaca API",
     minTier: "pro",
     connectRoute: "/connect-alpaca",
+    upgradeMessage: "Unlock Stock Trading",
   },
 ];
 
@@ -219,7 +231,7 @@ const SETTINGS_TABS = [
   { id: "notifications", icon: <FaBell />, label: "Notifications", route: "/settings/notifications" },
   { id: "api", icon: <FaKey />, label: "API Keys", route: "/settings/api" },
   { id: "automation", icon: <FaRobot />, label: "Automation", route: "/settings/automation" },
-];
+};
 
 const ASSET_NAMES = {
   USD: "Cash",
@@ -248,13 +260,18 @@ const ASSET_NAMES = {
 };
 
 // ============================================================================
-// GLASS CARD COMPONENT (Matches TradeDemo)
+// GLASS CARD COMPONENT - Mobile responsive
 // ============================================================================
 
-const GlassCard = ({ children, className = "", gradient = "from-emerald-500/10 to-cyan-500/10" }) => (
-  <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
-    <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
-    <div className="relative z-10">{children}</div>
+const GlassCard = ({ 
+  children, 
+  className = "", 
+  contentClassName = "p-4 sm:p-5 md:p-6",
+  gradient = "from-emerald-500/10 to-cyan-500/10" 
+}) => (
+  <div className={`relative overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
+    <div className="absolute inset-0 bg-white/5" />
+    <div className={`relative z-10 ${contentClassName}`}>{children}</div>
   </div>
 );
 
@@ -325,24 +342,27 @@ const getStockIcon = (symbol) => {
 };
 
 // ============================================================================
-// MEMOIZED SUBCOMPONENTS (Glass style)
+// ENHANCED SUBCOMPONENTS
 // ============================================================================
 
 const MiniBox = memo(({ label, value }) => (
-  <GlassCard className="p-3 sm:p-4 text-center" gradient="from-white/5 to-white/5">
-    <p className="text-xs sm:text-sm text-white/40">{label}</p>
-    <p className="mt-2 font-black text-sm sm:text-base text-white">{value}</p>
+  <GlassCard 
+    contentClassName="p-2 sm:p-3 md:p-4 text-center" 
+    gradient="from-white/5 to-white/5"
+  >
+    <p className="text-[10px] sm:text-xs md:text-sm text-white/40">{label}</p>
+    <p className="mt-1 sm:mt-2 font-black text-sm sm:text-base md:text-lg text-white">{value}</p>
   </GlassCard>
 ));
 MiniBox.displayName = "MiniBox";
 
 const LegendRow = memo(({ label, value, color }) => (
-  <div className="flex items-center justify-between gap-3">
-    <div className="flex items-center gap-2 text-white/60">
-      <span className={`h-3 w-3 rounded-full ${color}`} />
+  <div className="flex items-center justify-between gap-2 sm:gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-2 text-white/60 text-xs sm:text-sm">
+      <span className={`h-2.5 sm:h-3 w-2.5 sm:w-3 rounded-full ${color}`} />
       {label}
     </div>
-    <strong className="text-white">{value}</strong>
+    <strong className="text-white text-xs sm:text-sm">{value}</strong>
   </div>
 ));
 LegendRow.displayName = "LegendRow";
@@ -351,27 +371,27 @@ const AssetRow = memo(({ asset, total }) => {
   const pct = total > 0 ? (num(asset.value) / total) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition">
-      <div className="h-12 w-12 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
+    <div className="grid grid-cols-[40px_1fr_auto_auto] sm:grid-cols-[48px_1fr_auto_auto] items-center gap-2 sm:gap-3 p-1.5 sm:p-2 rounded-xl hover:bg-white/5 transition">
+      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-cyan-400/20 grid place-items-center text-base sm:text-xl font-black text-cyan-200">
         {getAssetIcon(asset.symbol)}
       </div>
 
       <div className="min-w-0">
-        <p className="font-black truncate text-white">{asset.symbol}</p>
-        <p className="text-sm text-white/45 truncate">{asset.name}</p>
+        <p className="font-black truncate text-white text-sm sm:text-base">{asset.symbol}</p>
+        <p className="text-xs sm:text-sm text-white/45 truncate">{asset.name}</p>
       </div>
 
       <div className="text-right">
-        <p className="font-black text-white">{formatMoney(asset.value)}</p>
-        <p className="text-sm text-white/40">
+        <p className="font-black text-white text-sm sm:text-base">{formatMoney(asset.value)}</p>
+        <p className="text-xs sm:text-sm text-white/40">
           {num(asset.quantity).toLocaleString(undefined, {
             maximumFractionDigits: 4,
           })}
         </p>
       </div>
 
-      <div className="w-14 text-right">
-        <p className="text-sm text-white/35">{formatPercent(pct)}</p>
+      <div className="w-10 sm:w-14 text-right">
+        <p className="text-xs sm:text-sm text-white/35">{formatPercent(pct)}</p>
       </div>
     </div>
   );
@@ -382,31 +402,31 @@ const StrategyCard = memo(({ strategy, selected, onClick, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`w-full rounded-2xl border p-4 text-left transition ${
+    className={`w-full rounded-2xl border p-3 sm:p-4 text-left transition ${
       selected
         ? "border-cyan-400 bg-cyan-500/20 shadow-lg shadow-cyan-500/20"
         : "border-white/10 bg-white/5 hover:bg-white/10"
     } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
-    <div className="flex items-start gap-3">
-      <div className="shrink-0 text-3xl leading-none">{strategy.icon}</div>
+    <div className="flex items-start gap-2 sm:gap-3">
+      <div className="shrink-0 text-2xl sm:text-3xl leading-none">{strategy.icon}</div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-lg font-black leading-tight break-words text-white">
+        <div className="flex flex-col gap-1 sm:gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-base sm:text-lg font-black leading-tight break-words text-white">
             {strategy.name}
           </p>
 
-          <span className="w-fit rounded-full px-3 py-1 text-xs font-black whitespace-nowrap bg-cyan-400/10 text-cyan-200">
+          <span className="w-fit rounded-full px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-black whitespace-nowrap bg-cyan-400/10 text-cyan-200">
             {strategy.risk}
           </span>
         </div>
 
-        <p className="mt-3 text-sm leading-relaxed text-white/50">
+        <p className="mt-1 sm:mt-3 text-xs sm:text-sm leading-relaxed text-white/50">
           {strategy.description}
         </p>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
+        <div className="mt-2 sm:mt-4 grid grid-cols-2 gap-1 sm:gap-2 text-[10px] sm:text-xs text-white/50">
           <span>Max: {strategy.maxPositions || "-"} pos.</span>
           <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
           <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
@@ -414,7 +434,7 @@ const StrategyCard = memo(({ strategy, selected, onClick, disabled }) => (
         </div>
 
         {disabled && (
-          <div className="mt-3 text-center text-xs text-yellow-400">
+          <div className="mt-2 sm:mt-3 text-center text-[10px] sm:text-xs text-yellow-400">
             ⚠️ Stop bot to change strategy
           </div>
         )}
@@ -436,7 +456,7 @@ const ConnectionCard = memo(
     lastUpdated,
   }) => (
     <GlassCard
-      className={`p-5 ${
+      className={`p-4 sm:p-5 ${
         isLocked
           ? "border-purple-500/30 bg-purple-500/10"
           : needsReconnect
@@ -445,10 +465,10 @@ const ConnectionCard = memo(
       }`}
       gradient="from-white/5 to-white/5"
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div
-            className={`h-12 w-12 shrink-0 rounded-2xl grid place-items-center ${
+            className={`h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-2xl grid place-items-center ${
               isLocked
                 ? "bg-purple-500/20 text-purple-300"
                 : needsReconnect
@@ -457,34 +477,34 @@ const ConnectionCard = memo(
             }`}
           >
             {isLocked ? (
-              <FaLock />
+              <FaLock className="text-sm sm:text-base" />
             ) : needsReconnect ? (
-              <FaExclamationTriangle />
+              <FaExclamationTriangle className="text-sm sm:text-base" />
             ) : (
-              <FaCheckCircle />
+              <FaCheckCircle className="text-sm sm:text-base" />
             )}
           </div>
 
           <div className="min-w-0">
-            <h3 className="text-xl font-black text-white">{activeTab.connectionLabel}</h3>
+            <h3 className="text-base sm:text-xl font-black text-white">{activeTab.connectionLabel}</h3>
 
             {isLocked ? (
-              <p className="text-sm text-white/60">
+              <p className="text-xs sm:text-sm text-white/60">
                 {activeTab.label} trading requires{" "}
                 {activeTab.minTier.toUpperCase()} plan or higher. Current plan:{" "}
                 {normalizeTier(userTier).toUpperCase()}.
               </p>
             ) : needsReconnect ? (
-              <p className="text-sm text-yellow-100/80">
+              <p className="text-xs sm:text-sm text-yellow-100/80">
                 Reconnect before trading can start.
               </p>
             ) : (
-              <p className="text-sm text-emerald-100/80">
+              <p className="text-xs sm:text-sm text-emerald-100/80">
                 Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
               </p>
             )}
 
-            <p className="mt-1 text-xs text-white/40">
+            <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-white/40">
               Last checked:{" "}
               {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
             </p>
@@ -493,7 +513,7 @@ const ConnectionCard = memo(
 
         <button
           onClick={isLocked ? onUpgrade : onConnect}
-          className={`rounded-2xl px-5 py-3 font-black transition ${
+          className={`rounded-2xl px-4 sm:px-5 py-2 sm:py-3 font-black text-sm sm:text-base transition ${
             isLocked
               ? "bg-purple-500 hover:bg-purple-400 text-white"
               : needsReconnect
@@ -503,17 +523,17 @@ const ConnectionCard = memo(
         >
           {isLocked ? (
             <>
-              <FaCrown className="inline mr-2" />
-              Upgrade
+              <FaCrown className="inline mr-1 sm:mr-2" />
+              {activeTab.upgradeMessage || "Upgrade"}
             </>
           ) : needsReconnect ? (
             <>
-              <FaRedo className="inline mr-2" />
+              <FaRedo className="inline mr-1 sm:mr-2" />
               Reconnect
             </>
           ) : (
             <>
-              <FaPlug className="inline mr-2" />
+              <FaPlug className="inline mr-1 sm:mr-2" />
               Manage
             </>
           )}
@@ -526,14 +546,14 @@ ConnectionCard.displayName = "ConnectionCard";
 
 const StatusPill = memo(({ running }) => (
   <div
-    className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+    className={`rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-black tracking-widest ${
       running
         ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
         : "border-white/10 bg-white/10 text-white/50"
     }`}
   >
     <FaCircle
-      className={`inline mr-2 h-2 w-2 ${
+      className={`inline mr-1 sm:mr-2 h-1.5 sm:h-2 w-1.5 sm:w-2 ${
         running ? "text-emerald-300" : "text-white/40"
       }`}
     />
@@ -547,7 +567,7 @@ const ModePill = memo(({ mode }) => {
 
   return (
     <div
-      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+      className={`rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-black tracking-widest ${
         safeMode === "live"
           ? "border-red-400/40 bg-red-400/10 text-red-300"
           : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
@@ -562,14 +582,14 @@ ModePill.displayName = "ModePill";
 const SettingsTab = memo(({ icon, label, onClick, active = false }) => (
   <button
     onClick={onClick}
-    className={`rounded-xl px-3 py-3 font-black text-sm transition flex items-center justify-center gap-2 ${
+    className={`rounded-xl px-2 sm:px-3 py-2 sm:py-3 font-black text-xs sm:text-sm transition flex items-center justify-center gap-1 sm:gap-2 ${
       active
         ? "bg-cyan-400/20 text-cyan-300 border border-cyan-400/30"
         : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
     }`}
   >
-    <span className="text-base">{icon}</span>
-    {label}
+    <span className="text-sm sm:text-base">{icon}</span>
+    <span className="hidden xs:inline">{label}</span>
   </button>
 ));
 SettingsTab.displayName = "SettingsTab";
@@ -581,15 +601,15 @@ const TradeItem = memo(({ trade }) => {
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-4 hover:bg-white/10 transition"
+      className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 hover:bg-white/10 transition"
     >
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="text-3xl">{getStockIcon(trade.symbol)}</div>
+      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+        <div className="text-2xl sm:text-3xl flex-shrink-0">{getStockIcon(trade.symbol)}</div>
         <div className="min-w-0">
-          <div className="font-bold flex items-center gap-2 text-white">
+          <div className="font-bold flex flex-wrap items-center gap-1 sm:gap-2 text-white text-sm sm:text-base">
             {trade.symbol}
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+              className={`text-[8px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-black ${
                 isLive
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                   : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
@@ -598,11 +618,11 @@ const TradeItem = memo(({ trade }) => {
               {isLive ? "● LIVE" : "● PAPER"}
             </span>
           </div>
-          <div className="text-xs text-white/40">
+          <div className="text-[10px] sm:text-xs text-white/40">
             {trade.type} • {trade.time}
           </div>
           {trade.price > 0 && (
-            <div className="text-xs text-white/30 mt-1">
+            <div className="text-[10px] sm:text-xs text-white/30 mt-0.5">
               @ {formatMoney(trade.price)}
             </div>
           )}
@@ -610,14 +630,14 @@ const TradeItem = memo(({ trade }) => {
       </div>
 
       <div
-        className={`font-bold text-lg ${
+        className={`font-bold text-base sm:text-lg ${
           trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"
         }`}
       >
         {trade.pnl >= 0 ? "+" : ""}
         {formatMoney(trade.pnl)}
         {trade.pnlPercent !== 0 && (
-          <span className="text-xs ml-1">
+          <span className="text-[10px] sm:text-xs ml-0.5 sm:ml-1">
             ({trade.pnl >= 0 ? "+" : ""}
             {trade.pnlPercent.toFixed(2)}%)
           </span>
@@ -628,156 +648,194 @@ const TradeItem = memo(({ trade }) => {
 });
 TradeItem.displayName = "TradeItem";
 
-const TierUpgradeCard = memo(({ currentTier, onUpgrade }) => {
-  const nextTiers = [
-    {
-      id: "pro",
-      config: TIER_CONFIG.pro,
-      price: "$19/mo",
-      description: "Live crypto & stock trading, AI strategies",
-    },
-    {
-      id: "elite",
-      config: TIER_CONFIG.elite,
-      price: "$49/mo",
-      description: "Futures, DEX sniper, staking, lending",
-    },
-  ];
+// ============================================================================
+// UPGRADE PROMPT - Specific messages
+// ============================================================================
 
-  if (currentTier === "elite" || currentTier === "enterprise") return null;
+const UpgradePrompt = ({ currentTier, onUpgrade }) => {
+  const features = [];
+  
+  if (currentTier === "starter" || currentTier === "demo") {
+    features.push(
+      { icon: "🔴", label: "Live Trading", desc: "Trade with real funds on OKX" },
+      { icon: "🤖", label: "AI Automation", desc: "Automated strategies 24/7" },
+      { icon: "📊", label: "Advanced Analytics", desc: "Professional trading insights" }
+    );
+  } else if (currentTier === "pro") {
+    features.push(
+      { icon: "🎯", label: "DEX Sniper", desc: "Front-run DeFi opportunities" },
+      { icon: "📈", label: "Futures Trading", desc: "Leveraged positions" },
+      { icon: "🏦", label: "Staking & Lending", desc: "Earn yield on assets" }
+    );
+  }
 
-  const nextTier =
-    nextTiers.find((tier) =>
-      currentTier === "starter" ? tier.id === "pro" : tier.id === "elite"
-    ) || nextTiers[0];
+  if (features.length === 0) return null;
 
   return (
-    <GlassCard
-      className={`p-5 border ${nextTier.config.borderColor}`}
-      gradient={nextTier.config.color}
-    >
-      <div className="flex flex-col sm:flex-row items-center gap-5">
-        <img
-          src={nextTier.config.image}
-          alt={nextTier.config.alt}
-          className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
-          loading="lazy"
-        />
-
-        <div className="flex-1 text-center sm:text-left">
-          <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-            <h3 className="text-2xl font-black text-white">
-              {nextTier.config.name} Plan
-            </h3>
-            <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-300">
-              {nextTier.price}
-            </span>
+    <GlassCard className="border-purple-500/30 bg-purple-500/10" gradient="from-purple-500/10 to-purple-500/10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <FaCrown className="text-amber-400" />
+            <h4 className="font-bold text-white">
+              {currentTier === "starter" ? "Unlock Full Trading Power" : "Go Elite"}
+            </h4>
           </div>
-          <p className="mt-2 text-sm text-white/70">
-            {nextTier.description}
-          </p>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {features.map((feature, idx) => (
+              <div key={idx} className="flex items-center gap-1.5 text-xs text-white/70">
+                <span>{feature.icon}</span>
+                <span>
+                  <strong className="text-white/90">{feature.label}</strong>
+                  <span className="text-white/50"> • {feature.desc}</span>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-
         <button
           onClick={onUpgrade}
-          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
+          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-sm text-white transition hover:from-amber-600 hover:to-orange-600"
         >
           <FaCrown className="inline mr-2" />
-          Upgrade to {nextTier.config.name}
+          {currentTier === "starter" ? "Unlock Pro" : "Upgrade to Elite"}
         </button>
       </div>
     </GlassCard>
   );
-});
-TierUpgradeCard.displayName = "TierUpgradeCard";
+};
 
-// AI Thinking Panel (Matches TradeDemo)
-const AIThinkingPanel = ({ confidence, strategy }) => {
-  const [signal, setSignal] = useState({
-    regime: "Bullish",
-    confidence: 84,
-    reasoning: ["RSI recovering", "Volume increasing", "EMA crossover"],
-    decision: "LONG"
-  });
+// ============================================================================
+// REFERRAL CARD
+// ============================================================================
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const signals = [
-        { regime: "Bullish", confidence: 84, reasoning: ["RSI recovering", "Volume increasing", "EMA crossover"], decision: "LONG" },
-        { regime: "Bullish", confidence: 91, reasoning: ["Breakout confirmed", "High volume", "Momentum increasing"], decision: "LONG" },
-        { regime: "Bearish", confidence: 76, reasoning: ["Overbought conditions", "Resistance rejection", "Volume decreasing"], decision: "SHORT" },
-        { regime: "Neutral", confidence: 62, reasoning: ["Consolidation", "Low volatility", "Awaiting breakout"], decision: "HOLD" },
-      ];
-      setSignal(signals[Math.floor(Math.random() * signals.length)]);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
+const ReferralCard = ({ referralData, user }) => {
+  if (!user) return null;
 
   return (
-    <GlassCard className="p-5">
+    <GlassCard className="border-emerald-500/20" gradient="from-emerald-500/10 to-cyan-500/10">
       <div className="flex items-center gap-3 mb-4">
-        <FaBrain className="text-cyan-400 text-xl" />
-        <h3 className="text-lg font-bold text-white">AI Analysis</h3>
-        <span className="ml-auto text-xs text-emerald-400 animate-pulse">● LIVE</span>
+        <FaUsers className="text-emerald-400 text-xl" />
+        <h4 className="font-bold text-white">Referral Program</h4>
+        <span className="ml-auto text-[10px] text-emerald-400">● ACTIVE</span>
       </div>
       
-      <div className="space-y-3">
-        <div className="flex justify-between items-center p-2 rounded-xl bg-white/5">
-          <span className="text-white/60 text-sm">Market Regime</span>
-          <span className={`font-bold ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
-            {signal.regime}
-          </span>
-        </div>
-        
-        <div>
-          <div className="flex justify-between text-sm">
-            <span className="text-white/60">Confidence</span>
-            <span className="text-white font-bold">{signal.confidence}%</span>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="text-center p-2 rounded-xl bg-white/5">
+          <div className="text-2xl font-bold text-white">
+            <CountUp end={referralData?.totalReferrals || 0} duration={1.5} />
           </div>
-          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
-              initial={{ width: 0 }}
-              animate={{ width: `${signal.confidence}%` }}
-              transition={{ duration: 0.5 }}
-            />
+          <div className="text-[10px] text-white/40">Clicks</div>
+        </div>
+        <div className="text-center p-2 rounded-xl bg-white/5">
+          <div className="text-2xl font-bold text-emerald-400">
+            <CountUp end={referralData?.signups || 0} duration={1.5} />
           </div>
+          <div className="text-[10px] text-white/40">Signups</div>
         </div>
-        
-        <div>
-          <span className="text-white/60 text-xs">Reasoning</span>
-          <ul className="mt-1 space-y-0.5">
-            {signal.reasoning.map((item, idx) => (
-              <motion.li
-                key={idx}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="flex items-center gap-2 text-xs text-white/70"
-              >
-                <FaCheckCircle className="text-emerald-400 text-[10px]" />
-                {item}
-              </motion.li>
-            ))}
-          </ul>
+        <div className="text-center p-2 rounded-xl bg-white/5">
+          <div className="text-2xl font-bold text-amber-400">
+            <CountUp end={referralData?.paidReferrals || 0} duration={1.5} />
+          </div>
+          <div className="text-[10px] text-white/40">Paid Referrals</div>
         </div>
-        
-        <div className="flex justify-between items-center pt-2 border-t border-white/10">
-          <span className="text-white/60 text-sm">Decision</span>
-          <motion.span
-            key={signal.decision}
-            initial={{ scale: 0.8 }}
-            animate={{ scale: 1 }}
-            className={`font-bold px-3 py-1 rounded-full text-xs ${
-              signal.decision === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' :
-              signal.decision === 'SHORT' ? 'bg-red-500/20 text-red-400' :
-              'bg-yellow-500/20 text-yellow-400'
-            }`}
-          >
-            {signal.decision}
-          </motion.span>
+        <div className="text-center p-2 rounded-xl bg-white/5">
+          <div className="text-2xl font-bold text-cyan-400">
+            <CountUp end={referralData?.freeMonths || 0} duration={1.5} />
+          </div>
+          <div className="text-[10px] text-white/40">Free Months</div>
         </div>
       </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        <div className="text-xs text-white/40 truncate max-w-[60%]">
+          Your link: {user?.referral_code && `${window.location.origin}/signup?ref=${user.referral_code}`}
+        </div>
+        <button 
+          onClick={() => window.location.href = '/referrals'}
+          className="text-xs text-emerald-400 hover:text-emerald-300 transition"
+        >
+          View Dashboard →
+        </button>
+      </div>
+    </GlassCard>
+  );
+};
+
+// ============================================================================
+// EMAIL CAPTURE CARD (for non-authenticated visitors)
+// ============================================================================
+
+const EmailCaptureCard = ({ onSubmit }) => {
+  const [email, setEmail] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+    
+    setLoading(true);
+    try {
+      const response = await BotAPI.captureMarketingLead({
+        email: email.trim().toLowerCase(),
+        source: "member-dashboard-demo",
+        interest: "automated-trading",
+        consent: true,
+      });
+      
+      if (response?.success === false) {
+        throw new Error(response.error || "Unable to subscribe");
+      }
+      
+      localStorage.setItem('demo_email_capture', email);
+      setSubmitted(true);
+      toast.success('Thanks for subscribing! 🎉');
+      onSubmit?.(email);
+    } catch (err) {
+      console.error('Email capture failed:', err);
+      toast.error(err.message || "Unable to subscribe");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <GlassCard className="border-emerald-500/20 text-center" gradient="from-emerald-500/10 to-cyan-500/10">
+        <FaCheckCircle className="text-emerald-400 text-3xl mx-auto mb-2" />
+        <p className="text-white font-bold">You're on the list! 🎉</p>
+        <p className="text-xs text-white/50">We'll send you updates and trading insights.</p>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <GlassCard className="border-blue-500/20" gradient="from-blue-500/10 to-purple-500/10">
+      <div className="flex items-center gap-3 mb-3">
+        <FaEnvelope className="text-blue-400 text-xl" />
+        <h4 className="font-bold text-white">Get Trading Insights</h4>
+      </div>
+      <p className="text-xs text-white/50 mb-3">
+        Subscribe for market updates, platform news, and trading strategies.
+      </p>
+      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email"
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder:text-white/30 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+          required
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50 whitespace-nowrap"
+        >
+          {loading ? <FaSpinner className="animate-spin" /> : "Subscribe"}
+        </button>
+      </form>
     </GlassCard>
   );
 };
@@ -824,6 +882,23 @@ const initialState = {
     discountPct: 0,
     discountActive: false,
   },
+  candles: [],
+  candlesLoading: false,
+  analysis: {
+    regime: "Neutral",
+    confidence: 0,
+    reasoning: [],
+    decision: "WAIT",
+    updatedAt: null,
+    source: "unavailable",
+  },
+  candlesSource: "none",
+  referral: {
+    totalReferrals: 0,
+    signups: 0,
+    paidReferrals: 0,
+    freeMonths: 0,
+  },
   debug: {
     lastStartAttempt: null,
     lastStartResult: null,
@@ -858,6 +933,11 @@ const ACTIONS = {
   SET_STATS: "SET_STATS",
   SET_IMALI: "SET_IMALI",
   SET_DEBUG: "SET_DEBUG",
+  SET_CANDLES: "SET_CANDLES",
+  SET_CANDLES_LOADING: "SET_CANDLES_LOADING",
+  SET_ANALYSIS: "SET_ANALYSIS",
+  SET_CANDLES_SOURCE: "SET_CANDLES_SOURCE",
+  SET_REFERRAL: "SET_REFERRAL",
   UPDATE_STRATEGY_PREF: "UPDATE_STRATEGY_PREF",
   RESET_STATE: "RESET_STATE",
 };
@@ -914,6 +994,22 @@ function dashboardReducer(state, action) {
       return { ...state, imali: { ...state.imali, ...action.payload } };
     case ACTIONS.SET_DEBUG:
       return { ...state, debug: { ...state.debug, ...action.payload } };
+    case ACTIONS.SET_CANDLES:
+      return { ...state, candles: action.payload };
+    case ACTIONS.SET_CANDLES_LOADING:
+      return { ...state, candlesLoading: action.payload };
+    case ACTIONS.SET_REFERRAL:
+      return { ...state, referral: { ...state.referral, ...action.payload } };
+    case ACTIONS.SET_ANALYSIS:
+      return {
+        ...state,
+        analysis: {
+          ...state.analysis,
+          ...action.payload,
+        },
+      };
+    case ACTIONS.SET_CANDLES_SOURCE:
+      return { ...state, candlesSource: action.payload };
     case ACTIONS.UPDATE_STRATEGY_PREF:
       localStorage.setItem("imali_selected_strategy", action.payload.id);
       return { ...state, currentStrategy: action.payload };
@@ -945,7 +1041,7 @@ class DashboardErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center p-8">
+        <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-8">
           <GlassCard className="p-8 max-w-md text-center border-red-500/40">
             <div className="text-6xl mb-4">⚠️</div>
             <h2 className="text-2xl font-black mb-2 text-white">Dashboard Error</h2>
@@ -1097,12 +1193,10 @@ export default function MemberDashboard() {
       activation?.billing_complete
   );
 
-  const hasPaidAccess = Boolean(
-    hasCardOnFile ||
-      normalizedSubscriptionStatus === "active" ||
-      normalizedSubscriptionStatus === "trial" ||
-      normalizedSubscriptionStatus === "trialing"
-  );
+  const hasPaidAccess = [
+    "active",
+    "trialing"
+  ].includes(normalizedSubscriptionStatus);
 
   const effectiveTier =
     normalizeTier(state.userTier) === "starter"
@@ -1167,12 +1261,12 @@ export default function MemberDashboard() {
     if (tier === "starter") {
       return {
         status: "Free",
-        color: "text-emerald-400",
-        bg: "bg-emerald-500/10",
-        border: "border-emerald-500/30",
-        message: "Paper trading enabled",
+        color: "text-cyan-400",
+        bg: "bg-cyan-500/10",
+        border: "border-cyan-500/30",
+        message: "Demo trading enabled",
         icon: "🌱",
-        label: "STARTER PLAN",
+        label: "DEMO ACCESS",
       };
     }
 
@@ -1193,9 +1287,9 @@ export default function MemberDashboard() {
       color: "text-amber-400",
       bg: "bg-amber-500/10",
       border: "border-amber-500/30",
-      message: `${tier.toUpperCase()} selected · Paper trading only`,
+      message: `${tier.toUpperCase()} selected · Demo only`,
       icon: "⚠️",
-      label: "STARTER ACCESS",
+      label: "DEMO ACCESS",
     };
   }, [state.userTier, hasPaidAccess]);
 
@@ -1329,8 +1423,65 @@ export default function MemberDashboard() {
   }, []);
 
   // ============================================================================
-  // API FETCH FUNCTIONS (unchanged)
+  // API FETCH FUNCTIONS
   // ============================================================================
+
+  const fetchCandles = useCallback(async () => {
+    dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: true });
+
+    try {
+      if (effectiveTier === "starter") {
+        const simulatedCandles = candleGenerator.createInitialCandles({
+          count: 40,
+          startPrice: 67420,
+          intervalSeconds: 60,
+        });
+        
+        dispatch({ type: ACTIONS.SET_CANDLES, payload: simulatedCandles });
+        dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "simulated" });
+        dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
+        return;
+      }
+
+      const symbol = activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
+      const res = await BotAPI.getMarketCandles?.({
+        exchange: activeTab.exchange,
+        symbol,
+        timeframe: "1m",
+        limit: 100,
+      });
+
+      const data = unwrapData(res);
+      const rawCandles = data.candles || data.data || [];
+
+      const formattedCandles = rawCandles
+        .map((candle) => ({
+          time: Math.floor(
+            new Date(candle.time ?? candle.timestamp ?? candle.created_at).getTime() / 1000
+          ),
+          open: num(candle.open),
+          high: num(candle.high),
+          low: num(candle.low),
+          close: num(candle.close),
+        }))
+        .filter((candle) => candle.time && candle.open && candle.high && candle.low && candle.close)
+        .sort((a, b) => a.time - b.time);
+
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: formattedCandles });
+      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
+    } catch (error) {
+      console.warn("Could not load market candles:", error);
+      const fallbackCandles = candleGenerator.createInitialCandles({
+        count: 40,
+        startPrice: 67420,
+        intervalSeconds: 60,
+      });
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: fallbackCandles });
+      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
+    } finally {
+      dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
+    }
+  }, [activeTab.exchange, effectiveTier]);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -1823,6 +1974,89 @@ export default function MemberDashboard() {
     }
   }, []);
 
+  const fetchReferral = useCallback(async () => {
+    try {
+      const res = await fetchWithRetry(() => BotAPI.getReferralStats?.());
+      const data = unwrapData(res);
+
+      dispatch({
+        type: ACTIONS.SET_REFERRAL,
+        payload: {
+          totalReferrals: num(data.totalReferrals || 0),
+          signups: num(data.signups || 0),
+          paidReferrals: num(data.paidReferrals || 0),
+          freeMonths: num(data.freeMonths || 0),
+        },
+      });
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch referral stats failed:", err);
+    }
+  }, []);
+
+  const fetchAnalysis = useCallback(async () => {
+    if (effectiveTier === "starter") {
+      dispatch({
+        type: ACTIONS.SET_ANALYSIS,
+        payload: {
+          regime: "Neutral",
+          confidence: 65,
+          reasoning: [
+            "Demo analysis",
+            "Simulated momentum",
+            "Virtual market conditions",
+          ],
+          decision: "OBSERVE",
+          source: "simulated",
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    try {
+      const symbol =
+        activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
+
+      const response = await BotAPI.getMarketAnalysis({
+        exchange: activeTab.exchange,
+        symbol,
+        strategy: state.currentStrategy.id,
+        timeframe: "5m",
+      });
+
+      const data = unwrapData(response);
+      const analysis = data.analysis || data;
+
+      dispatch({
+        type: ACTIONS.SET_ANALYSIS,
+        payload: {
+          regime: analysis.regime || "Neutral",
+          confidence: num(analysis.confidence),
+          reasoning: Array.isArray(analysis.reasoning)
+            ? analysis.reasoning
+            : [],
+          decision: analysis.decision || "WAIT",
+          updatedAt: analysis.updatedAt || new Date().toISOString(),
+          source: "live",
+        },
+      });
+    } catch (error) {
+      console.warn("Analysis fetch failed:", error);
+
+      dispatch({
+        type: ACTIONS.SET_ANALYSIS,
+        payload: {
+          source: "unavailable",
+        },
+      });
+    }
+  }, [
+    effectiveTier,
+    activeTab.exchange,
+    state.currentStrategy.id,
+  ]);
+
   // ============================================================================
   // SAVE FUNCTIONS
   // ============================================================================
@@ -1857,6 +2091,9 @@ export default function MemberDashboard() {
         refreshStrategies = false,
         refreshProfile = false,
         refreshBilling = false,
+        refreshCandles = false,
+        refreshReferral = false,
+        refreshAnalysis = false,
       } = options;
 
       if (manual) {
@@ -1873,6 +2110,9 @@ export default function MemberDashboard() {
         fetchStats,
         fetchPositions,
         fetchImali,
+        fetchCandles,
+        fetchReferral,
+        fetchAnalysis,
       };
 
       const startTime = performance.now();
@@ -1918,6 +2158,27 @@ export default function MemberDashboard() {
         if (refreshBilling && fns.fetchIntegrationStatus) {
           promises.push(fns.fetchIntegrationStatus().catch((err) => {
             if (err.name !== "AbortError") console.warn("Billing refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshCandles && fns.fetchCandles) {
+          promises.push(fns.fetchCandles().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Candles refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshReferral && fns.fetchReferral) {
+          promises.push(fns.fetchReferral().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Referral refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshAnalysis && fns.fetchAnalysis) {
+          promises.push(fns.fetchAnalysis().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Analysis refresh failed:", err);
             return null;
           }));
         }
@@ -1986,6 +2247,9 @@ export default function MemberDashboard() {
       fetchStats,
       fetchPositions,
       fetchImali,
+      fetchCandles,
+      fetchReferral,
+      fetchAnalysis,
     ]
   );
 
@@ -2088,7 +2352,7 @@ export default function MemberDashboard() {
 
       showNotice(
         starterPaperOnly
-          ? "Paper trading bot started."
+          ? "Demo bot started."
           : "Bot started successfully."
       );
 
@@ -2096,6 +2360,7 @@ export default function MemberDashboard() {
         refreshBot: true,
         refreshBalance: true,
         refreshTrades: true,
+        refreshAnalysis: true,
       });
     } catch (err) {
       dispatch({
@@ -2180,6 +2445,12 @@ export default function MemberDashboard() {
     navigate(route);
   }, [navigate]);
 
+  const handleEmailCapture = useCallback((email) => {
+    // Store email for marketing
+    localStorage.setItem('imali_marketing_email', email);
+    toast.success('Thanks for subscribing! 🎉');
+  }, []);
+
   // ============================================================================
   // EFFECTS
   // ============================================================================
@@ -2197,6 +2468,9 @@ export default function MemberDashboard() {
           refreshStrategies: true,
           refreshProfile: true,
           refreshBilling: true,
+          refreshCandles: true,
+          refreshReferral: true,
+          refreshAnalysis: true,
         });
       }
     };
@@ -2213,6 +2487,9 @@ export default function MemberDashboard() {
       await Promise.allSettled([
         fetchUser(),
         fetchBotStatus(),
+        fetchCandles(),
+        fetchReferral(),
+        fetchAnalysis(),
       ]);
 
       dispatch({ type: ACTIONS.SET_LOADING, payload: false });
@@ -2267,6 +2544,17 @@ export default function MemberDashboard() {
           });
         }
       }, POLL_INTERVALS.TRADES);
+
+      intervalsRef.current.candles = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: false,
+            refreshBalance: false,
+            refreshTrades: false,
+            refreshCandles: true,
+          });
+        }
+      }, POLL_INTERVALS.CANDLES);
     }
 
     return () => {
@@ -2293,6 +2581,8 @@ export default function MemberDashboard() {
           refreshBot: true,
           refreshBalance: true,
           refreshTrades: true,
+          refreshCandles: true,
+          refreshAnalysis: true,
         });
       }
     }, 0);
@@ -2359,13 +2649,13 @@ export default function MemberDashboard() {
 
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
           {state.error && (
-            <GlassCard className="p-4 border-red-500/40 bg-red-500/10" gradient="from-red-500/10 to-red-500/10">
+            <GlassCard className="border-red-500/40 bg-red-500/10" gradient="from-red-500/10 to-red-500/10">
               <p className="text-red-200">{state.error}</p>
             </GlassCard>
           )}
 
           {state.notice && (
-            <GlassCard className="p-4 border-emerald-500/40 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
+            <GlassCard className="border-emerald-500/40 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
               <p className="text-emerald-200">{state.notice}</p>
             </GlassCard>
           )}
@@ -2408,8 +2698,8 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* Settings Tabs with active detection - Glass style */}
-          <GlassCard className="p-4" gradient="from-white/5 to-white/5">
+          {/* Settings Tabs - Glass style */}
+          <GlassCard gradient="from-white/5 to-white/5">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {SETTINGS_TABS.slice(0, 4).map((tab) => (
                 <SettingsTab
@@ -2423,9 +2713,17 @@ export default function MemberDashboard() {
             </div>
           </GlassCard>
 
+          {/* Upgrade Prompt - Specific messaging */}
+          {effectiveTier !== "elite" && effectiveTier !== "enterprise" && (
+            <UpgradePrompt 
+              currentTier={effectiveTier} 
+              onUpgrade={() => navigate("/billing")}
+            />
+          )}
+
           {/* Billing Incomplete Warning */}
           {state.userTier !== "starter" && !hasPaidAccess && (
-            <GlassCard className="p-5 border-amber-500/30 bg-amber-500/10" gradient="from-amber-500/10 to-amber-500/10">
+            <GlassCard className="border-amber-500/30 bg-amber-500/10" gradient="from-amber-500/10 to-amber-500/10">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">⚠️</span>
                 <div>
@@ -2433,7 +2731,7 @@ export default function MemberDashboard() {
                     {state.userTier.toUpperCase()} Plan Selected — Billing Incomplete
                   </h3>
                   <p className="text-white/60 mt-1">
-                    Paper trading is still available. Add a payment method to activate {state.userTier} live features.
+                    Demo trading is still available. Add a payment method to activate {state.userTier} live features.
                   </p>
                   <button
                     onClick={() => navigate("/billing", { state: { tier: state.userTier, updateCard: true } })}
@@ -2493,15 +2791,15 @@ export default function MemberDashboard() {
 
           {/* Connection Card */}
           {starterPaperOnly ? (
-            <GlassCard className="p-5 border-emerald-500/30 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
+            <GlassCard className="border-emerald-500/30 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
               <div className="flex items-start gap-4">
                 <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/20 text-emerald-300">
                   <FaCheckCircle />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-white">Paper Trading Ready</h3>
+                  <h3 className="text-xl font-black text-white">Demo Trading Ready</h3>
                   <p className="text-sm text-emerald-100/80">
-                    No exchange API key or credit card is required for Starter paper trading.
+                    No exchange API key or credit card is required for demo trading.
                   </p>
                 </div>
               </div>
@@ -2521,17 +2819,12 @@ export default function MemberDashboard() {
 
           {starterPaperOnly && (
             <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-sm">
-              Starter accounts support paper trading only. Upgrade to Pro for live trading.
+              Demo accounts support paper trading only. Upgrade to Pro for live trading.
             </div>
           )}
 
-          <TierUpgradeCard
-            currentTier={normalizeTier(state.userTier)}
-            onUpgrade={() => navigate("/billing")}
-          />
-
           {/* Account Overview - Glass style */}
-          <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+          <GlassCard gradient="from-white/5 to-white/5">
             <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
               <div>
                 <h3 className="text-xl font-black text-white">Account Overview</h3>
@@ -2578,7 +2871,7 @@ export default function MemberDashboard() {
           </GlassCard>
 
           {/* Assets - Glass style */}
-          <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+          <GlassCard gradient="from-white/5 to-white/5">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-xl font-black text-white">Assets</h3>
               <button
@@ -2632,8 +2925,51 @@ export default function MemberDashboard() {
             )}
           </GlassCard>
 
+          {/* Candlestick Chart - Glass style */}
+          <GlassCard gradient="from-white/5 to-white/5">
+            <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-white">Market Candles</h3>
+                <p className="text-xs sm:text-sm text-white/40">
+                  {state.candlesSource === "simulated" ? "📊 Simulated market data" : 
+                   state.candlesSource === "live" ? "🔴 Live market data" : 
+                   "⚠️ Market data unavailable"}
+                </p>
+              </div>
+              <span className="text-[10px] sm:text-xs text-white/30">
+                {state.candlesSource === "simulated" ? "🟡 DEMO MODE" : 
+                 state.candlesSource === "live" ? "🔴 LIVE" : 
+                 "⚪ UNAVAILABLE"}
+              </span>
+            </div>
+
+            {state.candlesLoading ? (
+              <div className="grid h-[200px] sm:h-[250px] md:h-[300px] place-items-center rounded-2xl bg-black/25">
+                <FaSpinner className="animate-spin text-2xl sm:text-3xl text-cyan-300" />
+              </div>
+            ) : state.candles.length ? (
+              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:p-2">
+                <CandlestickChart
+                  data={state.candles}
+                  liveCandle={state.candles[state.candles.length - 1]}
+                  height={window.innerWidth < 640 ? 250 : window.innerWidth < 768 ? 300 : 360}
+                />
+              </div>
+            ) : (
+              <div className="grid h-[200px] sm:h-[250px] md:h-[300px] place-items-center rounded-xl sm:rounded-2xl bg-black/25 text-center text-white/40 p-4">
+                <div>
+                  <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">📊</div>
+                  <p className="text-sm sm:text-base">No market candle data available.</p>
+                  <p className="text-xs sm:text-sm text-white/30 mt-1">
+                    {state.candlesSource === "none" ? "Loading candles..." : "Connect an exchange to see live candles"}
+                  </p>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+
           {/* Live Trade Feed - Glass style */}
-          <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+          <GlassCard gradient="from-white/5 to-white/5">
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2">
                 <FaChartLine className="text-emerald-300" />
@@ -2667,7 +3003,7 @@ export default function MemberDashboard() {
 
           {/* Active Bot + Performance - Glass style */}
           <div className="grid gap-5 lg:grid-cols-2">
-            <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+            <GlassCard gradient="from-white/5 to-white/5">
               <div className="mb-5 flex items-center justify-between">
                 <h3 className="text-xl font-black text-white">Active Bot</h3>
                 <span className="text-cyan-300 text-2xl">
@@ -2740,7 +3076,7 @@ export default function MemberDashboard() {
                       : !isConnected
                       ? "Connect to Start"
                       : starterPaperOnly
-                      ? "Start Paper Bot"
+                      ? "Start Demo Bot"
                       : "Start Bot"}
                   </button>
                 ) : (
@@ -2760,7 +3096,7 @@ export default function MemberDashboard() {
               </div>
             </GlassCard>
 
-            <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+            <GlassCard gradient="from-white/5 to-white/5">
               <div className="mb-5 flex items-center justify-between">
                 <h3 className="text-xl font-black text-white">Performance</h3>
                 <span className="text-cyan-300 text-2xl">
@@ -2802,10 +3138,25 @@ export default function MemberDashboard() {
           </div>
 
           {/* AI Thinking Panel */}
-          <AIThinkingPanel strategy={state.currentStrategy} />
+          <AIThinkingPanel 
+            strategy={state.currentStrategy} 
+            stats={state.stats} 
+            effectiveTier={effectiveTier}
+          />
+
+          {/* Referral Card */}
+          <ReferralCard 
+            referralData={state.referral} 
+            user={user} 
+          />
+
+          {/* Email Capture Card (only for demo users) */}
+          {effectiveTier === "starter" && (
+            <EmailCaptureCard onSubmit={handleEmailCapture} />
+          )}
 
           {/* Available Bot Strategies - Glass style */}
-          <GlassCard className="p-5" gradient="from-white/5 to-white/5">
+          <GlassCard gradient="from-white/5 to-white/5">
             <h3 className="mb-5 text-xl sm:text-2xl font-black text-white">
               Available Bot Strategies
             </h3>
@@ -2825,7 +3176,7 @@ export default function MemberDashboard() {
 
           {/* IMALI Utility + Upgrade - Glass style */}
           <div className="grid gap-5 lg:grid-cols-2">
-            <GlassCard className="p-5 border-emerald-500/30 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
+            <GlassCard className="border-emerald-500/30 bg-emerald-500/10" gradient="from-emerald-500/10 to-emerald-500/10">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-2xl font-black text-white">IMALI Utility</h3>
                 <FaCoins className="text-2xl text-emerald-300" />
@@ -2862,7 +3213,7 @@ export default function MemberDashboard() {
               </div>
             </GlassCard>
 
-            <GlassCard className="p-5 border-purple-500/30 bg-purple-500/10 flex flex-col justify-between gap-4" gradient="from-purple-500/10 to-purple-500/10">
+            <GlassCard className="border-purple-500/30 bg-purple-500/10 flex flex-col justify-between gap-4" gradient="from-purple-500/10 to-purple-500/10">
               <div>
                 <h3 className="font-black text-2xl text-white">Unlock More Power</h3>
                 <p className="text-sm sm:text-base text-white/60 leading-relaxed">
