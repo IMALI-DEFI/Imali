@@ -9,25 +9,29 @@ const GlassCard = ({ children, className = "", contentClassName = "p-4 sm:p-5 md
   </div>
 );
 
-const AIThinkingPanel = ({ analysis }) => {
+const AIThinkingPanel = ({ strategy, stats, effectiveTier }) => {
   const signal = useMemo(() => ({
-    regime: analysis?.regime || "Neutral",
-    confidence: analysis?.confidence || 50,
-    reasoning: analysis?.reasoning || ["Awaiting analysis..."],
-    decision: analysis?.decision || "WAIT",
-    source: analysis?.source || "unavailable",
-  }), [analysis]);
+    regime: strategy?.regime || "Neutral",
+    confidence: strategy?.confidence || 50,
+    reasoning: strategy?.reasoning || ["Awaiting analysis..."],
+    decision: strategy?.decision || "WAIT",
+  }), [strategy]);
 
-  const isLive = signal.source === "live";
+  const isDemo = effectiveTier === "starter";
 
   return (
     <GlassCard contentClassName="p-4 sm:p-5">
       <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
         <FaBrain className="text-cyan-400 text-lg sm:text-xl" />
         <h3 className="text-base sm:text-lg font-bold text-white">AI Analysis</h3>
-        <span className={`ml-auto text-[10px] sm:text-xs ${isLive ? 'text-emerald-400' : 'text-cyan-400'} animate-pulse`}>
-          ● {isLive ? 'LIVE' : signal.source === 'simulated' ? 'SIMULATED' : 'UNAVAILABLE'}
+        <span className={`ml-auto text-[10px] sm:text-xs ${isDemo ? 'text-cyan-400' : 'text-emerald-400'} animate-pulse`}>
+          ● {isDemo ? 'SIMULATED' : 'LIVE'}
         </span>
+        {strategy?.name && (
+          <span className="text-[10px] sm:text-xs text-white/30">
+            {strategy.name}
+          </span>
+        )}
       </div>
       
       <div className="space-y-2 sm:space-y-3">
@@ -56,18 +60,25 @@ const AIThinkingPanel = ({ analysis }) => {
         <div>
           <span className="text-white/60 text-[10px] sm:text-xs">Reasoning</span>
           <ul className="mt-0.5 sm:mt-1 space-y-0.5">
-            {signal.reasoning.map((item, idx) => (
-              <motion.li
-                key={idx}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70"
-              >
+            {Array.isArray(signal.reasoning) && signal.reasoning.length > 0 ? (
+              signal.reasoning.map((item, idx) => (
+                <motion.li
+                  key={idx}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70"
+                >
+                  <FaCheckCircle className="text-emerald-400 text-[8px] sm:text-[10px] flex-shrink-0" />
+                  <span className="truncate">{item}</span>
+                </motion.li>
+              ))
+            ) : (
+              <li className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70">
                 <FaCheckCircle className="text-emerald-400 text-[8px] sm:text-[10px] flex-shrink-0" />
-                <span className="truncate">{item}</span>
-              </motion.li>
-            ))}
+                <span className="truncate">No analysis available</span>
+              </li>
+            )}
           </ul>
         </div>
         
@@ -88,6 +99,12 @@ const AIThinkingPanel = ({ analysis }) => {
             {signal.decision}
           </motion.span>
         </div>
+
+        {isDemo && (
+          <div className="text-[10px] text-white/20 text-center mt-2 border-t border-white/5 pt-2">
+            💡 Analysis is simulated for demo purposes
+          </div>
+        )}
       </div>
     </GlassCard>
   );
