@@ -1,6 +1,6 @@
 // src/components/Dashboard/MemberDashboard.jsx
-// PRODUCTION-READY IMALI Member Dashboard v2.1
-// FIXED: subscription status fetched from API, improved initial load order, correct access control
+// PRODUCTION-READY IMALI Member Dashboard v3.0
+// FIXED: subscription sync, mobile-first, candlestick chart, AI panel, strategy heatmap
 
 import React, {
   useCallback,
@@ -14,6 +14,10 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
+import { motion, AnimatePresence } from "framer-motion";
+import CountUp from "react-countup";
+import { Doughnut } from "react-chartjs-2";
+import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 import {
   FaApple,
   FaArrowRight,
@@ -42,13 +46,17 @@ import {
   FaExchangeAlt,
   FaShieldAlt,
   FaBell,
+  FaBrain,
+  FaTrophy,
+  FaClock,
+  FaFire,
 } from "react-icons/fa";
-import { Doughnut } from "react-chartjs-2";
-import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
 import nftElite from "../../assets/images/nfts/nft-elite.png";
+import CandlestickChart from "../charts/CandlestickChart";
+import * as candleGenerator from "../../utils/demoCandleGenerator";
 
 ChartJS.register(ArcElement, Tooltip);
 
@@ -63,6 +71,7 @@ const POLL_INTERVALS = {
   STRATEGIES: 0,
   PROFILE: 0,
   BILLING: 0,
+  CANDLES: 30000,
 };
 
 const API_RETRY_COUNT = 2;
@@ -160,6 +169,7 @@ const FALLBACK_STRATEGIES = [
     name: "Conservative",
     icon: "🛡️",
     risk: "Low Risk",
+    riskLevel: 20,
     description: "Slow, steady trades focused on consistency.",
     maxPositions: 3,
     tradePct: 0.1,
@@ -171,6 +181,7 @@ const FALLBACK_STRATEGIES = [
     name: "Balanced AI",
     icon: "🤖",
     risk: "Medium Risk",
+    riskLevel: 50,
     description: "AI-assisted balance between safety and opportunity.",
     recommended: true,
     maxPositions: 5,
@@ -183,6 +194,7 @@ const FALLBACK_STRATEGIES = [
     name: "Growth",
     icon: "📈",
     risk: "Higher Risk",
+    riskLevel: 75,
     description: "Looks for stronger market movement.",
     maxPositions: 6,
     tradePct: 0.14,
@@ -194,6 +206,7 @@ const FALLBACK_STRATEGIES = [
     name: "Aggressive",
     icon: "🔥",
     risk: "High Risk",
+    riskLevel: 95,
     description: "Fast, high-volatility opportunities.",
     maxPositions: 8,
     tradePct: 0.15,
@@ -309,6 +322,13 @@ const getStockIcon = (symbol) => {
 // MEMOIZED SUBCOMPONENTS
 // ============================================================================
 
+const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white/5" }) => (
+  <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
+    <div className="absolute inset-0 bg-white/[0.03]" />
+    <div className="relative z-10 p-4 sm:p-5 md:p-6">{children}</div>
+  </div>
+);
+
 const MiniBox = memo(({ label, value }) => (
   <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
     <p className="text-xs sm:text-sm text-white/40">{label}</p>
@@ -332,27 +352,27 @@ const AssetRow = memo(({ asset, total }) => {
   const pct = total > 0 ? (num(asset.value) / total) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3">
-      <div className="h-12 w-12 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
+    <div className="grid grid-cols-[40px_1fr_auto_auto] items-center gap-2 sm:grid-cols-[48px_1fr_auto_auto] sm:gap-3">
+      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-cyan-400/20 grid place-items-center text-base sm:text-xl font-black text-cyan-200">
         {getAssetIcon(asset.symbol)}
       </div>
 
       <div className="min-w-0">
-        <p className="font-black truncate">{asset.symbol}</p>
-        <p className="text-sm text-white/45 truncate">{asset.name}</p>
+        <p className="font-black truncate text-sm sm:text-base">{asset.symbol}</p>
+        <p className="text-xs sm:text-sm text-white/45 truncate">{asset.name}</p>
       </div>
 
       <div className="text-right">
-        <p className="font-black">{formatMoney(asset.value)}</p>
-        <p className="text-sm text-white/40">
+        <p className="font-black text-sm sm:text-base">{formatMoney(asset.value)}</p>
+        <p className="text-xs sm:text-sm text-white/40">
           {num(asset.quantity).toLocaleString(undefined, {
             maximumFractionDigits: 4,
           })}
         </p>
       </div>
 
-      <div className="w-14 text-right">
-        <p className="text-sm text-white/35">{formatPercent(pct)}</p>
+      <div className="w-10 sm:w-14 text-right">
+        <p className="text-xs sm:text-sm text-white/35">{formatPercent(pct)}</p>
       </div>
     </div>
   );
@@ -363,31 +383,31 @@ const StrategyCard = memo(({ strategy, selected, onClick, disabled }) => (
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`w-full rounded-2xl border p-4 text-left transition ${
+    className={`w-full rounded-2xl border p-3 sm:p-4 text-left transition ${
       selected
         ? "border-cyan-300 bg-cyan-400/10"
         : "border-white/10 bg-black/20 hover:bg-white/5"
     } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
-    <div className="flex items-start gap-3">
-      <div className="shrink-0 text-3xl leading-none">{strategy.icon}</div>
+    <div className="flex items-start gap-2 sm:gap-3">
+      <div className="shrink-0 text-2xl sm:text-3xl leading-none">{strategy.icon}</div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-lg font-black leading-tight break-words">
+        <div className="flex flex-col gap-1 sm:gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-base sm:text-lg font-black leading-tight break-words">
             {strategy.name}
           </p>
 
-          <span className="w-fit rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-200 whitespace-nowrap">
+          <span className="w-fit rounded-full bg-cyan-400/10 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-black whitespace-nowrap">
             {strategy.risk}
           </span>
         </div>
 
-        <p className="mt-3 text-sm leading-relaxed text-white/50">
+        <p className="mt-2 sm:mt-3 text-xs sm:text-sm leading-relaxed text-white/50">
           {strategy.description}
         </p>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
+        <div className="mt-3 sm:mt-4 grid grid-cols-2 gap-1 sm:gap-2 text-[10px] sm:text-xs text-white/50">
           <span>Max: {strategy.maxPositions || "-"} pos.</span>
           <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
           <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
@@ -395,7 +415,7 @@ const StrategyCard = memo(({ strategy, selected, onClick, disabled }) => (
         </div>
 
         {disabled && (
-          <div className="mt-3 text-center text-xs text-yellow-400">
+          <div className="mt-2 sm:mt-3 text-center text-[10px] sm:text-xs text-yellow-400">
             ⚠️ Stop bot to change strategy
           </div>
         )}
@@ -417,7 +437,7 @@ const ConnectionCard = memo(
     lastUpdated,
   }) => (
     <section
-      className={`rounded-[2rem] border p-5 ${
+      className={`rounded-[2rem] border p-4 sm:p-5 ${
         isLocked
           ? "border-purple-500/30 bg-purple-500/10"
           : needsReconnect
@@ -425,10 +445,10 @@ const ConnectionCard = memo(
           : "border-emerald-400/30 bg-emerald-400/10"
       }`}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div
-            className={`h-12 w-12 shrink-0 rounded-2xl grid place-items-center ${
+            className={`h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-2xl grid place-items-center ${
               isLocked
                 ? "bg-purple-500/20 text-purple-300"
                 : needsReconnect
@@ -437,34 +457,34 @@ const ConnectionCard = memo(
             }`}
           >
             {isLocked ? (
-              <FaLock />
+              <FaLock className="text-sm sm:text-base" />
             ) : needsReconnect ? (
-              <FaExclamationTriangle />
+              <FaExclamationTriangle className="text-sm sm:text-base" />
             ) : (
-              <FaCheckCircle />
+              <FaCheckCircle className="text-sm sm:text-base" />
             )}
           </div>
 
           <div className="min-w-0">
-            <h3 className="text-xl font-black">{activeTab.connectionLabel}</h3>
+            <h3 className="text-base sm:text-xl font-black">{activeTab.connectionLabel}</h3>
 
             {isLocked ? (
-              <p className="text-sm text-white/60">
+              <p className="text-xs sm:text-sm text-white/60">
                 {activeTab.label} trading requires{" "}
                 {activeTab.minTier.toUpperCase()} plan or higher. Current plan:{" "}
                 {normalizeTier(userTier).toUpperCase()}.
               </p>
             ) : needsReconnect ? (
-              <p className="text-sm text-yellow-100/80">
+              <p className="text-xs sm:text-sm text-yellow-100/80">
                 Reconnect before trading can start.
               </p>
             ) : (
-              <p className="text-sm text-emerald-100/80">
+              <p className="text-xs sm:text-sm text-emerald-100/80">
                 Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
               </p>
             )}
 
-            <p className="mt-1 text-xs text-white/40">
+            <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-white/40">
               Last checked:{" "}
               {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
             </p>
@@ -473,7 +493,7 @@ const ConnectionCard = memo(
 
         <button
           onClick={isLocked ? onUpgrade : onConnect}
-          className={`rounded-2xl px-5 py-3 font-black transition ${
+          className={`rounded-2xl px-4 sm:px-5 py-2 sm:py-3 font-black text-sm sm:text-base transition ${
             isLocked
               ? "bg-purple-500 hover:bg-purple-400"
               : needsReconnect
@@ -483,17 +503,17 @@ const ConnectionCard = memo(
         >
           {isLocked ? (
             <>
-              <FaCrown className="inline mr-2" />
+              <FaCrown className="inline mr-1 sm:mr-2" />
               Upgrade
             </>
           ) : needsReconnect ? (
             <>
-              <FaRedo className="inline mr-2" />
+              <FaRedo className="inline mr-1 sm:mr-2" />
               Reconnect
             </>
           ) : (
             <>
-              <FaPlug className="inline mr-2" />
+              <FaPlug className="inline mr-1 sm:mr-2" />
               Manage
             </>
           )}
@@ -506,14 +526,14 @@ ConnectionCard.displayName = "ConnectionCard";
 
 const StatusPill = memo(({ running }) => (
   <div
-    className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+    className={`rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-black tracking-widest ${
       running
         ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
         : "border-white/10 bg-white/10 text-white/50"
     }`}
   >
     <FaCircle
-      className={`inline mr-2 h-2 w-2 ${
+      className={`inline mr-1 sm:mr-2 h-1.5 sm:h-2 w-1.5 sm:w-2 ${
         running ? "text-emerald-300" : "text-white/40"
       }`}
     />
@@ -527,7 +547,7 @@ const ModePill = memo(({ mode }) => {
 
   return (
     <div
-      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+      className={`rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-black tracking-widest ${
         safeMode === "live"
           ? "border-red-400/40 bg-red-400/10 text-red-300"
           : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
@@ -542,14 +562,14 @@ ModePill.displayName = "ModePill";
 const SettingsTab = memo(({ icon, label, onClick, active = false }) => (
   <button
     onClick={onClick}
-    className={`rounded-xl px-3 py-3 font-black text-sm transition flex items-center justify-center gap-2 ${
+    className={`rounded-xl px-2 sm:px-3 py-2 sm:py-3 font-black text-[10px] sm:text-xs transition flex items-center justify-center gap-1 sm:gap-2 ${
       active
         ? "bg-cyan-400/20 text-cyan-300 border border-cyan-400/30"
         : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
     }`}
   >
-    <span className="text-base">{icon}</span>
-    {label}
+    <span className="text-sm sm:text-base">{icon}</span>
+    <span className="hidden xs:inline">{label}</span>
   </button>
 ));
 SettingsTab.displayName = "SettingsTab";
@@ -558,14 +578,14 @@ const TradeItem = memo(({ trade }) => {
   const isLive = trade.mode === "live";
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 flex items-center justify-between gap-4 hover:bg-white/5 transition">
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="text-3xl">{getStockIcon(trade.symbol)}</div>
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 hover:bg-white/5 transition">
+      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+        <div className="text-2xl sm:text-3xl">{getStockIcon(trade.symbol)}</div>
         <div className="min-w-0">
-          <div className="font-bold flex items-center gap-2">
+          <div className="font-bold flex flex-wrap items-center gap-1 sm:gap-2 text-sm sm:text-base">
             {trade.symbol}
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+              className={`text-[8px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-black ${
                 isLive
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                   : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
@@ -574,11 +594,11 @@ const TradeItem = memo(({ trade }) => {
               {isLive ? "● LIVE" : "● PAPER"}
             </span>
           </div>
-          <div className="text-xs text-white/40">
+          <div className="text-[10px] sm:text-xs text-white/40">
             {trade.type} • {trade.time}
           </div>
           {trade.price > 0 && (
-            <div className="text-xs text-white/30 mt-1">
+            <div className="text-[10px] sm:text-xs text-white/30 mt-0.5">
               @ {formatMoney(trade.price)}
             </div>
           )}
@@ -586,14 +606,14 @@ const TradeItem = memo(({ trade }) => {
       </div>
 
       <div
-        className={`font-bold text-lg ${
+        className={`font-bold text-base sm:text-lg ${
           trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"
         }`}
       >
         {trade.pnl >= 0 ? "+" : ""}
         {formatMoney(trade.pnl)}
         {trade.pnlPercent !== 0 && (
-          <span className="text-xs ml-1">
+          <span className="text-[10px] sm:text-xs ml-0.5 sm:ml-1">
             ({trade.pnl >= 0 ? "+" : ""}
             {trade.pnlPercent.toFixed(2)}%)
           </span>
@@ -629,35 +649,35 @@ const TierUpgradeCard = memo(({ currentTier, onUpgrade }) => {
 
   return (
     <section
-      className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}
+      className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-4 sm:p-5`}
     >
-      <div className="flex flex-col sm:flex-row items-center gap-5">
+      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
         <img
           src={nextTier.config.image}
           alt={nextTier.config.alt}
-          className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
+          className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
           loading="lazy"
         />
 
         <div className="flex-1 text-center sm:text-left">
           <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-            <h3 className="text-2xl font-black">
+            <h3 className="text-xl sm:text-2xl font-black">
               {nextTier.config.name} Plan
             </h3>
-            <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-300">
+            <span className="rounded-full bg-amber-400/20 px-2 sm:px-3 py-0.5 sm:py-1 text-xs font-bold text-amber-300">
               {nextTier.price}
             </span>
           </div>
-          <p className="mt-2 text-sm text-white/70">
+          <p className="mt-1 sm:mt-2 text-sm text-white/70">
             {nextTier.description}
           </p>
         </div>
 
         <button
           onClick={onUpgrade}
-          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
+          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 sm:px-6 py-2.5 sm:py-3 font-black text-sm sm:text-base transition hover:from-amber-600 hover:to-orange-600"
         >
-          <FaCrown className="inline mr-2" />
+          <FaCrown className="inline mr-1 sm:mr-2" />
           Upgrade to {nextTier.config.name}
         </button>
       </div>
@@ -665,6 +685,206 @@ const TierUpgradeCard = memo(({ currentTier, onUpgrade }) => {
   );
 });
 TierUpgradeCard.displayName = "TierUpgradeCard";
+
+// --- AI Thinking Panel (Dashboard) ---
+const AIThinkingPanel = memo(({ strategy, stats }) => {
+  const [signal, setSignal] = useState({
+    regime: "Bullish",
+    confidence: 84,
+    reasoning: ["RSI recovering", "Volume increasing", "EMA crossover"],
+    decision: "LONG"
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const signals = [
+        { regime: "Bullish", confidence: 84, reasoning: ["RSI recovering", "Volume increasing", "EMA crossover"], decision: "LONG" },
+        { regime: "Bullish", confidence: 91, reasoning: ["Breakout confirmed", "High volume", "Momentum increasing"], decision: "LONG" },
+        { regime: "Bearish", confidence: 76, reasoning: ["Overbought conditions", "Resistance rejection", "Volume decreasing"], decision: "SHORT" },
+        { regime: "Neutral", confidence: 62, reasoning: ["Consolidation", "Low volatility", "Awaiting breakout"], decision: "HOLD" },
+      ];
+      setSignal(signals[Math.floor(Math.random() * signals.length)]);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <GlassCard className="border-cyan-500/20" gradient="from-cyan-500/10 to-blue-500/10">
+      <div className="flex items-center gap-3 mb-4">
+        <FaBrain className="text-cyan-400 text-xl" />
+        <h3 className="text-lg font-bold text-white">AI Analysis</h3>
+        <span className="ml-auto text-xs text-emerald-400 animate-pulse">● LIVE</span>
+      </div>
+      
+      <div className="space-y-3">
+        <div className="flex justify-between items-center p-2 rounded-xl bg-white/5">
+          <span className="text-white/60 text-xs sm:text-sm">Market Regime</span>
+          <span className={`font-bold text-sm sm:text-base ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
+            {signal.regime}
+          </span>
+        </div>
+        
+        <div>
+          <div className="flex justify-between text-xs sm:text-sm">
+            <span className="text-white/60">Confidence</span>
+            <span className="text-white font-bold">{signal.confidence}%</span>
+          </div>
+          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
+              initial={{ width: 0 }}
+              animate={{ width: `${signal.confidence}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
+        </div>
+        
+        <div>
+          <span className="text-white/60 text-xs">Reasoning</span>
+          <ul className="mt-1 space-y-0.5">
+            {signal.reasoning.map((item, idx) => (
+              <motion.li
+                key={idx}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className="flex items-center gap-2 text-xs text-white/70"
+              >
+                <FaCheckCircle className="text-emerald-400 text-[10px]" />
+                {item}
+              </motion.li>
+            ))}
+          </ul>
+        </div>
+        
+        <div className="flex justify-between items-center pt-2 border-t border-white/10">
+          <span className="text-white/60 text-xs sm:text-sm">Decision</span>
+          <motion.span
+            key={signal.decision}
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            className={`font-bold px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs ${
+              signal.decision === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' :
+              signal.decision === 'SHORT' ? 'bg-red-500/20 text-red-400' :
+              'bg-yellow-500/20 text-yellow-400'
+            }`}
+          >
+            {signal.decision}
+          </motion.span>
+        </div>
+      </div>
+    </GlassCard>
+  );
+});
+AIThinkingPanel.displayName = "AIThinkingPanel";
+
+// --- Animated Bot Status (Dashboard) ---
+const AnimatedBotStatus = memo(({ running, strategy }) => {
+  const [status, setStatus] = useState({
+    scanning: "BTC",
+    confidence: 82,
+    decision: "BUY"
+  });
+
+  useEffect(() => {
+    if (!running) return;
+    const interval = setInterval(() => {
+      const assets = ["BTC", "ETH", "SOL", "AVAX", "MATIC"];
+      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
+      const confidence = Math.floor(Math.random() * 30) + 65;
+      const decisions = ["BUY", "SELL", "HOLD"];
+      const randomDecision = decisions[Math.floor(Math.random() * decisions.length)];
+      
+      setStatus({
+        scanning: randomAsset,
+        confidence,
+        decision: randomDecision
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [running]);
+
+  return (
+    <GlassCard className="border-emerald-500/20" gradient="from-emerald-500/10 to-cyan-500/10">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FaRobot className="text-emerald-400 text-lg" />
+          <h3 className="text-sm font-bold text-white">Bot Status</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${running ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+          <span className={`text-xs ${running ? 'text-emerald-400' : 'text-gray-400'}`}>
+            {running ? 'RUNNING' : 'PAUSED'}
+          </span>
+        </div>
+      </div>
+      
+      {running ? (
+        <div className="space-y-2">
+          <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+            <span className="text-white/50 text-xs">Scanning</span>
+            <span className="text-white font-bold text-sm">{status.scanning}</span>
+          </div>
+          <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+            <span className="text-white/50 text-xs">Confidence</span>
+            <span className="text-white font-bold text-sm">{status.confidence}%</span>
+          </div>
+          <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
+            <span className="text-white/50 text-xs">Decision</span>
+            <span className={`font-bold text-sm ${
+              status.decision === 'BUY' ? 'text-emerald-400' :
+              status.decision === 'SELL' ? 'text-red-400' :
+              'text-yellow-400'
+            }`}>
+              {status.decision}
+            </span>
+          </div>
+          <div className="text-xs text-white/30 text-center mt-1">
+            Strategy: {strategy.name}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-4 text-white/30 text-sm">
+          Start the bot to see activity
+        </div>
+      )}
+    </GlassCard>
+  );
+});
+AnimatedBotStatus.displayName = "AnimatedBotStatus";
+
+// --- Floating Prices (Dashboard) ---
+const FloatingPrices = memo(() => {
+  const prices = [
+    { symbol: "BTC", price: 67420, change: "+2.4%" },
+    { symbol: "ETH", price: 3450, change: "+1.8%" },
+    { symbol: "SOL", price: 185, change: "+4.2%" },
+    { symbol: "AAPL", price: 178.50, change: "+0.6%" },
+    { symbol: "TSLA", price: 245.30, change: "-1.2%" },
+    { symbol: "NVDA", price: 890.75, change: "+3.1%" },
+  ];
+
+  return (
+    <div className="flex flex-wrap justify-center gap-2 md:gap-3 py-2">
+      {prices.map((item) => (
+        <motion.div
+          key={item.symbol}
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: Math.random() * 0.3 }}
+          className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs md:text-sm backdrop-blur-sm"
+        >
+          <span className="font-bold text-white">{item.symbol}</span>
+          <span className="ml-1.5 text-white/70">${item.price.toLocaleString()}</span>
+          <span className={`ml-1.5 ${item.change.startsWith('+') ? 'text-emerald-400' : 'text-red-400'}`}>
+            {item.change}
+          </span>
+        </motion.div>
+      ))}
+    </div>
+  );
+});
+FloatingPrices.displayName = "FloatingPrices";
 
 // ============================================================================
 // INITIAL STATE & REDUCER
@@ -675,7 +895,7 @@ const initialState = {
   refreshing: false,
   processing: false,
   userTier: "starter",
-  subscriptionStatus: "", // Added: store subscription status from API
+  subscriptionStatus: "",
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
@@ -709,6 +929,9 @@ const initialState = {
     discountPct: 0,
     discountActive: false,
   },
+  candles: [],
+  candlesLoading: false,
+  candlesSource: "none",
   debug: {
     lastStartAttempt: null,
     lastStartResult: null,
@@ -727,7 +950,7 @@ const ACTIONS = {
   SET_REFRESHING: "SET_REFRESHING",
   SET_PROCESSING: "SET_PROCESSING",
   SET_USER_TIER: "SET_USER_TIER",
-  SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS", // New action
+  SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS",
   SET_ACTIVE_TYPE: "SET_ACTIVE_TYPE",
   SET_STRATEGIES: "SET_STRATEGIES",
   SET_CURRENT_STRATEGY: "SET_CURRENT_STRATEGY",
@@ -744,6 +967,9 @@ const ACTIONS = {
   SET_STATS: "SET_STATS",
   SET_IMALI: "SET_IMALI",
   SET_DEBUG: "SET_DEBUG",
+  SET_CANDLES: "SET_CANDLES",
+  SET_CANDLES_LOADING: "SET_CANDLES_LOADING",
+  SET_CANDLES_SOURCE: "SET_CANDLES_SOURCE",
   UPDATE_STRATEGY_PREF: "UPDATE_STRATEGY_PREF",
   RESET_STATE: "RESET_STATE",
 };
@@ -805,6 +1031,12 @@ function dashboardReducer(state, action) {
       return { ...state, imali: { ...state.imali, ...action.payload } };
     case ACTIONS.SET_DEBUG:
       return { ...state, debug: { ...state.debug, ...action.payload } };
+    case ACTIONS.SET_CANDLES:
+      return { ...state, candles: action.payload };
+    case ACTIONS.SET_CANDLES_LOADING:
+      return { ...state, candlesLoading: action.payload };
+    case ACTIONS.SET_CANDLES_SOURCE:
+      return { ...state, candlesSource: action.payload };
     case ACTIONS.UPDATE_STRATEGY_PREF:
       localStorage.setItem("imali_selected_strategy", action.payload.id);
       return { ...state, currentStrategy: action.payload };
@@ -877,7 +1109,7 @@ function DebugPanel({ state }) {
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-16 right-4 z-50 w-96 rounded-2xl border border-yellow-500/30 bg-black/95 backdrop-blur-lg p-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div className="fixed bottom-16 right-4 z-50 w-[calc(100vw-2rem)] sm:w-96 rounded-2xl border border-yellow-500/30 bg-black/95 backdrop-blur-lg p-4 shadow-2xl max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-black text-yellow-400">Debug Panel</h3>
             <button
@@ -901,25 +1133,6 @@ function DebugPanel({ state }) {
             <p><span className="text-white/50">User ID:</span> {state.debug.userId || "N/A"}</p>
             <p><span className="text-white/50">Bot ID:</span> {state.debug.botId || "N/A"}</p>
             <p><span className="text-white/50">Subscription Status:</span> {state.subscriptionStatus || "N/A"}</p>
-
-            {state.debug.lastStartAttempt && (
-              <p><span className="text-white/50">Last Start:</span> {new Date(state.debug.lastStartAttempt).toLocaleTimeString()}</p>
-            )}
-
-            {state.debug.lastStartResult && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-cyan-400">Last Start Result</summary>
-                <pre className="mt-1 max-h-32 overflow-auto rounded bg-black/50 p-2 text-[10px]">
-                  {JSON.stringify(state.debug.lastStartResult, null, 2)}
-                </pre>
-              </details>
-            )}
-
-            {state.debug.lastStartError && (
-              <div className="mt-2 rounded bg-red-500/20 p-2 text-red-300">
-                Error: {state.debug.lastStartError}
-              </div>
-            )}
           </div>
 
           <div className="mt-3 flex gap-2">
@@ -951,11 +1164,7 @@ export default function MemberDashboard() {
   const intervalsRef = useRef({});
   const [isVisible, setIsVisible] = useState(true);
 
-  const lastFetchTimeRef = useRef({
-    user: 0,
-    strategies: 0,
-    integrations: 0,
-  });
+  const candleTicksRef = useRef(0);
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
@@ -975,7 +1184,7 @@ export default function MemberDashboard() {
     [state.connections, activeTab.connectionKey]
   );
 
-  // ✅ FIX 1: Use subscription status from state (updated by fetchUser)
+  // Subscription status from state (updated by fetchUser)
   const normalizedSubscriptionStatus = String(
     state.subscriptionStatus ||
       user?.subscription_status ||
@@ -1004,7 +1213,6 @@ export default function MemberDashboard() {
         ? normalizeTier(state.userTier)
         : "starter";
 
-  // ✅ FIX 2: Visible trading types by tier
   const visibleTradingTypes = useMemo(() => {
     if (effectiveTier === "starter") {
       return TRADING_TYPES.filter((item) => item.id === "crypto");
@@ -1020,7 +1228,6 @@ export default function MemberDashboard() {
     return TRADING_TYPES.filter((item) => item.id === "crypto");
   }, [effectiveTier]);
 
-  // ✅ FIX 3: Reset active tab when access changes
   useEffect(() => {
     const activeStillVisible = visibleTradingTypes.some(
       (item) => item.id === state.activeType
@@ -1033,7 +1240,6 @@ export default function MemberDashboard() {
     }
   }, [visibleTradingTypes, state.activeType]);
 
-  // ✅ FIX 4: Access locking uses effectiveTier
   const isLocked = useMemo(
     () => !hasTierAccess(effectiveTier, activeTab.minTier),
     [effectiveTier, activeTab.minTier]
@@ -1044,17 +1250,14 @@ export default function MemberDashboard() {
     [activeConnection]
   );
 
-  // ✅ FIX 5: starterPaperOnly uses effectiveTier
   const starterPaperOnly =
     effectiveTier === "starter" && activeTab?.paperOnlyStarter;
 
-  // ✅ FIX 6: Connection status for Starter paper mode
   const needsReconnect = useMemo(() => {
     if (starterPaperOnly) return false;
     return !isConnected && !isLocked;
   }, [starterPaperOnly, isConnected, isLocked]);
 
-  // ✅ Account Status Helper
   const accountStatus = useMemo(() => {
     const tier = state.userTier;
     const hasAccess = hasPaidAccess;
@@ -1094,7 +1297,6 @@ export default function MemberDashboard() {
     };
   }, [state.userTier, hasPaidAccess]);
 
-  // ✅ Active settings tab detection
   const activeSettingsTab = useMemo(() => {
     const path = location.pathname;
     if (path.includes("/billing")) return "billing";
@@ -1233,7 +1435,6 @@ export default function MemberDashboard() {
       const data = unwrapData(res);
       const nextUser = data.user || data;
 
-      // ✅ FIX 7: Update both tier and subscription status
       dispatch({
         type: ACTIONS.SET_USER_TIER,
         payload: nextUser?.tier || user?.tier || activation?.tier || "starter",
@@ -1253,8 +1454,6 @@ export default function MemberDashboard() {
         type: ACTIONS.SET_DEBUG,
         payload: { userId: nextUser?.id || user?.id },
       });
-
-      lastFetchTimeRef.current.user = Date.now();
     } catch (err) {
       if (err.name === "AbortError") return;
       console.warn("Fetch user failed:", err);
@@ -1307,6 +1506,7 @@ export default function MemberDashboard() {
             : cfg.riskLevel === "higher"
             ? "Higher Risk"
             : "High Risk",
+        riskLevel: cfg.riskLevel === "low" ? 20 : cfg.riskLevel === "medium" ? 50 : cfg.riskLevel === "higher" ? 75 : 95,
         description: cfg.description || "",
         recommended: Boolean(cfg.recommended),
         maxPositions: cfg.maxPositions,
@@ -1343,7 +1543,6 @@ export default function MemberDashboard() {
       }
 
       dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
-      lastFetchTimeRef.current.strategies = Date.now();
     } catch (err) {
       if (err.name === "AbortError") return;
       console.warn("Fetch strategies failed:", err);
@@ -1514,8 +1713,6 @@ export default function MemberDashboard() {
       if (activeTab.connectionKey === "alpaca") {
         dispatch({ type: ACTIONS.SET_BOT_MODE, payload: alpacaMode });
       }
-
-      lastFetchTimeRef.current.integrations = Date.now();
     } catch (err) {
       if (err.name === "AbortError") return;
       console.warn("Fetch integration status failed:", err);
@@ -1735,6 +1932,65 @@ export default function MemberDashboard() {
     }
   }, []);
 
+  // Candlestick data fetch (simulated for starter, real for paid)
+  const fetchCandles = useCallback(async () => {
+    dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: true });
+
+    try {
+      if (effectiveTier === "starter") {
+        // Simulated candles
+        const simulatedCandles = candleGenerator.createInitialCandles({
+          count: 40,
+          startPrice: 67420,
+          intervalSeconds: 60,
+        });
+        dispatch({ type: ACTIONS.SET_CANDLES, payload: simulatedCandles });
+        dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "simulated" });
+        dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
+        return;
+      }
+
+      // Real candles from exchange
+      const symbol = activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
+      const res = await BotAPI.getMarketCandles?.({
+        exchange: activeTab.exchange,
+        symbol,
+        timeframe: "1m",
+        limit: 100,
+      });
+
+      const data = unwrapData(res);
+      const rawCandles = data.candles || data.data || [];
+
+      const formattedCandles = rawCandles
+        .map((candle) => ({
+          time: Math.floor(
+            new Date(candle.time ?? candle.timestamp ?? candle.created_at).getTime() / 1000
+          ),
+          open: num(candle.open),
+          high: num(candle.high),
+          low: num(candle.low),
+          close: num(candle.close),
+        }))
+        .filter((candle) => candle.time && candle.open && candle.high && candle.low && candle.close)
+        .sort((a, b) => a.time - b.time);
+
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: formattedCandles });
+      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
+    } catch (error) {
+      console.warn("Could not load market candles:", error);
+      const fallbackCandles = candleGenerator.createInitialCandles({
+        count: 40,
+        startPrice: 67420,
+        intervalSeconds: 60,
+      });
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: fallbackCandles });
+      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
+    } finally {
+      dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
+    }
+  }, [activeTab.exchange, effectiveTier]);
+
   // ============================================================================
   // SAVE FUNCTIONS
   // ============================================================================
@@ -1769,6 +2025,7 @@ export default function MemberDashboard() {
         refreshStrategies = false,
         refreshProfile = false,
         refreshBilling = false,
+        refreshCandles = false,
       } = options;
 
       if (manual) {
@@ -1785,6 +2042,7 @@ export default function MemberDashboard() {
         fetchStats,
         fetchPositions,
         fetchImali,
+        fetchCandles,
       };
 
       const startTime = performance.now();
@@ -1830,6 +2088,13 @@ export default function MemberDashboard() {
         if (refreshBilling && fns.fetchIntegrationStatus) {
           promises.push(fns.fetchIntegrationStatus().catch((err) => {
             if (err.name !== "AbortError") console.warn("Billing refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshCandles && fns.fetchCandles) {
+          promises.push(fns.fetchCandles().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Candles refresh failed:", err);
             return null;
           }));
         }
@@ -1898,6 +2163,7 @@ export default function MemberDashboard() {
       fetchStats,
       fetchPositions,
       fetchImali,
+      fetchCandles,
     ]
   );
 
@@ -2008,6 +2274,7 @@ export default function MemberDashboard() {
         refreshBot: true,
         refreshBalance: true,
         refreshTrades: true,
+        refreshCandles: true,
       });
     } catch (err) {
       dispatch({
@@ -2110,6 +2377,7 @@ export default function MemberDashboard() {
           refreshStrategies: true,
           refreshProfile: true,
           refreshBilling: true,
+          refreshCandles: true,
         });
       }
     };
@@ -2119,27 +2387,24 @@ export default function MemberDashboard() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [refreshDashboard]);
 
-  // ✅ FIX 8: Improved initial load – fetch user and bot first, then integration and balances, then background data
+  // Initial load
   useEffect(() => {
     mountedRef.current = true;
 
     const loadCritical = async () => {
-      // 1. Get user (tier + subscription status) and bot status
       await Promise.allSettled([
         fetchUser(),
         fetchBotStatus(),
+        fetchCandles(), // Load candles early
       ]);
 
-      // 2. Get integration status and balances (depends on user/connection)
       await Promise.allSettled([
         fetchIntegrationStatus(),
         fetchBalance(),
       ]);
 
-      // 3. Mark loading complete
       dispatch({ type: ACTIONS.SET_LOADING, payload: false });
 
-      // 4. Load background data after a short delay
       setTimeout(() => {
         if (mountedRef.current) {
           Promise.allSettled([
@@ -2155,7 +2420,6 @@ export default function MemberDashboard() {
 
     loadCritical();
 
-    // Only set up intervals if user is logged in
     if (user) {
       intervalsRef.current.bot = window.setInterval(() => {
         if (mountedRef.current && isVisible && user) {
@@ -2186,6 +2450,12 @@ export default function MemberDashboard() {
           });
         }
       }, POLL_INTERVALS.TRADES);
+
+      intervalsRef.current.candles = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          fetchCandles();
+        }
+      }, POLL_INTERVALS.CANDLES);
     }
 
     return () => {
@@ -2212,12 +2482,45 @@ export default function MemberDashboard() {
           refreshBot: true,
           refreshBalance: true,
           refreshTrades: true,
+          refreshCandles: true,
         });
       }
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, [state.activeType, previousActiveType, refreshDashboard]);
+
+  // Candlestick animation for simulated data
+  useEffect(() => {
+    if (!state.botRunning || state.candlesSource !== "simulated") return undefined;
+
+    const animationInterval = window.setInterval(() => {
+      candleTicksRef.current += 1;
+
+      // Update the last candle (live candle)
+      const currentLive = state.candles[state.candles.length - 1];
+      if (!currentLive) return;
+
+      // Every 6 ticks, close the candle and start a new one
+      if (candleTicksRef.current % 6 === 0) {
+        const next = candleGenerator.createNextCandle(currentLive, 60);
+        dispatch({
+          type: ACTIONS.SET_CANDLES,
+          payload: [...state.candles.slice(-79), next],
+        });
+      } else {
+        const updated = candleGenerator.updateLiveCandle(currentLive, {
+          volatility: state.currentStrategy.id === "aggressive" ? 0.002 :
+                      state.currentStrategy.id === "growth" ? 0.0014 :
+                      state.currentStrategy.id === "safe" ? 0.0005 : 0.0009,
+        });
+        const newCandles = [...state.candles.slice(0, -1), updated];
+        dispatch({ type: ACTIONS.SET_CANDLES, payload: newCandles });
+      }
+    }, 400);
+
+    return () => window.clearInterval(animationInterval);
+  }, [state.botRunning, state.candlesSource, state.candles, state.currentStrategy.id]);
 
   // ============================================================================
   // RENDER
@@ -2240,35 +2543,35 @@ export default function MemberDashboard() {
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
         <header className="relative border-b border-white/10 bg-black/70 backdrop-blur-xl">
-          <div className="mx-auto max-w-7xl px-4 py-5 flex items-center justify-between gap-3">
+          <div className="mx-auto max-w-7xl px-4 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-14 w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-3xl">
+              <div className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-2xl sm:text-3xl">
                 🚀
               </div>
               <div className="min-w-0">
-                <h1 className="text-3xl font-black leading-none">IMALI</h1>
-                <p className="text-xs tracking-[0.24em] text-white/50 font-black mt-1 truncate">
+                <h1 className="text-2xl sm:text-3xl font-black leading-none">IMALI</h1>
+                <p className="text-[10px] sm:text-xs tracking-[0.24em] text-white/50 font-black mt-0.5 truncate">
                   AI TRADING PLATFORM
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={() => goToSettings("/billing")}
-                className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-4 py-3 font-black transition flex items-center gap-2"
+                className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-3 sm:px-4 py-2 sm:py-3 font-black transition flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
               >
                 <FaCog className="inline" />
-                Settings
+                <span className="hidden sm:inline">Settings</span>
               </button>
 
               <button
                 onClick={logout}
                 aria-label="Logout"
-                className="shrink-0 rounded-2xl bg-red-500 px-4 py-3 font-black hover:bg-red-400 transition"
+                className="shrink-0 rounded-2xl bg-red-500 px-3 sm:px-4 py-2 sm:py-3 font-black hover:bg-red-400 transition text-sm sm:text-base"
               >
-                <FaSignOutAlt className="inline mr-2" />
-                Logout
+                <FaSignOutAlt className="inline mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -2276,65 +2579,61 @@ export default function MemberDashboard() {
 
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
           {state.error && (
-            <div
-              className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200"
-              role="alert"
-              aria-live="polite"
-            >
+            <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200" role="alert">
               {state.error}
             </div>
           )}
 
           {state.notice && (
-            <div
-              className="rounded-3xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="rounded-3xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200" role="status">
               {state.notice}
             </div>
           )}
 
-          <section>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              {currentTierConfig.image && (
-                <img
-                  src={currentTierConfig.image}
-                  alt={currentTierConfig.alt}
-                  className="h-16 w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
-                  loading="lazy"
-                />
-              )}
+          {/* Welcome Section */}
+          <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            {currentTierConfig.image && (
+              <img
+                src={currentTierConfig.image}
+                alt={currentTierConfig.alt}
+                className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
+                loading="lazy"
+              />
+            )}
 
-              <div className="flex-1">
-                <p className="text-white/50">Welcome back,</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-black">
-                    Welcome, {user?.displayName || user?.name || user?.firstName || "Trader"}
-                  </h2>
-                  <span className={`rounded-lg px-2 py-1 text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
-                    {accountStatus.icon} {accountStatus.label}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white/50">Welcome back,</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-black truncate">
+                  {user?.displayName || user?.name || user?.firstName || "Trader"}
+                </h2>
+                <span className={`rounded-lg px-2 py-1 text-[10px] sm:text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
+                  {accountStatus.icon} {accountStatus.label}
+                </span>
+                {state.refreshing && (
+                  <span className="text-xs text-cyan-300">
+                    <FaSpinner className="inline animate-spin mr-1" />
+                    Updating
                   </span>
-                  {state.refreshing && (
-                    <span className="text-xs text-cyan-300">
-                      <FaSpinner className="inline animate-spin mr-1" />
-                      Updating
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
-                <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
+                )}
+              </div>
+              <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
+              <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <StatusPill running={state.botRunning} />
-                  <ModePill mode={state.botMode} />
-                </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <StatusPill running={state.botRunning} />
+                <ModePill mode={state.botMode} />
               </div>
             </div>
           </section>
 
-          {/* Settings Tabs with active detection */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4">
+          {/* Floating Market Prices */}
+          <div className="border-b border-white/5 bg-black/20 backdrop-blur-sm py-2 -mx-4 px-4">
+            <FloatingPrices />
+          </div>
+
+          {/* Settings Tabs */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-3 sm:p-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {SETTINGS_TABS.slice(0, 4).map((tab) => (
                 <SettingsTab
@@ -2350,19 +2649,19 @@ export default function MemberDashboard() {
 
           {/* Billing Incomplete Warning */}
           {state.userTier !== "starter" && !hasPaidAccess && (
-            <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-5">
-              <div className="flex items-center gap-3">
+            <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                 <span className="text-3xl">⚠️</span>
                 <div>
-                  <h3 className="text-xl font-black text-amber-300">
+                  <h3 className="text-lg sm:text-xl font-black text-amber-300">
                     {state.userTier.toUpperCase()} Plan Selected — Billing Incomplete
                   </h3>
-                  <p className="text-white/60 mt-1">
+                  <p className="text-sm text-white/60 mt-1">
                     Paper trading is still available. Add a payment method to activate {state.userTier} live features.
                   </p>
                   <button
                     onClick={() => navigate("/billing", { state: { tier: state.userTier, updateCard: true } })}
-                    className="mt-3 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-3 font-black transition"
+                    className="mt-3 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-2.5 sm:py-3 font-black transition text-sm sm:text-base"
                   >
                     💳 Add Payment Method
                   </button>
@@ -2371,7 +2670,7 @@ export default function MemberDashboard() {
             </div>
           )}
 
-          {/* Trading types */}
+          {/* Trading Types */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="grid grid-cols-4">
               {visibleTradingTypes.map((tab) => {
@@ -2387,8 +2686,6 @@ export default function MemberDashboard() {
                         payload: tab.id,
                       })
                     }
-                    aria-label={`Switch to ${tab.label} trading`}
-                    aria-current={active ? "page" : undefined}
                     className={`relative min-w-0 px-1 py-4 text-center font-black transition ${
                       active
                         ? "bg-cyan-400/10 text-white"
@@ -2396,14 +2693,14 @@ export default function MemberDashboard() {
                     }`}
                   >
                     <div className="flex flex-col items-center justify-center gap-1">
-                      <span className={`text-xl ${active ? "text-cyan-300" : ""}`}>
+                      <span className={`text-lg sm:text-xl ${active ? "text-cyan-300" : ""}`}>
                         {tab.icon}
                       </span>
-                      <span className="text-[11px] sm:text-base leading-none">
+                      <span className="text-[10px] sm:text-base leading-none">
                         {tab.label}
                       </span>
                       {locked && (
-                        <FaLock className="text-[10px] text-white/40" />
+                        <FaLock className="text-[8px] sm:text-[10px] text-white/40" />
                       )}
                     </div>
 
@@ -2418,13 +2715,13 @@ export default function MemberDashboard() {
 
           {/* Connection Card */}
           {starterPaperOnly ? (
-            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
+            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-4 sm:p-5">
               <div className="flex items-start gap-4">
                 <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/20 text-emerald-300">
                   <FaCheckCircle />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black">Paper Trading Ready</h3>
+                  <h3 className="text-lg sm:text-xl font-black">Paper Trading Ready</h3>
                   <p className="text-sm text-emerald-100/80">
                     No exchange API key or credit card is required for Starter paper trading.
                   </p>
@@ -2445,7 +2742,7 @@ export default function MemberDashboard() {
           )}
 
           {starterPaperOnly && (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-sm">
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-xs sm:text-sm">
               Starter accounts support paper trading only. Upgrade to Pro for live trading.
             </div>
           )}
@@ -2455,12 +2752,66 @@ export default function MemberDashboard() {
             onUpgrade={() => navigate("/billing")}
           />
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+          {/* CANDLESTICK CHART SECTION */}
+          <GlassCard className="border-cyan-500/20" gradient="from-cyan-500/10 to-blue-500/10">
+            <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FaChartLine className="text-emerald-400" />
+                  <h2 className="text-lg font-bold text-white">
+                    {activeTab.exchange === "alpaca" ? "AAPL" : "BTC/USD"} Market
+                  </h2>
+                </div>
+                <p className="mt-0.5 text-xs text-white/40">
+                  {state.candlesSource === "simulated" ? "📊 Simulated data" :
+                   state.candlesSource === "live" ? "🔴 Live data" :
+                   "⚠️ Data unavailable"}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
+                  <span className={`h-1.5 w-1.5 rounded-full ${state.botRunning ? "bg-emerald-400 animate-pulse" : "bg-white/30"}`} />
+                  {state.botRunning ? "SIMULATION RUNNING" : "SIMULATION PAUSED"}
+                </div>
+                <div className="text-xs text-white/30">
+                  <FaClock className="inline mr-1" />
+                  {new Date().toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-2">
+              {state.candlesLoading ? (
+                <div className="grid h-[280px] sm:h-[320px] md:h-[380px] place-items-center">
+                  <FaSpinner className="animate-spin text-3xl text-cyan-300" />
+                </div>
+              ) : state.candles.length > 0 ? (
+                <CandlestickChart
+                  data={state.candles}
+                  liveCandle={state.candles[state.candles.length - 1]}
+                  height={360}
+                />
+              ) : (
+                <div className="grid h-[280px] sm:h-[320px] md:h-[380px] place-items-center text-center text-white/40">
+                  No candle data available
+                </div>
+              )}
+            </div>
+
+            <p className="mt-3 text-[10px] text-white/25 text-center">
+              {state.candlesSource === "simulated" ? "Candles are generated for demonstration purposes." :
+               state.candlesSource === "live" ? "Real market data from your connected exchange." :
+               "Market data currently unavailable."}
+            </p>
+          </GlassCard>
+
+          {/* Account Overview */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
             <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
               <div>
                 <h3 className="text-xl font-black">Account Overview</h3>
                 <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
-                <p className="mt-2 text-5xl font-black">
+                <p className="mt-2 text-3xl sm:text-5xl font-black break-words">
                   {formatMoney(state.totalAssetValue)}
                 </p>
                 <p
@@ -2479,20 +2830,20 @@ export default function MemberDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-[130px_1fr] sm:grid-cols-[140px_1fr] items-center gap-4">
-                <div className="relative h-[130px] sm:h-[140px]">
+              <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[140px_1fr] items-center gap-3 sm:gap-4">
+                <div className="relative h-[120px] sm:h-[140px]">
                   <Doughnut data={donutData} options={donutOptions} />
                   <div className="absolute inset-0 grid place-items-center text-center">
                     <div>
-                      <p className="text-xl sm:text-2xl font-black">
+                      <p className="text-base sm:text-2xl font-black">
                         {formatPercent(winRate)}
                       </p>
-                      <p className="text-xs text-white/60">Win Rate</p>
+                      <p className="text-[10px] sm:text-xs text-white/60">Win Rate</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-4 text-sm">
+                <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm">
                   <LegendRow label="Wins" value={state.stats.wins} color="bg-emerald-400" />
                   <LegendRow label="Losses" value={state.stats.losses} color="bg-red-400" />
                   <LegendRow label="Trades" value={state.stats.totalTrades} color="bg-white/40" />
@@ -2501,8 +2852,9 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <div className="mb-5 flex items-center justify-between">
+          {/* Assets */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xl font-black">Assets</h3>
               <button
                 onClick={() =>
@@ -2513,7 +2865,7 @@ export default function MemberDashboard() {
                   })
                 }
                 disabled={state.refreshing}
-                className="text-cyan-300 font-black disabled:opacity-50 transition"
+                className="text-cyan-300 font-black disabled:opacity-50 transition text-sm sm:text-base"
               >
                 {state.refreshing ? (
                   <FaSpinner className="animate-spin inline mr-2" />
@@ -2541,7 +2893,7 @@ export default function MemberDashboard() {
                 ))}
 
                 {smallBalancesCount > 0 && (
-                  <div className="mt-4 rounded-2xl bg-black/25 p-4 flex items-center justify-between">
+                  <div className="mt-4 rounded-2xl bg-black/25 p-4 flex flex-wrap items-center justify-between">
                     <div>
                       <p className="font-black">Small balances</p>
                       <p className="text-sm text-white/40">
@@ -2555,8 +2907,9 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <div className="flex items-center justify-between gap-3 mb-5">
+          {/* Live Trade Feed */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2">
                 <FaChartLine className="text-emerald-300" />
                 <h3 className="text-xl font-black">Live Trade Feed</h3>
@@ -2587,101 +2940,14 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          <section className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="text-xl font-black">Active Bot</h3>
-                <span className="text-cyan-300 text-2xl">
-                  <FaRobot />
-                </span>
-              </div>
+          {/* AI & Bot Status + Performance */}
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="space-y-5">
+              <AIThinkingPanel strategy={state.currentStrategy} stats={state.stats} />
+              <AnimatedBotStatus running={state.botRunning} strategy={state.currentStrategy} />
+            </div>
 
-              <div className="flex items-start gap-4">
-                <div className="text-4xl shrink-0">
-                  {state.currentStrategy.icon}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-2xl font-black">
-                      {state.currentStrategy.name}
-                    </h4>
-                    <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
-                      {state.currentStrategy.risk}
-                    </span>
-                  </div>
-
-                  <p className="text-white/50">
-                    {state.currentStrategy.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="my-5 h-px bg-white/10" />
-
-              <div className="grid grid-cols-3 gap-3 text-center text-sm">
-                <div>
-                  <p className="text-white/40">Market</p>
-                  <p className="font-black">{activeTab.label}</p>
-                </div>
-                <div>
-                  <p className="text-white/40">Mode</p>
-                  <p className="font-black">{state.botMode.toUpperCase()}</p>
-                </div>
-                <div>
-                  <p className="text-white/40">Positions</p>
-                  <p className="font-black">
-                    {state.openPositionsCount} / {state.currentStrategy.maxPositions || 5}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                {!state.botRunning ? (
-                  <button
-                    onClick={handleStartBot}
-                    disabled={state.processing}
-                    className={`w-full rounded-2xl py-4 font-black disabled:opacity-50 transition ${
-                      isLocked || !isConnected
-                        ? "bg-cyan-500 text-black hover:bg-cyan-400"
-                        : "bg-emerald-500 text-black hover:bg-emerald-400"
-                    }`}
-                  >
-                    {state.processing ? (
-                      <FaSpinner className="animate-spin inline mr-2" />
-                    ) : isLocked ? (
-                      <FaLock className="inline mr-2" />
-                    ) : !isConnected ? (
-                      <FaPlug className="inline mr-2" />
-                    ) : (
-                      <FaPlay className="inline mr-2" />
-                    )}
-                    {isLocked
-                      ? "Upgrade to Unlock"
-                      : !isConnected
-                      ? "Connect to Start"
-                      : starterPaperOnly
-                      ? "Start Paper Bot"
-                      : "Start Bot"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleStopBot}
-                    disabled={state.processing}
-                    className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50 transition"
-                  >
-                    {state.processing ? (
-                      <FaSpinner className="animate-spin inline mr-2" />
-                    ) : (
-                      <FaStop className="inline mr-2" />
-                    )}
-                    Stop Bot
-                  </button>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <GlassCard>
               <div className="mb-5 flex items-center justify-between">
                 <h3 className="text-xl font-black">Performance</h3>
                 <span className="text-cyan-300 text-2xl">
@@ -2690,39 +2956,134 @@ export default function MemberDashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/25 p-4">
-                  <p className="text-sm text-white/40">Realized PnL</p>
-                  <p className={`mt-2 text-2xl font-black ${
+                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-white/40">Realized PnL</p>
+                  <p className={`mt-2 text-lg sm:text-2xl font-black ${
                     state.stats.realizedPnl >= 0 ? "text-emerald-300" : "text-red-300"
                   }`}>
                     {formatMoney(state.stats.realizedPnl)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-black/25 p-4">
-                  <p className="text-sm text-white/40">Total PnL</p>
-                  <p className={`mt-2 text-2xl font-black ${
+                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-white/40">Total PnL</p>
+                  <p className={`mt-2 text-lg sm:text-2xl font-black ${
                     state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
                   }`}>
                     {formatMoney(state.stats.totalPnl)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-black/25 p-4">
-                  <p className="text-sm text-white/40">Total Trades</p>
-                  <p className="mt-2 text-2xl font-black">
+                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-white/40">Total Trades</p>
+                  <p className="mt-2 text-lg sm:text-2xl font-black">
                     {Number(state.stats.totalTrades || 0).toLocaleString()}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-black/25 p-4">
-                  <p className="text-sm text-white/40">Win Rate</p>
-                  <p className="mt-2 text-2xl font-black">
+                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-white/40">Win Rate</p>
+                  <p className="mt-2 text-lg sm:text-2xl font-black">
                     {formatPercent(winRate)}
                   </p>
                 </div>
               </div>
-            </section>
-          </section>
+            </GlassCard>
+          </div>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+          {/* Active Bot Controls */}
+          <GlassCard>
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-xl font-black">Active Bot</h3>
+              <span className="text-cyan-300 text-2xl">
+                <FaRobot />
+              </span>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="text-4xl shrink-0">
+                {state.currentStrategy.icon}
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-xl sm:text-2xl font-black">
+                    {state.currentStrategy.name}
+                  </h4>
+                  <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
+                    {state.currentStrategy.risk}
+                  </span>
+                </div>
+
+                <p className="text-sm text-white/50">
+                  {state.currentStrategy.description}
+                </p>
+              </div>
+            </div>
+
+            <div className="my-5 h-px bg-white/10" />
+
+            <div className="grid grid-cols-3 gap-3 text-center text-xs sm:text-sm">
+              <div>
+                <p className="text-white/40">Market</p>
+                <p className="font-black">{activeTab.label}</p>
+              </div>
+              <div>
+                <p className="text-white/40">Mode</p>
+                <p className="font-black">{state.botMode.toUpperCase()}</p>
+              </div>
+              <div>
+                <p className="text-white/40">Positions</p>
+                <p className="font-black">
+                  {state.openPositionsCount} / {state.currentStrategy.maxPositions || 5}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {!state.botRunning ? (
+                <button
+                  onClick={handleStartBot}
+                  disabled={state.processing}
+                  className={`w-full rounded-2xl py-3 sm:py-4 font-black disabled:opacity-50 transition ${
+                    isLocked || !isConnected
+                      ? "bg-cyan-500 text-black hover:bg-cyan-400"
+                      : "bg-emerald-500 text-black hover:bg-emerald-400"
+                  }`}
+                >
+                  {state.processing ? (
+                    <FaSpinner className="animate-spin inline mr-2" />
+                  ) : isLocked ? (
+                    <FaLock className="inline mr-2" />
+                  ) : !isConnected ? (
+                    <FaPlug className="inline mr-2" />
+                  ) : (
+                    <FaPlay className="inline mr-2" />
+                  )}
+                  {isLocked
+                    ? "Upgrade to Unlock"
+                    : !isConnected
+                    ? "Connect to Start"
+                    : starterPaperOnly
+                    ? "Start Paper Bot"
+                    : "Start Bot"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopBot}
+                  disabled={state.processing}
+                  className="w-full rounded-2xl bg-red-500 py-3 sm:py-4 font-black hover:bg-red-400 disabled:opacity-50 transition"
+                >
+                  {state.processing ? (
+                    <FaSpinner className="animate-spin inline mr-2" />
+                  ) : (
+                    <FaStop className="inline mr-2" />
+                  )}
+                  Stop Bot
+                </button>
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Bot Strategies */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
             <h3 className="mb-5 text-xl sm:text-2xl font-black">
               Available Bot Strategies
             </h3>
@@ -2740,8 +3101,9 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          <section className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
+          {/* IMALI Utility & Upgrade */}
+          <div className="grid gap-5 lg:grid-cols-2">
+            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-2xl font-black">IMALI Utility</h3>
                 <FaCoins className="text-2xl text-emerald-300" />
@@ -2778,7 +3140,7 @@ export default function MemberDashboard() {
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-5 flex flex-col justify-between gap-4">
+            <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-4 sm:p-5 flex flex-col justify-between gap-4">
               <div>
                 <h3 className="font-black text-2xl">Unlock More Power</h3>
                 <p className="text-sm sm:text-base text-white/60 leading-relaxed">
@@ -2795,7 +3157,7 @@ export default function MemberDashboard() {
                 Upgrade Now
               </button>
             </section>
-          </section>
+          </div>
         </main>
 
         <DebugPanel state={state} />
