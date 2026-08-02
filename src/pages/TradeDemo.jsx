@@ -1,4 +1,4 @@
-// src/pages/TradeDemo.jsx - MODERN FIN TECH REWRITE
+// src/pages/TradeDemo.jsx - MODERN FIN TECH REWRITE (Mobile-Responsive)
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -84,7 +84,7 @@ const ASSETS = [
 const GlassCard = ({ children, className = "", gradient = "from-emerald-500/10 to-cyan-500/10" }) => (
   <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
     <div className="absolute inset-0 bg-white/5 backdrop-blur-sm" />
-    <div className="relative z-10">{children}</div>
+    <div className="relative z-10 p-4 sm:p-5">{children}</div>
   </div>
 );
 
@@ -92,7 +92,7 @@ function formatMoney(value) {
   return `$${Number(value).toFixed(2)}`;
 }
 
-// AI Thinking Panel
+// AI Thinking Panel (enhanced for demo)
 const AIThinkingPanel = ({ confidence, strategy }) => {
   const [signal, setSignal] = useState({
     regime: "Bullish",
@@ -115,7 +115,7 @@ const AIThinkingPanel = ({ confidence, strategy }) => {
   }, []);
 
   return (
-    <GlassCard className="p-5">
+    <GlassCard className="border-cyan-500/20" gradient="from-cyan-500/10 to-blue-500/10">
       <div className="flex items-center gap-3 mb-4">
         <FaBrain className="text-cyan-400 text-xl" />
         <h3 className="text-lg font-bold text-white">AI Analysis</h3>
@@ -124,14 +124,14 @@ const AIThinkingPanel = ({ confidence, strategy }) => {
       
       <div className="space-y-3">
         <div className="flex justify-between items-center p-2 rounded-xl bg-white/5">
-          <span className="text-white/60 text-sm">Market Regime</span>
-          <span className={`font-bold ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
+          <span className="text-white/60 text-xs sm:text-sm">Market Regime</span>
+          <span className={`font-bold text-sm sm:text-base ${signal.regime === 'Bullish' ? 'text-emerald-400' : signal.regime === 'Bearish' ? 'text-red-400' : 'text-yellow-400'}`}>
             {signal.regime}
           </span>
         </div>
         
         <div>
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-xs sm:text-sm">
             <span className="text-white/60">Confidence</span>
             <span className="text-white font-bold">{signal.confidence}%</span>
           </div>
@@ -164,12 +164,12 @@ const AIThinkingPanel = ({ confidence, strategy }) => {
         </div>
         
         <div className="flex justify-between items-center pt-2 border-t border-white/10">
-          <span className="text-white/60 text-sm">Decision</span>
+          <span className="text-white/60 text-xs sm:text-sm">Decision</span>
           <motion.span
             key={signal.decision}
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
-            className={`font-bold px-3 py-1 rounded-full text-xs ${
+            className={`font-bold px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs ${
               signal.decision === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' :
               signal.decision === 'SHORT' ? 'bg-red-500/20 text-red-400' :
               'bg-yellow-500/20 text-yellow-400'
@@ -183,7 +183,7 @@ const AIThinkingPanel = ({ confidence, strategy }) => {
   );
 };
 
-// Animated Bot Status
+// Animated Bot Status (enhanced)
 const AnimatedBotStatus = ({ running, strategy }) => {
   const [status, setStatus] = useState({
     scanning: "BTC",
@@ -210,7 +210,7 @@ const AnimatedBotStatus = ({ running, strategy }) => {
   }, [running]);
 
   return (
-    <GlassCard className="p-5">
+    <GlassCard className="border-emerald-500/20" gradient="from-emerald-500/10 to-cyan-500/10">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <FaRobot className="text-emerald-400 text-lg" />
@@ -257,7 +257,7 @@ const AnimatedBotStatus = ({ running, strategy }) => {
   );
 };
 
-// Floating Market Prices
+// Floating Market Prices (reusable)
 const FloatingPrices = () => {
   const prices = [
     { symbol: "BTC", price: 67420, change: "+2.4%" },
@@ -289,10 +289,10 @@ const FloatingPrices = () => {
   );
 };
 
-// Strategy Heatmap
+// Strategy Heatmap (reusable)
 const StrategyHeatmap = ({ strategy, onSelect, running }) => {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {STRATEGIES.map((s) => (
         <button
           key={s.id}
@@ -364,7 +364,7 @@ const AnimatedTradeFeed = ({ trades = [], running }) => {
   }, [running]);
 
   return (
-    <GlassCard className="p-5 max-h-[420px] overflow-y-auto">
+    <GlassCard className="max-h-[420px] overflow-y-auto">
       <div className="flex items-center gap-2 mb-4 sticky top-0 bg-black/50 backdrop-blur py-2 -mt-2 -mx-2 px-3 rounded-t-2xl">
         <FaChartLine className="text-emerald-400 text-lg" />
         <h3 className="text-sm font-bold text-white">Live Trade Feed</h3>
@@ -387,9 +387,9 @@ const AnimatedTradeFeed = ({ trades = [], running }) => {
               exit={{ opacity: 0, x: 20 }}
               className="mb-2 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition"
             >
-              <div className="flex justify-between items-start">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] text-white/30">{trade.time}</span>
                     <span className="font-bold text-sm text-white">{trade.asset}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -401,7 +401,7 @@ const AnimatedTradeFeed = ({ trades = [], running }) => {
                       {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)}
                     </span>
                   </div>
-                  <div className="flex gap-2 mt-1 text-[10px]">
+                  <div className="flex flex-wrap gap-2 mt-1 text-[10px]">
                     <span className="text-white/30">Entry: <span className="text-white/60">{trade.entry}</span></span>
                     <span className="text-white/30">Target: <span className="text-emerald-400/60">{trade.target}</span></span>
                     <span className="text-white/30">Stop: <span className="text-red-400/60">{trade.stop}</span></span>
@@ -539,7 +539,6 @@ export default function TradeDemo() {
     candleTicksRef.current = 0;
   };
 
-  // Show demo prompt after some demo usage
   useEffect(() => {
     if (totalTrades > 10 && !showDemoPrompt && !user?.trading_enabled) {
       setShowDemoPrompt(true);
@@ -584,18 +583,18 @@ export default function TradeDemo() {
                 AI Trading Simulator
               </div>
 
-              <h1 className="text-4xl md:text-5xl font-extrabold mt-5 leading-tight text-white">
+              <h1 className="text-3xl md:text-5xl font-extrabold mt-5 leading-tight text-white">
                 Learn AI Trading <span className="text-emerald-400">Risk-Free</span>
               </h1>
 
-              <p className="text-slate-300 mt-5 text-lg leading-8">
+              <p className="text-slate-300 mt-5 text-base md:text-lg leading-8">
                 Experience IMALI with a <span className="text-emerald-400 font-bold">$1,000 virtual account</span> before connecting a real exchange.
               </p>
 
               <div className="flex flex-wrap gap-3 mt-7">
                 <button
                   onClick={() => setRunning((prev) => !prev)}
-                  className={`rounded-2xl px-6 py-3 font-bold flex items-center gap-2 transition ${
+                  className={`rounded-2xl px-5 md:px-6 py-3 font-bold flex items-center gap-2 transition text-sm md:text-base ${
                     running ? "bg-red-600 hover:bg-red-500" : "bg-emerald-600 hover:bg-emerald-500"
                   }`}
                 >
@@ -605,7 +604,7 @@ export default function TradeDemo() {
 
                 <button
                   onClick={resetDemo}
-                  className="rounded-2xl px-6 py-3 font-bold bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-2"
+                  className="rounded-2xl px-5 md:px-6 py-3 font-bold bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-2 text-sm md:text-base"
                 >
                   <FaRedo />
                   Reset
@@ -613,7 +612,7 @@ export default function TradeDemo() {
 
                 <button
                   onClick={() => navigate("/pricing")}
-                  className="rounded-2xl px-6 py-3 font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 flex items-center gap-2"
+                  className="rounded-2xl px-5 md:px-6 py-3 font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 flex items-center gap-2 text-sm md:text-base"
                 >
                   <FaCrown />
                   Upgrade to Live
@@ -639,7 +638,7 @@ export default function TradeDemo() {
             <div className="w-full max-w-sm">
               <div className="rounded-3xl bg-black/40 border border-white/10 p-6">
                 <div className="text-sm text-white/50">Demo Account Balance</div>
-                <div className={`text-5xl font-extrabold mt-2 ${balance >= START_BALANCE ? "text-emerald-400" : "text-red-400"}`}>
+                <div className={`text-4xl md:text-5xl font-extrabold mt-2 ${balance >= START_BALANCE ? "text-emerald-400" : "text-red-400"}`}>
                   <CountUp end={balance} duration={1} decimals={2} prefix="$" />
                 </div>
                 <div className="mt-4 flex items-center justify-between">
@@ -680,7 +679,7 @@ export default function TradeDemo() {
         </div>
 
         {/* CANDLESTICK CHART SECTION */}
-        <GlassCard className="p-5 overflow-hidden">
+        <GlassCard className="overflow-hidden">
           <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <div className="flex items-center gap-2">
@@ -704,7 +703,7 @@ export default function TradeDemo() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/30 p-2">
-            <CandlestickChart data={candles} liveCandle={liveCandle} height={380} />
+            <CandlestickChart data={candles} liveCandle={liveCandle} height={320} />
           </div>
 
           <p className="mt-3 text-[10px] text-white/25 text-center">
@@ -736,7 +735,7 @@ export default function TradeDemo() {
             { label: "Wins", value: wins, color: "text-emerald-400" },
             { label: "Losses", value: losses, color: "text-red-400" },
           ].map((stat, idx) => (
-            <GlassCard key={idx} className="p-4 text-center">
+            <GlassCard key={idx} className="text-center">
               <div className={`text-2xl font-bold ${stat.color}`}>
                 <CountUp end={typeof stat.value === 'number' ? stat.value : parseFloat(stat.value) || 0} duration={1.5} />
                 {typeof stat.value === 'string' && stat.value.includes('%') ? '%' : ''}
@@ -782,7 +781,7 @@ export default function TradeDemo() {
             )}
 
             {/* Access Plans */}
-            <GlassCard className="p-5">
+            <GlassCard className="border-amber-500/20">
               <div className="flex items-center gap-2 mb-3">
                 <FaTrophy className="text-yellow-300" />
                 <h3 className="font-bold text-white">Access Plans</h3>
@@ -810,21 +809,21 @@ export default function TradeDemo() {
         </div>
 
         {/* FINAL CTA */}
-        <div className="rounded-3xl border border-emerald-500/20 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 p-8 text-center backdrop-blur">
+        <div className="rounded-3xl border border-emerald-500/20 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 p-6 md:p-8 text-center backdrop-blur">
           <div className="text-5xl mb-4">🚀</div>
-          <h2 className="text-3xl font-extrabold text-white">Ready to trade with your own account?</h2>
-          <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-8">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-white">Ready to trade with your own account?</h2>
+          <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-8 text-sm md:text-base">
             Upgrade to Pro for live trading, connect OKX, Alpaca, or MetaMask, and start live trading.
             <span className="block text-emerald-400 mt-2">You keep 100% of your profits. No hidden fees.</span>
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-8">
-            <button onClick={() => navigate("/pricing")} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-8 py-4 font-bold transition">
+            <button onClick={() => navigate("/pricing")} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-6 md:px-8 py-3 md:py-4 font-bold transition text-sm md:text-base">
               Upgrade to Live Trading →
             </button>
-            <button onClick={() => navigate("/enterprise")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-8 py-4 font-bold transition">
+            <button onClick={() => navigate("/enterprise")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-6 md:px-8 py-3 md:py-4 font-bold transition text-sm md:text-base">
               View Enterprise Overview
             </button>
-            <button onClick={() => navigate("/activation")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-8 py-4 font-bold transition">
+            <button onClick={() => navigate("/activation")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-6 md:px-8 py-3 md:py-4 font-bold transition text-sm md:text-base">
               Continue Setup Later
             </button>
           </div>
