@@ -1,21 +1,19 @@
 // src/components/Dashboard/MemberDashboard.jsx
-// LIVE-ONLY, MOBILE-FIRST MEMBER DASHBOARD
+// PRODUCTION-READY IMALI Member Dashboard v2.1
+// FIXED: subscription status fetched from API, improved initial load order, correct access control
 
 import React, {
-  memo,
   useCallback,
   useEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  memo,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import CountUp from "react-countup";
-import { Toaster } from "react-hot-toast";
-import { Doughnut } from "react-chartjs-2";
-import { ArcElement, Chart as ChartJS, Tooltip } from "chart.js";
+import { useAuth } from "../../context/AuthContext";
+import BotAPI from "../../utils/BotAPI";
 import {
   FaApple,
   FaArrowRight,
@@ -24,31 +22,29 @@ import {
   FaCheckCircle,
   FaCircle,
   FaCoins,
-  FaCog,
-  FaCreditCard,
   FaCrown,
-  FaExchangeAlt,
   FaExclamationTriangle,
-  FaKey,
   FaLock,
   FaPlay,
   FaPlug,
   FaRedo,
   FaRobot,
-  FaShieldAlt,
   FaSignOutAlt,
   FaSpinner,
   FaStop,
   FaSyncAlt,
-  FaUsers,
-  FaWallet,
   FaWater,
+  FaBug,
+  FaCog,
+  FaCreditCard,
+  FaKey,
+  FaWallet,
+  FaExchangeAlt,
+  FaShieldAlt,
+  FaBell,
 } from "react-icons/fa";
-
-import { useAuth } from "../../context/AuthContext";
-import BotAPI from "../../utils/BotAPI";
-import AIThinkingPanel from "./AIThinkingPanel";
-import CandlestickChart from "../charts/CandlestickChart";
+import { Doughnut } from "react-chartjs-2";
+import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
@@ -56,11 +52,17 @@ import nftElite from "../../assets/images/nfts/nft-elite.png";
 
 ChartJS.register(ArcElement, Tooltip);
 
+// ============================================================================
+// CONSTANTS & CONFIGURATION
+// ============================================================================
+
 const POLL_INTERVALS = {
-  BOT_STATUS: 5000,
-  BALANCES: 15000,
-  TRADES: 10000,
-  CANDLES: 30000,
+  BOT_STATUS: 3000,
+  BALANCES: 10000,
+  TRADES: 5000,
+  STRATEGIES: 0,
+  PROFILE: 0,
+  BILLING: 0,
 };
 
 const API_RETRY_COUNT = 2;
@@ -77,22 +79,30 @@ const TIER_CONFIG = {
   starter: {
     name: "Starter",
     image: nftStarter,
-    alt: "Starter membership",
+    alt: "Starter NFT - Free tier access",
+    color: "from-emerald-500/20 to-teal-500/10",
+    borderColor: "border-emerald-500/30",
   },
   pro: {
     name: "Pro",
     image: nftPro,
-    alt: "Pro membership",
+    alt: "Pro NFT - Professional trading tier",
+    color: "from-blue-600/20 to-indigo-500/10",
+    borderColor: "border-blue-500/30",
   },
   elite: {
     name: "Elite",
     image: nftElite,
-    alt: "Elite membership",
+    alt: "Elite NFT - Advanced trading tier",
+    color: "from-purple-600/20 to-pink-500/10",
+    borderColor: "border-purple-500/30",
   },
   enterprise: {
     name: "Enterprise",
     image: null,
-    alt: "Enterprise membership",
+    alt: "Enterprise - Custom solutions",
+    color: "from-indigo-600/20 to-purple-500/10",
+    borderColor: "border-indigo-500/30",
   },
 };
 
@@ -105,21 +115,9 @@ const TRADING_TYPES = [
     exchange: "okx",
     connectionKey: "okx",
     connectionLabel: "OKX API",
-    minTier: "pro",
+    minTier: "starter",
+    paperOnlyStarter: true,
     connectRoute: "/connect-okx",
-    upgradeMessage: "Unlock Crypto Trading",
-  },
-  {
-    id: "stocks",
-    categoryId: "stocks",
-    label: "Stocks",
-    icon: <FaApple />,
-    exchange: "alpaca",
-    connectionKey: "alpaca",
-    connectionLabel: "Alpaca API",
-    minTier: "pro",
-    connectRoute: "/connect-alpaca",
-    upgradeMessage: "Unlock Stock Trading",
   },
   {
     id: "futures",
@@ -131,7 +129,6 @@ const TRADING_TYPES = [
     connectionLabel: "OKX Futures API",
     minTier: "elite",
     connectRoute: "/connect-okx",
-    upgradeMessage: "Unlock Futures Trading",
   },
   {
     id: "dex",
@@ -140,10 +137,20 @@ const TRADING_TYPES = [
     icon: <FaWater />,
     exchange: "wallet",
     connectionKey: "wallet",
-    connectionLabel: "Wallet / DEX",
+    connectionLabel: "Wallet / DEX Bot",
     minTier: "elite",
     connectRoute: "/connect-wallet",
-    upgradeMessage: "Unlock DEX Trading",
+  },
+  {
+    id: "stocks",
+    categoryId: "stocks",
+    label: "Stocks",
+    icon: <FaApple />,
+    exchange: "alpaca",
+    connectionKey: "alpaca",
+    connectionLabel: "Alpaca API",
+    minTier: "pro",
+    connectRoute: "/connect-alpaca",
   },
 ];
 
@@ -152,8 +159,8 @@ const FALLBACK_STRATEGIES = [
     id: "mean_reversion",
     name: "Conservative",
     icon: "🛡️",
-    risk: "Lower Risk",
-    description: "Uses stricter entry rules and fewer positions.",
+    risk: "Low Risk",
+    description: "Slow, steady trades focused on consistency.",
     maxPositions: 3,
     tradePct: 0.1,
     takeProfitPct: 0.025,
@@ -163,8 +170,8 @@ const FALLBACK_STRATEGIES = [
     id: "ai_weighted",
     name: "Balanced AI",
     icon: "🤖",
-    risk: "Moderate Risk",
-    description: "Balances technical signals, confidence, and risk.",
+    risk: "Medium Risk",
+    description: "AI-assisted balance between safety and opportunity.",
     recommended: true,
     maxPositions: 5,
     tradePct: 0.12,
@@ -176,7 +183,7 @@ const FALLBACK_STRATEGIES = [
     name: "Growth",
     icon: "📈",
     risk: "Higher Risk",
-    description: "Looks for stronger market momentum and trend continuation.",
+    description: "Looks for stronger market movement.",
     maxPositions: 6,
     tradePct: 0.14,
     takeProfitPct: 0.025,
@@ -187,7 +194,7 @@ const FALLBACK_STRATEGIES = [
     name: "Aggressive",
     icon: "🔥",
     risk: "High Risk",
-    description: "Uses broader entry criteria and higher trade frequency.",
+    description: "Fast, high-volatility opportunities.",
     maxPositions: 8,
     tradePct: 0.15,
     takeProfitPct: 0.025,
@@ -197,10 +204,11 @@ const FALLBACK_STRATEGIES = [
 
 const SETTINGS_TABS = [
   { id: "billing", icon: <FaCreditCard />, label: "Billing", route: "/billing" },
-  { id: "trading", icon: <FaPlug />, label: "Trading", route: "/connect-okx" },
+  { id: "trading", icon: <FaPlug />, label: "Trading Accounts", route: "/connect-okx" },
   { id: "wallets", icon: <FaWallet />, label: "Wallets", route: "/connect-wallet" },
   { id: "activation", icon: <FaExchangeAlt />, label: "Activation", route: "/activation" },
   { id: "security", icon: <FaShieldAlt />, label: "Security", route: "/settings/security" },
+  { id: "notifications", icon: <FaBell />, label: "Notifications", route: "/settings/notifications" },
   { id: "api", icon: <FaKey />, label: "API Keys", route: "/settings/api" },
   { id: "automation", icon: <FaRobot />, label: "Automation", route: "/settings/automation" },
 ];
@@ -208,18 +216,32 @@ const SETTINGS_TABS = [
 const ASSET_NAMES = {
   USD: "Cash",
   USDT: "Tether",
+  FIL: "Filecoin",
+  XRP: "XRP",
+  ICP: "Internet Computer",
+  ETC: "Ethereum Classic",
+  NEAR: "NEAR Protocol",
+  INJ: "Injective",
   BTC: "Bitcoin",
   ETH: "Ethereum",
   SOL: "Solana",
-  XRP: "XRP",
   DOGE: "Dogecoin",
-  LINK: "Chainlink",
+  DOT: "Polkadot",
+  UNI: "Uniswap",
+  ATOM: "Cosmos",
   AVAX: "Avalanche",
+  LINK: "Chainlink",
+  MATIC: "Polygon",
+  POL: "Polygon",
   AAPL: "Apple",
   TSLA: "Tesla",
   NVDA: "NVIDIA",
   MSFT: "Microsoft",
 };
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 
 const num = (value) => {
   const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
@@ -228,6 +250,8 @@ const num = (value) => {
 
 const unwrapData = (res) => res?.data || res || {};
 const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
+const normalizeMode = (mode) =>
+  String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
 const formatMoney = (value) => `$${num(value).toFixed(2)}`;
 const formatPercent = (value) => `${num(value).toFixed(1)}%`;
 
@@ -238,161 +262,148 @@ const hasTierAccess = (userTier, minTier) =>
 const fetchWithRetry = async (
   fn,
   retries = API_RETRY_COUNT,
-  delay = API_RETRY_DELAY_MS
+  delay = API_RETRY_DELAY_MS,
+  signal = null
 ) => {
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  for (let i = 0; i <= retries; i += 1) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+
     try {
       return await fn();
-    } catch (error) {
-      if (attempt === retries) throw error;
-      await new Promise((resolve) =>
-        window.setTimeout(resolve, delay * (attempt + 1))
-      );
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
     }
   }
-
-  throw new Error("Request failed.");
+  throw new Error("Max retries exceeded");
 };
 
 const getAssetIcon = (symbol) => {
-  const value = String(symbol || "").toUpperCase();
-
-  if (value === "USD") return "💵";
-  if (value === "USDT") return "₮";
-  if (value === "BTC") return "₿";
-  if (value === "ETH") return "◆";
-  if (value === "SOL") return "◎";
-  if (value === "DOGE") return "Ð";
-
-  return value.slice(0, 2);
+  const s = String(symbol || "").toUpperCase();
+  if (s === "USD") return "💵";
+  if (s === "USDT") return "₮";
+  if (s === "BTC") return "₿";
+  if (s === "ETH" || s === "ETC") return "◆";
+  if (s === "FIL") return "ƒ";
+  if (s === "XRP") return "✕";
+  if (s === "ICP") return "∞";
+  if (s === "DOGE") return "Ð";
+  return s.slice(0, 2);
 };
 
-// ==============================
-// Mobile‑first GlassCard
-// ==============================
-const GlassCard = ({
-  children,
-  className = "",
-  contentClassName = "p-4 sm:p-5 md:p-6",
-  gradient = "from-white/5 to-white/5",
-}) => (
-  <div
-    className={`relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${gradient} shadow-xl backdrop-blur-xl ${className}`}
-  >
-    <div className="absolute inset-0 bg-white/[0.03]" />
-    <div className={`relative z-10 ${contentClassName}`}>{children}</div>
-  </div>
-);
+const getStockIcon = (symbol) => {
+  const s = String(symbol || "").toUpperCase();
+  if (s === "AAPL") return "🍎";
+  if (s === "TSLA") return "⚡";
+  if (s === "NVDA") return "💚";
+  if (s === "MSFT") return "🪟";
+  if (s === "BTC") return "₿";
+  if (s === "ETH") return "◆";
+  if (s === "SOL") return "◎";
+  return s.slice(0, 2);
+};
 
-// ==============================
-// Sub‑components (mobile‑optimized)
-// ==============================
+// ============================================================================
+// MEMOIZED SUBCOMPONENTS
+// ============================================================================
+
 const MiniBox = memo(({ label, value }) => (
-  <div className="rounded-xl border border-white/10 bg-black/20 p-2 text-center sm:p-3">
-    <p className="text-[10px] text-white/40 sm:text-xs">{label}</p>
-    <p className="mt-1 break-words text-xs font-black text-white sm:text-sm md:text-base">
-      {value}
-    </p>
+  <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
+    <p className="text-xs sm:text-sm text-white/40">{label}</p>
+    <p className="mt-2 font-black text-sm sm:text-base">{value}</p>
   </div>
 ));
+MiniBox.displayName = "MiniBox";
 
-const StatusPill = memo(({ running }) => (
-  <div
-    className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-widest sm:px-4 sm:py-2 sm:text-xs ${
-      running
-        ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-        : "border-white/10 bg-white/10 text-white/50"
-    }`}
-  >
-    <FaCircle
-      className={`mr-1.5 inline h-1.5 w-1.5 sm:mr-2 sm:h-2 sm:w-2 ${
-        running ? "text-emerald-300" : "text-white/40"
-      }`}
-    />
-    {running ? "BOT RUNNING" : "BOT OFF"}
+const LegendRow = memo(({ label, value, color }) => (
+  <div className="flex items-center justify-between gap-3">
+    <div className="flex items-center gap-2 text-white/60">
+      <span className={`h-3 w-3 rounded-full ${color}`} />
+      {label}
+    </div>
+    <strong>{value}</strong>
   </div>
 ));
-
-const LivePill = memo(() => (
-  <div className="rounded-full border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-[10px] font-black tracking-widest text-red-300 sm:px-4 sm:py-2 sm:text-xs">
-    🔴 LIVE TRADING
-  </div>
-));
+LegendRow.displayName = "LegendRow";
 
 const AssetRow = memo(({ asset, total }) => {
-  const percentage = total > 0 ? (num(asset.value) / total) * 100 : 0;
+  const pct = total > 0 ? (num(asset.value) / total) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-[36px_1fr_auto] items-center gap-2 rounded-xl p-2 transition hover:bg-white/5 sm:grid-cols-[48px_1fr_auto_auto] sm:gap-3">
-      <div className="grid h-9 w-9 place-items-center rounded-full bg-cyan-400/20 font-black text-cyan-200 sm:h-12 sm:w-12">
+    <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3">
+      <div className="h-12 w-12 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
         {getAssetIcon(asset.symbol)}
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-xs font-black text-white sm:text-sm md:text-base">
-          {asset.symbol}
-        </p>
-        <p className="truncate text-[10px] text-white/45 sm:text-xs md:text-sm">
-          {asset.name}
-        </p>
+        <p className="font-black truncate">{asset.symbol}</p>
+        <p className="text-sm text-white/45 truncate">{asset.name}</p>
       </div>
 
       <div className="text-right">
-        <p className="text-xs font-black text-white sm:text-sm md:text-base">
-          {formatMoney(asset.value)}
-        </p>
-        <p className="text-[10px] text-white/40 sm:text-xs">
+        <p className="font-black">{formatMoney(asset.value)}</p>
+        <p className="text-sm text-white/40">
           {num(asset.quantity).toLocaleString(undefined, {
             maximumFractionDigits: 4,
           })}
         </p>
       </div>
 
-      <p className="hidden text-right text-xs text-white/35 sm:block">
-        {formatPercent(percentage)}
-      </p>
+      <div className="w-14 text-right">
+        <p className="text-sm text-white/35">{formatPercent(pct)}</p>
+      </div>
     </div>
   );
 });
+AssetRow.displayName = "AssetRow";
 
-const StrategyCard = memo(({ strategy, selected, disabled, onClick }) => (
+const StrategyCard = memo(({ strategy, selected, onClick, disabled }) => (
   <button
-    type="button"
     onClick={onClick}
     disabled={disabled}
-    className={`min-h-[44px] w-full rounded-2xl border p-3 text-left transition sm:p-4 ${
+    className={`w-full rounded-2xl border p-4 text-left transition ${
       selected
-        ? "border-cyan-400 bg-cyan-500/20 shadow-lg shadow-cyan-500/10"
-        : "border-white/10 bg-white/5 hover:bg-white/10"
-    } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+        ? "border-cyan-300 bg-cyan-400/10"
+        : "border-white/10 bg-black/20 hover:bg-white/5"
+    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
   >
-    <div className="flex items-start gap-2 sm:gap-3">
-      <span className="text-2xl sm:text-3xl">{strategy.icon}</span>
+    <div className="flex items-start gap-3">
+      <div className="shrink-0 text-3xl leading-none">{strategy.icon}</div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
-          <p className="text-sm font-black text-white sm:text-base">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-lg font-black leading-tight break-words">
             {strategy.name}
           </p>
-          <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[9px] font-black text-cyan-200 sm:px-3 sm:py-1 sm:text-[10px]">
+
+          <span className="w-fit rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-200 whitespace-nowrap">
             {strategy.risk}
           </span>
         </div>
 
-        <p className="mt-1 text-xs leading-relaxed text-white/50 sm:mt-2">
+        <p className="mt-3 text-sm leading-relaxed text-white/50">
           {strategy.description}
         </p>
 
-        <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-white/50 sm:mt-3 sm:gap-2 sm:text-[10px]">
-          <span>Max: {strategy.maxPositions || "-"} positions</span>
+        <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
+          <span>Max: {strategy.maxPositions || "-"} pos.</span>
           <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
           <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
           <span>SL: {formatPercent(num(strategy.stopLossPct) * 100)}</span>
         </div>
+
+        {disabled && (
+          <div className="mt-3 text-center text-xs text-yellow-400">
+            ⚠️ Stop bot to change strategy
+          </div>
+        )}
       </div>
     </div>
   </button>
 ));
+StrategyCard.displayName = "StrategyCard";
 
 const ConnectionCard = memo(
   ({
@@ -400,149 +411,280 @@ const ConnectionCard = memo(
     connection,
     isLocked,
     needsReconnect,
+    userTier,
     onConnect,
     onUpgrade,
     lastUpdated,
   }) => (
-    <GlassCard
-      className={
+    <section
+      className={`rounded-[2rem] border p-5 ${
         isLocked
-          ? "border-purple-500/30"
+          ? "border-purple-500/30 bg-purple-500/10"
           : needsReconnect
-          ? "border-amber-400/30"
-          : "border-emerald-400/30"
-      }
+          ? "border-yellow-400/30 bg-yellow-400/10"
+          : "border-emerald-400/30 bg-emerald-400/10"
+      }`}
     >
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex items-start gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
           <div
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl sm:h-12 sm:w-12 ${
+            className={`h-12 w-12 shrink-0 rounded-2xl grid place-items-center ${
               isLocked
                 ? "bg-purple-500/20 text-purple-300"
                 : needsReconnect
-                ? "bg-amber-400/20 text-amber-300"
+                ? "bg-yellow-400/20 text-yellow-300"
                 : "bg-emerald-400/20 text-emerald-300"
             }`}
           >
             {isLocked ? (
-              <FaLock className="text-sm sm:text-base" />
+              <FaLock />
             ) : needsReconnect ? (
-              <FaExclamationTriangle className="text-sm sm:text-base" />
+              <FaExclamationTriangle />
             ) : (
-              <FaCheckCircle className="text-sm sm:text-base" />
+              <FaCheckCircle />
             )}
           </div>
 
-          <div>
-            <h3 className="text-base font-black text-white sm:text-lg">
-              {activeTab.connectionLabel}
-            </h3>
+          <div className="min-w-0">
+            <h3 className="text-xl font-black">{activeTab.connectionLabel}</h3>
 
-            <p className="text-xs text-white/60 sm:text-sm">
-              {isLocked
-                ? `${activeTab.label} requires ${activeTab.minTier.toUpperCase()} or higher.`
-                : needsReconnect
-                ? "Connect this account before live trading can begin."
-                : `Connected${connection?.keyMasked ? ` (${connection.keyMasked})` : ""}.`}
-            </p>
+            {isLocked ? (
+              <p className="text-sm text-white/60">
+                {activeTab.label} trading requires{" "}
+                {activeTab.minTier.toUpperCase()} plan or higher. Current plan:{" "}
+                {normalizeTier(userTier).toUpperCase()}.
+              </p>
+            ) : needsReconnect ? (
+              <p className="text-sm text-yellow-100/80">
+                Reconnect before trading can start.
+              </p>
+            ) : (
+              <p className="text-sm text-emerald-100/80">
+                Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
+              </p>
+            )}
 
-            <p className="mt-0.5 text-[10px] text-white/35 sm:mt-1 sm:text-xs">
+            <p className="mt-1 text-xs text-white/40">
               Last checked:{" "}
-              {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked"}
+              {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
             </p>
           </div>
         </div>
 
         <button
-          type="button"
           onClick={isLocked ? onUpgrade : onConnect}
-          className={`min-h-[44px] rounded-2xl px-4 py-2.5 text-xs font-black transition sm:px-5 sm:py-3 sm:text-sm ${
+          className={`rounded-2xl px-5 py-3 font-black transition ${
             isLocked
-              ? "bg-purple-600 text-white hover:bg-purple-500"
+              ? "bg-purple-500 hover:bg-purple-400"
               : needsReconnect
-              ? "bg-amber-400 text-black hover:bg-amber-300"
-              : "bg-white/10 text-white hover:bg-white/15"
+              ? "bg-yellow-400 text-black hover:bg-yellow-300"
+              : "bg-white/10 hover:bg-white/15"
           }`}
         >
           {isLocked ? (
             <>
-              <FaCrown className="mr-1.5 inline sm:mr-2" />
-              {activeTab.upgradeMessage}
+              <FaCrown className="inline mr-2" />
+              Upgrade
             </>
           ) : needsReconnect ? (
             <>
-              <FaRedo className="mr-1.5 inline sm:mr-2" />
-              Connect
+              <FaRedo className="inline mr-2" />
+              Reconnect
             </>
           ) : (
             <>
-              <FaPlug className="mr-1.5 inline sm:mr-2" />
+              <FaPlug className="inline mr-2" />
               Manage
             </>
           )}
         </button>
       </div>
-    </GlassCard>
+    </section>
   )
 );
+ConnectionCard.displayName = "ConnectionCard";
 
-const TradeItem = memo(({ trade }) => (
-  <motion.div
-    initial={{ opacity: 0, x: -12 }}
-    animate={{ opacity: 1, x: 0 }}
-    className="flex flex-col justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10 sm:flex-row sm:items-center sm:p-4"
+const StatusPill = memo(({ running }) => (
+  <div
+    className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+      running
+        ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+        : "border-white/10 bg-white/10 text-white/50"
+    }`}
   >
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-        <p className="text-sm font-bold text-white sm:text-base">{trade.symbol}</p>
-        <span className="rounded-full border border-red-500/30 bg-red-500/20 px-1.5 py-0.5 text-[8px] font-black text-red-300 sm:px-2 sm:text-[9px]">
-          ● LIVE
-        </span>
-      </div>
+    <FaCircle
+      className={`inline mr-2 h-2 w-2 ${
+        running ? "text-emerald-300" : "text-white/40"
+      }`}
+    />
+    {running ? "BOT RUNNING" : "BOT OFF"}
+  </div>
+));
+StatusPill.displayName = "StatusPill";
 
-      <p className="text-[10px] text-white/40 sm:text-xs">
-        {trade.type} • {trade.time}
-      </p>
+const ModePill = memo(({ mode }) => {
+  const safeMode = normalizeMode(mode);
 
-      {trade.price > 0 && (
-        <p className="text-[10px] text-white/30 sm:text-xs">@ {formatMoney(trade.price)}</p>
-      )}
-    </div>
-
-    <p
-      className={`font-bold ${
-        trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+  return (
+    <div
+      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+        safeMode === "live"
+          ? "border-red-400/40 bg-red-400/10 text-red-300"
+          : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
       }`}
     >
-      {trade.pnl >= 0 ? "+" : ""}
-      {formatMoney(trade.pnl)}
-      {trade.pnlPercent !== 0 && (
-        <span className="ml-1 text-[10px] sm:text-xs">
-          ({trade.pnl >= 0 ? "+" : ""}
-          {trade.pnlPercent.toFixed(2)}%)
-        </span>
-      )}
-    </p>
-  </motion.div>
-));
+      {safeMode === "live" ? "🔴" : "🟡"} {safeMode.toUpperCase()} MODE
+    </div>
+  );
+});
+ModePill.displayName = "ModePill";
 
-// ==============================
-// Reducer & Initial State
-// ==============================
+const SettingsTab = memo(({ icon, label, onClick, active = false }) => (
+  <button
+    onClick={onClick}
+    className={`rounded-xl px-3 py-3 font-black text-sm transition flex items-center justify-center gap-2 ${
+      active
+        ? "bg-cyan-400/20 text-cyan-300 border border-cyan-400/30"
+        : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
+    }`}
+  >
+    <span className="text-base">{icon}</span>
+    {label}
+  </button>
+));
+SettingsTab.displayName = "SettingsTab";
+
+const TradeItem = memo(({ trade }) => {
+  const isLive = trade.mode === "live";
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 flex items-center justify-between gap-4 hover:bg-white/5 transition">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="text-3xl">{getStockIcon(trade.symbol)}</div>
+        <div className="min-w-0">
+          <div className="font-bold flex items-center gap-2">
+            {trade.symbol}
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                isLive
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+              }`}
+            >
+              {isLive ? "● LIVE" : "● PAPER"}
+            </span>
+          </div>
+          <div className="text-xs text-white/40">
+            {trade.type} • {trade.time}
+          </div>
+          {trade.price > 0 && (
+            <div className="text-xs text-white/30 mt-1">
+              @ {formatMoney(trade.price)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div
+        className={`font-bold text-lg ${
+          trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+        }`}
+      >
+        {trade.pnl >= 0 ? "+" : ""}
+        {formatMoney(trade.pnl)}
+        {trade.pnlPercent !== 0 && (
+          <span className="text-xs ml-1">
+            ({trade.pnl >= 0 ? "+" : ""}
+            {trade.pnlPercent.toFixed(2)}%)
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
+TradeItem.displayName = "TradeItem";
+
+const TierUpgradeCard = memo(({ currentTier, onUpgrade }) => {
+  const nextTiers = [
+    {
+      id: "pro",
+      config: TIER_CONFIG.pro,
+      price: "$19/mo",
+      description: "Live crypto & stock trading, AI strategies",
+    },
+    {
+      id: "elite",
+      config: TIER_CONFIG.elite,
+      price: "$49/mo",
+      description: "Futures, DEX sniper, staking, lending",
+    },
+  ];
+
+  if (currentTier === "elite" || currentTier === "enterprise") return null;
+
+  const nextTier =
+    nextTiers.find((tier) =>
+      currentTier === "starter" ? tier.id === "pro" : tier.id === "elite"
+    ) || nextTiers[0];
+
+  return (
+    <section
+      className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}
+    >
+      <div className="flex flex-col sm:flex-row items-center gap-5">
+        <img
+          src={nextTier.config.image}
+          alt={nextTier.config.alt}
+          className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
+          loading="lazy"
+        />
+
+        <div className="flex-1 text-center sm:text-left">
+          <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+            <h3 className="text-2xl font-black">
+              {nextTier.config.name} Plan
+            </h3>
+            <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-300">
+              {nextTier.price}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-white/70">
+            {nextTier.description}
+          </p>
+        </div>
+
+        <button
+          onClick={onUpgrade}
+          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
+        >
+          <FaCrown className="inline mr-2" />
+          Upgrade to {nextTier.config.name}
+        </button>
+      </div>
+    </section>
+  );
+});
+TierUpgradeCard.displayName = "TierUpgradeCard";
+
+// ============================================================================
+// INITIAL STATE & REDUCER
+// ============================================================================
+
 const initialState = {
   loading: true,
   refreshing: false,
   processing: false,
   userTier: "starter",
-  subscriptionStatus: "",
+  subscriptionStatus: "", // Added: store subscription status from API
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
   botRunning: false,
+  botMode: "paper",
   connections: {
-    okx: { connected: false, keyMasked: "" },
-    alpaca: { connected: false, keyMasked: "" },
-    wallet: { connected: false, keyMasked: "" },
+    okx: { connected: false, mode: "paper", keyMasked: "" },
+    alpaca: { connected: false, mode: "paper", keyMasked: "" },
+    wallet: { connected: false, mode: "live", keyMasked: "" },
   },
   totalAssetValue: 0,
   usdCashValue: 0,
@@ -567,14 +709,16 @@ const initialState = {
     discountPct: 0,
     discountActive: false,
   },
-  candles: [],
-  candlesLoading: false,
-  candlesSource: "none",
-  referral: {
-    totalReferrals: 0,
-    signups: 0,
-    paidReferrals: 0,
-    freeMonths: 0,
+  debug: {
+    lastStartAttempt: null,
+    lastStartResult: null,
+    lastStartError: null,
+    latency: 0,
+    lastPoll: null,
+    failedRequests: 0,
+    backendVersion: "unknown",
+    userId: null,
+    botId: null,
   },
 };
 
@@ -583,11 +727,12 @@ const ACTIONS = {
   SET_REFRESHING: "SET_REFRESHING",
   SET_PROCESSING: "SET_PROCESSING",
   SET_USER_TIER: "SET_USER_TIER",
-  SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS",
+  SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS", // New action
   SET_ACTIVE_TYPE: "SET_ACTIVE_TYPE",
   SET_STRATEGIES: "SET_STRATEGIES",
   SET_CURRENT_STRATEGY: "SET_CURRENT_STRATEGY",
   SET_BOT_RUNNING: "SET_BOT_RUNNING",
+  SET_BOT_MODE: "SET_BOT_MODE",
   SET_CONNECTIONS: "SET_CONNECTIONS",
   SET_BALANCE_DATA: "SET_BALANCE_DATA",
   SET_POSITIONS: "SET_POSITIONS",
@@ -598,10 +743,9 @@ const ACTIONS = {
   SET_TRADE_FEED: "SET_TRADE_FEED",
   SET_STATS: "SET_STATS",
   SET_IMALI: "SET_IMALI",
-  SET_CANDLES: "SET_CANDLES",
-  SET_CANDLES_LOADING: "SET_CANDLES_LOADING",
-  SET_CANDLES_SOURCE: "SET_CANDLES_SOURCE",
-  SET_REFERRAL: "SET_REFERRAL",
+  SET_DEBUG: "SET_DEBUG",
+  UPDATE_STRATEGY_PREF: "UPDATE_STRATEGY_PREF",
+  RESET_STATE: "RESET_STATE",
 };
 
 function dashboardReducer(state, action) {
@@ -627,13 +771,22 @@ function dashboardReducer(state, action) {
       return { ...state, currentStrategy: action.payload };
     case ACTIONS.SET_BOT_RUNNING:
       return { ...state, botRunning: Boolean(action.payload) };
+    case ACTIONS.SET_BOT_MODE:
+      return { ...state, botMode: normalizeMode(action.payload) };
     case ACTIONS.SET_CONNECTIONS:
       return {
         ...state,
         connections: { ...state.connections, ...action.payload },
       };
     case ACTIONS.SET_BALANCE_DATA:
-      return { ...state, ...action.payload };
+      return {
+        ...state,
+        totalAssetValue: action.payload.totalAssetValue ?? state.totalAssetValue,
+        usdCashValue: action.payload.usdCashValue ?? state.usdCashValue,
+        usdtValue: action.payload.usdtValue ?? state.usdtValue,
+        usdtQty: action.payload.usdtQty ?? state.usdtQty,
+        assets: action.payload.assets ?? state.assets,
+      };
     case ACTIONS.SET_POSITIONS:
       return { ...state, positions: action.payload };
     case ACTIONS.SET_OPEN_POSITIONS_COUNT:
@@ -650,46 +803,179 @@ function dashboardReducer(state, action) {
       return { ...state, stats: { ...state.stats, ...action.payload } };
     case ACTIONS.SET_IMALI:
       return { ...state, imali: { ...state.imali, ...action.payload } };
-    case ACTIONS.SET_CANDLES:
-      return { ...state, candles: action.payload };
-    case ACTIONS.SET_CANDLES_LOADING:
-      return { ...state, candlesLoading: action.payload };
-    case ACTIONS.SET_CANDLES_SOURCE:
-      return { ...state, candlesSource: action.payload };
-    case ACTIONS.SET_REFERRAL:
-      return { ...state, referral: { ...state.referral, ...action.payload } };
+    case ACTIONS.SET_DEBUG:
+      return { ...state, debug: { ...state.debug, ...action.payload } };
+    case ACTIONS.UPDATE_STRATEGY_PREF:
+      localStorage.setItem("imali_selected_strategy", action.payload.id);
+      return { ...state, currentStrategy: action.payload };
+    case ACTIONS.RESET_STATE:
+      return { ...initialState, loading: false };
     default:
       return state;
   }
 }
 
-function usePrevious(value) {
-  const ref = useRef();
+// ============================================================================
+// ERROR BOUNDARY
+// ============================================================================
 
-  useEffect(() => {
-    ref.current = value;
-  }, [value]);
+class DashboardErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
-  return ref.current;
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Dashboard crashed:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center p-8">
+          <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-8 max-w-md text-center">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h2 className="text-2xl font-black mb-2">Dashboard Error</h2>
+            <p className="text-white/60 mb-4">
+              Something went wrong loading your dashboard.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-2xl bg-cyan-500 px-6 py-3 font-black hover:bg-cyan-400 transition"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
-// ==============================
-// Main Component
-// ==============================
+// ============================================================================
+// DEBUG PANEL
+// ============================================================================
+
+function DebugPanel({ state }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (process.env.NODE_ENV !== "development") return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed bottom-4 right-4 z-50 rounded-full bg-yellow-500/80 backdrop-blur px-3 py-2 text-xs font-black text-black hover:bg-yellow-400 transition"
+      >
+        <FaBug className="inline mr-1" /> Debug
+      </button>
+
+      {isOpen && (
+        <div className="fixed bottom-16 right-4 z-50 w-96 rounded-2xl border border-yellow-500/30 bg-black/95 backdrop-blur-lg p-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-black text-yellow-400">Debug Panel</h3>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-white/50 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-2 text-xs font-mono">
+            <p><span className="text-white/50">Bot Running:</span> {state.botRunning ? "✅ Yes" : "❌ No"}</p>
+            <p><span className="text-white/50">Bot Mode:</span> {state.botMode}</p>
+            <p><span className="text-white/50">Open Positions:</span> {state.openPositionsCount}</p>
+            <p><span className="text-white/50">Active Tab:</span> {state.activeType}</p>
+            <p><span className="text-white/50">Current Strategy:</span> {state.currentStrategy?.name}</p>
+            <p><span className="text-white/50">API Latency:</span> {state.debug.latency}ms</p>
+            <p><span className="text-white/50">Last Poll:</span> {state.debug.lastPoll?.toLocaleTimeString() || "Never"}</p>
+            <p><span className="text-white/50">Failed Requests:</span> {state.debug.failedRequests}</p>
+            <p><span className="text-white/50">Backend Version:</span> {state.debug.backendVersion}</p>
+            <p><span className="text-white/50">User ID:</span> {state.debug.userId || "N/A"}</p>
+            <p><span className="text-white/50">Bot ID:</span> {state.debug.botId || "N/A"}</p>
+            <p><span className="text-white/50">Subscription Status:</span> {state.subscriptionStatus || "N/A"}</p>
+
+            {state.debug.lastStartAttempt && (
+              <p><span className="text-white/50">Last Start:</span> {new Date(state.debug.lastStartAttempt).toLocaleTimeString()}</p>
+            )}
+
+            {state.debug.lastStartResult && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-cyan-400">Last Start Result</summary>
+                <pre className="mt-1 max-h-32 overflow-auto rounded bg-black/50 p-2 text-[10px]">
+                  {JSON.stringify(state.debug.lastStartResult, null, 2)}
+                </pre>
+              </details>
+            )}
+
+            {state.debug.lastStartError && (
+              <div className="mt-2 rounded bg-red-500/20 p-2 text-red-300">
+                Error: {state.debug.lastStartError}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="flex-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold hover:bg-white/20"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, activation, logout } = useAuth();
 
   const mountedRef = useRef(false);
-  const refreshLockRef = useRef(false);
+  const refreshLock = useRef(false);
+  const abortControllersRef = useRef([]);
   const intervalsRef = useRef({});
   const [isVisible, setIsVisible] = useState(true);
-  const [state, dispatch] = useReducer(dashboardReducer, initialState);
 
+  const lastFetchTimeRef = useRef({
+    user: 0,
+    strategies: 0,
+    integrations: 0,
+  });
+
+  const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
 
-  // Subscription status: prefer fresh state from API, fallback to context
+  const currentTierConfig =
+    TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
+
+  const activeTab = useMemo(
+    () =>
+      TRADING_TYPES.find((item) => item.id === state.activeType) ||
+      TRADING_TYPES[0],
+    [state.activeType]
+  );
+
+  const activeConnection = useMemo(
+    () => state.connections[activeTab.connectionKey],
+    [state.connections, activeTab.connectionKey]
+  );
+
+  // ✅ FIX 1: Use subscription status from state (updated by fetchUser)
   const normalizedSubscriptionStatus = String(
     state.subscriptionStatus ||
       user?.subscription_status ||
@@ -697,69 +983,168 @@ export default function MemberDashboard() {
       ""
   ).toLowerCase();
 
-  const hasPaidAccess = ["active", "trialing"].includes(
-    normalizedSubscriptionStatus
+  const hasCardOnFile = Boolean(
+    user?.has_card_on_file ||
+      user?.billing_complete ||
+      activation?.has_card_on_file ||
+      activation?.billing_complete
   );
 
-  // Tier: prefer context over reducer default (but we also update from API)
-  const selectedTier = normalizeTier(
-    user?.tier ||
-      activation?.tier ||
-      state.userTier ||
-      "starter"
+  const hasPaidAccess = Boolean(
+    hasCardOnFile ||
+      normalizedSubscriptionStatus === "active" ||
+      normalizedSubscriptionStatus === "trial" ||
+      normalizedSubscriptionStatus === "trialing"
   );
 
-  const effectiveTier = hasPaidAccess ? selectedTier : "starter";
+  const effectiveTier =
+    normalizeTier(state.userTier) === "starter"
+      ? "starter"
+      : hasPaidAccess
+        ? normalizeTier(state.userTier)
+        : "starter";
 
-  const currentTierConfig =
-    TIER_CONFIG[selectedTier] || TIER_CONFIG.starter;
-
+  // ✅ FIX 2: Visible trading types by tier
   const visibleTradingTypes = useMemo(() => {
-    if (effectiveTier === "starter") return [];
-
+    if (effectiveTier === "starter") {
+      return TRADING_TYPES.filter((item) => item.id === "crypto");
+    }
     if (effectiveTier === "pro") {
       return TRADING_TYPES.filter(
         (item) => item.id === "crypto" || item.id === "stocks"
       );
     }
-
-    return TRADING_TYPES;
+    if (effectiveTier === "elite" || effectiveTier === "enterprise") {
+      return TRADING_TYPES;
+    }
+    return TRADING_TYPES.filter((item) => item.id === "crypto");
   }, [effectiveTier]);
 
-  const activeTab = useMemo(() => {
-    return (
-      visibleTradingTypes.find((item) => item.id === state.activeType) ||
-      visibleTradingTypes[0] ||
-      TRADING_TYPES[0]
+  // ✅ FIX 3: Reset active tab when access changes
+  useEffect(() => {
+    const activeStillVisible = visibleTradingTypes.some(
+      (item) => item.id === state.activeType
     );
-  }, [state.activeType, visibleTradingTypes]);
+    if (!activeStillVisible) {
+      dispatch({
+        type: ACTIONS.SET_ACTIVE_TYPE,
+        payload: visibleTradingTypes[0]?.id || "crypto",
+      });
+    }
+  }, [visibleTradingTypes, state.activeType]);
 
-  const activeConnection =
-    state.connections[activeTab.connectionKey] || {};
+  // ✅ FIX 4: Access locking uses effectiveTier
+  const isLocked = useMemo(
+    () => !hasTierAccess(effectiveTier, activeTab.minTier),
+    [effectiveTier, activeTab.minTier]
+  );
 
-  const isLocked = !hasTierAccess(effectiveTier, activeTab.minTier);
-  const isConnected = Boolean(activeConnection.connected);
-  const needsReconnect = !isLocked && !isConnected;
+  const isConnected = useMemo(
+    () => Boolean(activeConnection?.connected),
+    [activeConnection]
+  );
 
+  // ✅ FIX 5: starterPaperOnly uses effectiveTier
+  const starterPaperOnly =
+    effectiveTier === "starter" && activeTab?.paperOnlyStarter;
+
+  // ✅ FIX 6: Connection status for Starter paper mode
+  const needsReconnect = useMemo(() => {
+    if (starterPaperOnly) return false;
+    return !isConnected && !isLocked;
+  }, [starterPaperOnly, isConnected, isLocked]);
+
+  // ✅ Account Status Helper
+  const accountStatus = useMemo(() => {
+    const tier = state.userTier;
+    const hasAccess = hasPaidAccess;
+
+    if (tier === "starter") {
+      return {
+        status: "Free",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/30",
+        message: "Paper trading enabled",
+        icon: "🌱",
+        label: "STARTER PLAN",
+      };
+    }
+
+    if (hasAccess) {
+      return {
+        status: "Active",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/30",
+        message: `${tier.toUpperCase()} plan active`,
+        icon: "⭐",
+        label: `${tier.toUpperCase()} PLAN`,
+      };
+    }
+
+    return {
+      status: "Billing Incomplete",
+      color: "text-amber-400",
+      bg: "bg-amber-500/10",
+      border: "border-amber-500/30",
+      message: `${tier.toUpperCase()} selected · Paper trading only`,
+      icon: "⚠️",
+      label: "STARTER ACCESS",
+    };
+  }, [state.userTier, hasPaidAccess]);
+
+  // ✅ Active settings tab detection
   const activeSettingsTab = useMemo(() => {
     const path = location.pathname;
-
     if (path.includes("/billing")) return "billing";
-    if (path.includes("/connect-okx") || path.includes("/connect-alpaca"))
-      return "trading";
+    if (path.includes("/connect-okx") || path.includes("/connect-alpaca")) return "trading";
     if (path.includes("/connect-wallet")) return "wallets";
     if (path.includes("/activation")) return "activation";
     if (path.includes("/settings/security")) return "security";
+    if (path.includes("/settings/notifications")) return "notifications";
     if (path.includes("/settings/api")) return "api";
     if (path.includes("/settings/automation")) return "automation";
-
-    return "";
+    return "billing";
   }, [location.pathname]);
 
   const winRate = useMemo(() => {
     const total = num(state.stats.wins) + num(state.stats.losses);
-    return total > 0 ? (num(state.stats.wins) / total) * 100 : 0;
-  }, [state.stats.losses, state.stats.wins]);
+    return total ? (num(state.stats.wins) / total) * 100 : 0;
+  }, [state.stats.wins, state.stats.losses]);
+
+  const visibleAssets = useMemo(() => {
+    const base = [];
+
+    if (state.usdCashValue > 0) {
+      base.push({
+        symbol: "USD",
+        name: "Cash",
+        quantity: state.usdCashValue,
+        value: state.usdCashValue,
+      });
+    }
+
+    if (state.usdtValue > 0) {
+      base.push({
+        symbol: "USDT",
+        name: "Tether",
+        quantity: state.usdtQty || state.usdtValue,
+        value: state.usdtValue,
+      });
+    }
+
+    return [...base, ...state.assets]
+      .filter((asset) => num(asset.value) >= 0.5)
+      .sort((a, b) => num(b.value) - num(a.value));
+  }, [state.assets, state.usdCashValue, state.usdtValue, state.usdtQty]);
+
+  const smallBalancesCount = useMemo(
+    () =>
+      state.assets.filter((asset) => num(asset.value) > 0 && num(asset.value) < 0.5)
+        .length,
+    [state.assets]
+  );
 
   const donutData = useMemo(
     () => ({
@@ -773,45 +1158,17 @@ export default function MemberDashboard() {
         },
       ],
     }),
-    [state.stats.losses, state.stats.wins]
+    [state.stats.wins, state.stats.losses]
   );
 
   const donutOptions = useMemo(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-      },
+      plugins: { legend: { display: false }, tooltip: { enabled: true } },
     }),
     []
   );
-
-  const visibleAssets = useMemo(() => {
-    const assets = [];
-
-    if (state.usdCashValue > 0) {
-      assets.push({
-        symbol: "USD",
-        name: "Cash",
-        quantity: state.usdCashValue,
-        value: state.usdCashValue,
-      });
-    }
-
-    if (state.usdtValue > 0) {
-      assets.push({
-        symbol: "USDT",
-        name: "Tether",
-        quantity: state.usdtQty || state.usdtValue,
-        value: state.usdtValue,
-      });
-    }
-
-    return [...assets, ...state.assets]
-      .filter((asset) => num(asset.value) >= 0.5)
-      .sort((a, b) => num(b.value) - num(a.value));
-  }, [state.assets, state.usdCashValue, state.usdtQty, state.usdtValue]);
 
   const normalizeAsset = useCallback((asset) => {
     const symbol = String(
@@ -824,6 +1181,7 @@ export default function MemberDashboard() {
       quantity: num(
         asset.available ??
           asset.amount ??
+          asset.bal ??
           asset.balance ??
           asset.qty ??
           asset.quantity
@@ -839,9 +1197,16 @@ export default function MemberDashboard() {
     };
   }, []);
 
+  const getStrategy = useCallback(
+    (id) =>
+      state.strategies.find((strategy) => strategy.id === id) ||
+      state.strategies[1] ||
+      FALLBACK_STRATEGIES[1],
+    [state.strategies]
+  );
+
   const showNotice = useCallback((message) => {
     dispatch({ type: ACTIONS.SET_NOTICE, payload: message });
-
     window.setTimeout(() => {
       if (mountedRef.current) {
         dispatch({ type: ACTIONS.SET_NOTICE, payload: "" });
@@ -851,7 +1216,6 @@ export default function MemberDashboard() {
 
   const showError = useCallback((message) => {
     dispatch({ type: ACTIONS.SET_ERROR, payload: message });
-
     window.setTimeout(() => {
       if (mountedRef.current) {
         dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
@@ -859,19 +1223,20 @@ export default function MemberDashboard() {
     }, 6000);
   }, []);
 
+  // ============================================================================
+  // API FETCH FUNCTIONS
+  // ============================================================================
+
   const fetchUser = useCallback(async () => {
     try {
-      const response = await fetchWithRetry(() => BotAPI.getMe?.(true));
-      const data = unwrapData(response);
+      const res = await fetchWithRetry(() => BotAPI.getMe?.(true));
+      const data = unwrapData(res);
       const nextUser = data.user || data;
 
+      // ✅ FIX 7: Update both tier and subscription status
       dispatch({
         type: ACTIONS.SET_USER_TIER,
-        payload:
-          nextUser?.tier ||
-          user?.tier ||
-          activation?.tier ||
-          "starter",
+        payload: nextUser?.tier || user?.tier || activation?.tier || "starter",
       });
 
       dispatch({
@@ -883,26 +1248,42 @@ export default function MemberDashboard() {
           activation?.subscription_status ||
           "",
       });
-    } catch (error) {
-      console.warn("Could not load user:", error);
+
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { userId: nextUser?.id || user?.id },
+      });
+
+      lastFetchTimeRef.current.user = Date.now();
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch user failed:", err);
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { failedRequests: state.debug.failedRequests + 1 },
+      });
     }
-  }, [user?.tier, user?.subscription_status, activation?.tier, activation?.subscription_status]);
+  }, [
+    user?.tier,
+    user?.id,
+    user?.subscription_status,
+    activation?.tier,
+    activation?.subscription_status,
+    state.debug.failedRequests,
+  ]);
 
   const fetchStrategies = useCallback(async () => {
     try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getStrategyConfigs?.(true)
-      );
-
-      const data = unwrapData(response);
+      const res = await fetchWithRetry(() => BotAPI.getStrategyConfigs?.(true));
+      const data = unwrapData(res);
       const raw = data.data || data.strategies || data;
 
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
 
-      const mapped = Object.entries(raw).map(([id, config]) => ({
+      const mapped = Object.entries(raw).map(([id, cfg]) => ({
         id,
         name:
-          config.name ||
+          cfg.name ||
           (id === "mean_reversion"
             ? "Conservative"
             : id === "ai_weighted"
@@ -919,138 +1300,204 @@ export default function MemberDashboard() {
             ? "📈"
             : "🔥",
         risk:
-          config.risk ||
-          (id === "mean_reversion"
-            ? "Lower Risk"
-            : id === "ai_weighted"
-            ? "Moderate Risk"
-            : id === "momentum"
+          cfg.riskLevel === "low"
+            ? "Low Risk"
+            : cfg.riskLevel === "medium"
+            ? "Medium Risk"
+            : cfg.riskLevel === "higher"
             ? "Higher Risk"
-            : "High Risk"),
-        description: config.description || "",
-        recommended: Boolean(config.recommended),
-        maxPositions: config.maxPositions,
-        tradePct: config.tradePct,
-        takeProfitPct: config.takeProfitPct,
-        stopLossPct: config.stopLossPct,
+            : "High Risk",
+        description: cfg.description || "",
+        recommended: Boolean(cfg.recommended),
+        maxPositions: cfg.maxPositions,
+        tradePct: cfg.tradePct,
+        takeProfitPct: cfg.takeProfitPct,
+        stopLossPct: cfg.stopLossPct,
       }));
 
       if (!mapped.length) return;
 
       dispatch({ type: ACTIONS.SET_STRATEGIES, payload: mapped });
 
-      const savedId = localStorage.getItem("imali_selected_strategy");
-      const selected =
-        mapped.find((strategy) => strategy.id === savedId) ||
-        mapped.find((strategy) => strategy.recommended) ||
-        mapped[0];
+      const savedStrategyId = localStorage.getItem("imali_selected_strategy");
+      let selectedStrategy = null;
 
-      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selected });
-    } catch (error) {
-      console.warn("Could not load strategies:", error);
+      try {
+        const prefRes = await BotAPI.getUserStrategyPreference?.();
+        const prefData = unwrapData(prefRes);
+        const backendStrategyId = prefData.strategyId || prefData.strategy;
+
+        if (backendStrategyId) {
+          selectedStrategy = mapped.find((strategy) => strategy.id === backendStrategyId);
+        }
+      } catch (err) {
+        console.warn("Could not fetch user strategy preference", err);
+      }
+
+      if (!selectedStrategy && savedStrategyId) {
+        selectedStrategy = mapped.find((strategy) => strategy.id === savedStrategyId);
+      }
+
+      if (!selectedStrategy) {
+        selectedStrategy = mapped.find((strategy) => strategy.recommended) || mapped[1] || mapped[0];
+      }
+
+      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
+      lastFetchTimeRef.current.strategies = Date.now();
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch strategies failed:", err);
     }
   }, []);
 
   const fetchBotStatus = useCallback(async () => {
+    const startTime = performance.now();
+
     try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getTradingBotStatus?.(true)
-      );
+      const res = await fetchWithRetry(() => BotAPI.getTradingBotStatus?.(true));
+      const responseData = res?.data || res || {};
 
-      const data = unwrapData(response);
+      const bots = Array.isArray(responseData?.data)
+        ? responseData.data
+        : Array.isArray(responseData)
+        ? responseData
+        : responseData?.isRunning !== undefined ||
+          responseData?.status !== undefined ||
+          responseData?.active !== undefined
+        ? [responseData]
+        : [];
 
-      const bots = Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data)
-        ? data
-        : [data];
-
-      const runningBot = bots.find(
+      const runningBots = bots.filter(
         (bot) =>
           bot?.isRunning === true ||
           bot?.status === "running" ||
           bot?.active === true
       );
 
-      dispatch({
-        type: ACTIONS.SET_BOT_RUNNING,
-        payload: Boolean(runningBot),
-      });
+      const isRunning = runningBots.length > 0;
+      const runningBot = runningBots[0] || bots[0];
+
+      dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: isRunning });
+
+      if (runningBot?.mode) {
+        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: runningBot.mode });
+      }
 
       if (runningBot?.strategy) {
-        const selected = state.strategies.find(
-          (strategy) => strategy.id === runningBot.strategy
+        const strategy = getStrategy(runningBot.strategy);
+        if (strategy) {
+          dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+        }
+      }
+
+      const botPositions = num(
+        runningBot?.openPositions ?? runningBot?.open_positions ?? 0
+      );
+
+      if (botPositions > 0 || isRunning) {
+        dispatch({
+          type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+          payload: botPositions,
+        });
+      }
+
+      if (responseData.summary) {
+        const open = num(
+          responseData.summary.open_positions ?? responseData.summary.openPositions ?? 0
         );
 
-        if (selected) {
+        if (open > 0) {
           dispatch({
-            type: ACTIONS.SET_CURRENT_STRATEGY,
-            payload: selected,
+            type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+            payload: open,
           });
         }
       }
 
       dispatch({
-        type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
-        payload:
-          runningBot?.openPositions ??
-          runningBot?.open_positions ??
-          data?.summary?.open_positions ??
-          0,
+        type: ACTIONS.SET_DEBUG,
+        payload: { botId: runningBot?.botId || runningBot?.id || "N/A" },
       });
-    } catch (error) {
-      console.warn("Could not load bot status:", error);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch bot status failed:", err);
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { failedRequests: state.debug.failedRequests + 1 },
+      });
+    } finally {
+      const latency = performance.now() - startTime;
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { latency: Math.round(latency), lastPoll: new Date() },
+      });
     }
-  }, [state.strategies]);
+  }, [getStrategy, state.debug.failedRequests]);
 
   const fetchIntegrationStatus = useCallback(async () => {
     try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getIntegrationStatus?.(true)
-      );
-
-      const data = unwrapData(response);
+      const res = await fetchWithRetry(() => BotAPI.getIntegrationStatus?.(true));
+      const data = unwrapData(res);
 
       const toBool = (value) =>
         value === true || value === "true" || value === 1 || value === "1";
+
+      const okxConnected = toBool(
+        data.okx_connected ??
+          data.okxConnected ??
+          data.okx?.connected ??
+          Boolean(data.okx_api_key_masked || data.okx_key_masked || data.okxKeyMasked)
+      );
+
+      const alpacaConnected = toBool(
+        data.alpaca_connected ??
+          data.alpacaConnected ??
+          data.alpaca?.connected ??
+          Boolean(
+            data.alpaca_api_key_masked ||
+              data.alpaca_key_masked ||
+              data.alpacaKeyMasked
+          )
+      );
+
+      const walletConnected = toBool(
+        data.wallet_connected ?? data.walletConnected ?? data.wallet?.connected
+      );
+
+      const okxMode = normalizeMode(
+        data.okx_mode ?? data.okxMode ?? data.okx?.mode ?? "paper"
+      );
+
+      const alpacaMode = normalizeMode(
+        data.alpaca_mode ?? data.alpacaMode ?? data.alpaca?.mode ?? "paper"
+      );
 
       dispatch({
         type: ACTIONS.SET_CONNECTIONS,
         payload: {
           okx: {
-            connected: toBool(
-              data.okx_connected ??
-                data.okxConnected ??
-                data.okx?.connected ??
-                Boolean(data.okx_api_key_masked || data.okx_key_masked)
-            ),
+            connected: okxConnected,
+            mode: okxMode,
             keyMasked:
               data.okx_api_key_masked ??
               data.okx_key_masked ??
+              data.okxKeyMasked ??
               data.okx?.keyMasked ??
               "",
           },
           alpaca: {
-            connected: toBool(
-              data.alpaca_connected ??
-                data.alpacaConnected ??
-                data.alpaca?.connected ??
-                Boolean(
-                  data.alpaca_api_key_masked || data.alpaca_key_masked
-                )
-            ),
+            connected: alpacaConnected,
+            mode: alpacaMode,
             keyMasked:
               data.alpaca_api_key_masked ??
               data.alpaca_key_masked ??
+              data.alpacaKeyMasked ??
               data.alpaca?.keyMasked ??
               "",
           },
           wallet: {
-            connected: toBool(
-              data.wallet_connected ??
-                data.walletConnected ??
-                data.wallet?.connected
-            ),
+            connected: walletConnected,
+            mode: "live",
             keyMasked:
               data.wallet_address_masked ??
               data.walletAddressMasked ??
@@ -1059,63 +1506,60 @@ export default function MemberDashboard() {
           },
         },
       });
-    } catch (error) {
-      console.warn("Could not load integration status:", error);
+
+      if (activeTab.connectionKey === "okx") {
+        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: okxMode });
+      }
+
+      if (activeTab.connectionKey === "alpaca") {
+        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: alpacaMode });
+      }
+
+      lastFetchTimeRef.current.integrations = Date.now();
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch integration status failed:", err);
     }
-  }, []);
+  }, [activeTab.connectionKey]);
 
   const fetchBalance = useCallback(async () => {
-    if (!hasPaidAccess || !isConnected) {
-      dispatch({
-        type: ACTIONS.SET_BALANCE_DATA,
-        payload: {
-          totalAssetValue: 0,
-          usdCashValue: 0,
-          usdtValue: 0,
-          usdtQty: 0,
-          assets: [],
-        },
-      });
-      return;
-    }
-
     try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getExchangeBalance?.(true)
-      );
-
-      const data = unwrapData(response);
+      const res = await fetchWithRetry(() => BotAPI.getExchangeBalance?.(true));
+      const data = unwrapData(res);
 
       if (activeTab.exchange === "okx") {
-        const normalized = (data.okx_assets || [])
-          .map(normalizeAsset)
-          .filter((asset) => asset.symbol);
+        const rawAssets = Array.isArray(data.okx_assets) ? data.okx_assets : [];
+        const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
 
-        const usdt = normalized.find((asset) => asset.symbol === "USDT");
-        const usd = normalized.find((asset) => asset.symbol === "USD");
+        const usdtAsset = normalized.find((asset) => asset.symbol === "USDT");
+        const usdAsset = normalized.find((asset) => asset.symbol === "USD");
         const otherAssets = normalized.filter(
           (asset) => !["USD", "USDT"].includes(asset.symbol)
         );
 
-        const total = num(data.okx_total ?? data.okx ?? data.total);
-        const usdtValue = num(
-          data.okx_available_usdt ?? usdt?.value ?? usdt?.quantity
-        );
-        const otherTotal = otherAssets.reduce(
+        const okxTotal = num(data.okx_total ?? data.okx ?? data.total);
+        const usdtAvailable = num(data.okx_available_usdt ?? usdtAsset?.value);
+        const usdtQuantity = num(usdtAsset?.quantity ?? usdtAvailable);
+        const otherAssetsTotal = otherAssets.reduce(
           (sum, asset) => sum + num(asset.value),
           0
         );
-        const usdValue =
-          num(usd?.value) ||
-          Math.max(total - usdtValue - otherTotal, 0);
+
+        const inferredUsd =
+          okxTotal > otherAssetsTotal + usdtAvailable
+            ? okxTotal - otherAssetsTotal - usdtAvailable
+            : 0;
+
+        const usdCash = num(usdAsset?.value) || inferredUsd;
+        const total = okxTotal || usdCash + usdtAvailable + otherAssetsTotal;
 
         dispatch({
           type: ACTIONS.SET_BALANCE_DATA,
           payload: {
-            totalAssetValue: total || usdValue + usdtValue + otherTotal,
-            usdCashValue: usdValue,
-            usdtValue,
-            usdtQty: num(usdt?.quantity ?? usdtValue),
+            totalAssetValue: total,
+            usdCashValue: usdCash,
+            usdtValue: usdtAvailable,
+            usdtQty: usdtQuantity,
             assets: otherAssets,
           },
         });
@@ -1124,29 +1568,25 @@ export default function MemberDashboard() {
       }
 
       if (activeTab.exchange === "alpaca") {
-        const assets = (data.alpaca_assets || [])
-          .map(normalizeAsset)
-          .filter((asset) => asset.symbol);
+        const rawAssets = Array.isArray(data.alpaca_assets)
+          ? data.alpaca_assets
+          : [];
 
-        const cash = num(
-          data.alpaca_available_usd ?? data.alpaca_cash ?? data.cash
-        );
-
-        const positionsValue = assets.reduce(
-          (sum, asset) => sum + num(asset.value),
-          0
-        );
+        const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
+        const cash = num(data.alpaca_available_usd ?? data.alpaca_cash ?? data.cash);
+        const stocksValue = normalized.reduce((sum, asset) => sum + num(asset.value), 0);
+        const total =
+          num(data.alpaca_total ?? data.alpaca_equity ?? data.alpaca) ||
+          cash + stocksValue;
 
         dispatch({
           type: ACTIONS.SET_BALANCE_DATA,
           payload: {
-            totalAssetValue:
-              num(data.alpaca_total ?? data.alpaca_equity ?? data.alpaca) ||
-              cash + positionsValue,
+            totalAssetValue: total,
             usdCashValue: cash,
             usdtValue: 0,
             usdtQty: 0,
-            assets,
+            assets: normalized,
           },
         });
 
@@ -1163,398 +1603,353 @@ export default function MemberDashboard() {
           assets: [],
         },
       });
-    } catch (error) {
-      console.warn("Could not load balances:", error);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch balance failed:", err);
     }
-  }, [
-    activeTab.exchange,
-    hasPaidAccess,
-    isConnected,
-    normalizeAsset,
-  ]);
+  }, [activeTab.exchange, normalizeAsset]);
+
+  const fetchPositions = useCallback(async () => {
+    try {
+      const res = await fetchWithRetry(() =>
+        BotAPI.getOpenPositions?.(activeTab.exchange, true)
+      );
+
+      const data = unwrapData(res);
+      const list = data.positions || data.openPositions || data.data || [];
+
+      dispatch({ type: ACTIONS.SET_POSITIONS, payload: list });
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch positions failed:", err);
+    }
+  }, [activeTab.exchange]);
 
   const fetchStats = useCallback(async () => {
-    if (!hasPaidAccess || !isConnected) {
-      // Clear stats if not connected/paid – but we might keep existing data?
-      // Better to keep last known stats to avoid flickering.
-      return;
-    }
-
     try {
-      const response = await fetchWithRetry(() =>
+      const res = await fetchWithRetry(() =>
         BotAPI.getLiveTradingStats?.(activeTab.exchange, true)
       );
 
-      const data = unwrapData(response);
+      const data = unwrapData(res);
       const stats = data.summary || data;
 
       dispatch({
         type: ACTIONS.SET_STATS,
         payload: {
-          realizedPnl: num(
-            stats.realized_pnl ?? stats.realizedPnl ?? stats.total_pnl
-          ),
-          totalPnl: num(
-            stats.total_pnl ?? stats.totalPnl ?? stats.realized_pnl
-          ),
+          realizedPnl: num(stats.realized_pnl ?? stats.realizedPnl ?? stats.total_pnl),
+          totalPnl: num(stats.total_pnl ?? stats.totalPnl ?? stats.realized_pnl),
           wins: num(stats.wins),
           losses: num(stats.losses),
           totalTrades: num(stats.total_trades ?? stats.totalTrades),
         },
       });
-    } catch (error) {
-      console.warn("Could not load stats:", error);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch stats failed:", err);
     }
-  }, [activeTab.exchange, hasPaidAccess, isConnected]);
+  }, [activeTab.exchange]);
 
-  const fetchPositions = useCallback(async () => {
-    if (!hasPaidAccess || !isConnected) return;
-
-    try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getOpenPositions?.(activeTab.exchange, true)
-      );
-
-      const data = unwrapData(response);
-      const positions =
-        data.positions || data.openPositions || data.data || [];
-
-      dispatch({ type: ACTIONS.SET_POSITIONS, payload: positions });
-      dispatch({
-        type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
-        payload: positions.length,
-      });
-    } catch (error) {
-      console.warn("Could not load positions:", error);
-    }
-  }, [activeTab.exchange, hasPaidAccess, isConnected]);
-
-  // ===== RESILIENT TRADE FEED =====
   const fetchTradeFeed = useCallback(async () => {
     try {
-      let response;
-      /*
-       * Try the current signature first:
-       * getLiveTradeHistory(limit, exchange, forceRefresh)
-       */
-      try {
-        response = await fetchWithRetry(() =>
-          BotAPI.getLiveTradeHistory?.(
-            20,
-            activeTab.exchange,
-            true
-          )
-        );
-      } catch (firstError) {
-        console.warn(
-          "Three-argument trade-history request failed. Trying fallback:",
-          firstError
-        );
-        /*
-         * Fallback for BotAPI versions using:
-         * getLiveTradeHistory(limit, forceRefresh)
-         */
-        response = await fetchWithRetry(() =>
-          BotAPI.getLiveTradeHistory?.(20, true)
-        );
-      }
-      const firstLayer = response?.data ?? response ?? {};
-      const secondLayer = firstLayer?.data ?? firstLayer;
-      const trades =
-        secondLayer?.trades ??
-        firstLayer?.trades ??
-        secondLayer?.history ??
-        firstLayer?.history ??
-        (Array.isArray(secondLayer) ? secondLayer : []);
-      console.log("Live trade history response:", {
-        exchange: activeTab.exchange,
-        response,
-        trades,
-      });
-      if (!Array.isArray(trades)) {
-        throw new Error(
-          "Trade-history response did not contain a trades array."
-        );
-      }
-      const formatted = trades.slice(0, 20).map((trade, index) => {
-        const pnl = num(
-          trade.pnl_usd ??
-            trade.pnlUsd ??
-            trade.realized_pnl ??
-            trade.realizedPnl ??
-            trade.pnl
-        );
-        const pnlPercent = num(
-          trade.pnl_percent ??
-            trade.pnlPercent ??
-            trade.return_percent ??
-            trade.returnPercent
-        );
-        const timestamp =
-          trade.closed_at ??
-          trade.closedAt ??
-          trade.executed_at ??
-          trade.executedAt ??
-          trade.created_at ??
-          trade.createdAt;
-        const symbol = String(
-          trade.symbol ??
-            trade.instrument ??
-            trade.asset ??
-            "Unknown"
-        )
+      const res = await fetchWithRetry(() =>
+        BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true)
+      );
+
+      const data = unwrapData(res);
+      const trades = data.trades || data.data || [];
+
+      const formattedTrades = trades.slice(0, 20).map((trade) => {
+        let tradeType = "Trade";
+
+        if (trade.exit_reason === "take_profit") tradeType = "Take Profit";
+        else if (trade.exit_reason === "stop_loss") tradeType = "Stop Loss";
+        else if (num(trade.pnl_usd) > 0) tradeType = "Take Profit";
+        else if (num(trade.pnl_usd) < 0) tradeType = "Stop Loss";
+
+        const displaySymbol = String(trade.symbol || "Unknown")
           .replace("-USDT", "")
-          .replace("/USDT", "")
-          .replace("-USD", "");
-        let type = trade.side
-          ? String(trade.side).toUpperCase()
-          : "TRADE";
-        if (trade.exit_reason === "take_profit") {
-          type = "Take Profit";
-        } else if (trade.exit_reason === "stop_loss") {
-          type = "Stop Loss";
-        } else if (trade.exitReason === "take_profit") {
-          type = "Take Profit";
-        } else if (trade.exitReason === "stop_loss") {
-          type = "Stop Loss";
-        }
+          .replace("/USDT", "");
+
+        const tradeMode =
+          trade.mode ??
+          (activeTab.exchange === "alpaca" ? "live" : "paper");
+
         return {
-          id:
-            trade.id ??
-            trade.trade_id ??
-            trade.order_id ??
-            `${symbol}-${timestamp || "unknown"}-${index}`,
-          symbol,
-          pnl,
-          pnlPercent,
-          price: num(
-            trade.exit_price ??
-              trade.exitPrice ??
-              trade.price ??
-              trade.fill_price ??
-              trade.fillPrice
-          ),
-          time: timestamp
-            ? new Date(timestamp).toLocaleString()
-            : "Time unavailable",
-          type,
+          id: trade.id || `${trade.symbol}-${trade.created_at}-${Math.random()}`,
+          symbol: displaySymbol,
+          fullSymbol: trade.symbol,
+          side: trade.side,
+          pnl: num(trade.pnl_usd),
+          pnlPercent: num(trade.pnl_percent),
+          quantity: num(trade.qty),
+          price: num(trade.price),
+          exitPrice: num(trade.exit_price),
+          time: trade.closed_at
+            ? new Date(trade.closed_at).toLocaleTimeString()
+            : trade.created_at
+            ? new Date(trade.created_at).toLocaleTimeString()
+            : new Date().toLocaleTimeString(),
+          type: tradeType,
+          status: trade.status,
+          mode: tradeMode,
+          simulated: trade.simulated !== false,
         };
       });
-      dispatch({
-        type: ACTIONS.SET_TRADE_FEED,
-        payload: formatted,
-      });
-    } catch (error) {
-      console.error("Could not load live trade history:", error);
-      /*
-       * Do not erase trades already displayed because one refresh failed.
-       */
-      showError(
-        error?.message || "Unable to load live trade history."
-      );
+
+      if (formattedTrades.length) {
+        dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formattedTrades });
+      }
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Failed to fetch live trades:", err);
     }
-  }, [
-    activeTab.exchange,
-    showError,
-  ]);
-
-  const fetchCandles = useCallback(async () => {
-    dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: true });
-
-    if (!hasPaidAccess || !isConnected) {
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: [] });
-      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "none" });
-      dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
-      return;
-    }
-
-    try {
-      const symbol =
-        activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
-
-      const response = await BotAPI.getMarketCandles?.({
-        exchange: activeTab.exchange,
-        symbol,
-        timeframe: "1m",
-        limit: 100,
-      });
-
-      const data = unwrapData(response);
-      const candles = data.candles || data.data || [];
-
-      const formatted = candles
-        .map((candle) => ({
-          time: Math.floor(
-            new Date(
-              candle.time ?? candle.timestamp ?? candle.created_at
-            ).getTime() / 1000
-          ),
-          open: num(candle.open),
-          high: num(candle.high),
-          low: num(candle.low),
-          close: num(candle.close),
-        }))
-        .filter(
-          (candle) =>
-            candle.time &&
-            candle.open &&
-            candle.high &&
-            candle.low &&
-            candle.close
-        )
-        .sort((a, b) => a.time - b.time);
-
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: formatted });
-      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
-    } catch (error) {
-      console.warn("Could not load live candles:", error);
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: [] });
-      dispatch({
-        type: ACTIONS.SET_CANDLES_SOURCE,
-        payload: "unavailable",
-      });
-    } finally {
-      dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
-    }
-  }, [activeTab.exchange, hasPaidAccess, isConnected]);
+  }, [activeTab.exchange]);
 
   const fetchImali = useCallback(async () => {
     try {
-      const [balanceResult, discountResult] = await Promise.allSettled([
+      const [balanceRes, discountRes] = await Promise.allSettled([
         fetchWithRetry(() => BotAPI.getImaliBalance?.()),
         fetchWithRetry(() => BotAPI.getImaliDiscountStatus?.()),
       ]);
 
       const balance = unwrapData(
-        balanceResult.status === "fulfilled" ? balanceResult.value : {}
+        balanceRes.status === "fulfilled" ? balanceRes.value : {}
       );
 
       const discount = unwrapData(
-        discountResult.status === "fulfilled" ? discountResult.value : {}
+        discountRes.status === "fulfilled" ? discountRes.value : {}
       );
 
       dispatch({
         type: ACTIONS.SET_IMALI,
         payload: {
           balance: num(balance.balance ?? balance.imali_balance),
-          discountPct: num(
-            discount.discountPct ?? discount.discount_pct
-          ),
-          discountActive: Boolean(
-            discount.active ?? discount.discountActive
-          ),
+          discountPct: num(discount.discountPct ?? discount.discount_pct),
+          discountActive: Boolean(discount.active ?? discount.discountActive),
         },
       });
-    } catch (error) {
-      console.warn("Could not load IMALI information:", error);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("Fetch IMALI failed:", err);
     }
   }, []);
 
-  const fetchReferral = useCallback(async () => {
-    try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getReferralStats?.()
-      );
-
-      const data = unwrapData(response);
-
-      dispatch({
-        type: ACTIONS.SET_REFERRAL,
-        payload: {
-          totalReferrals: num(data.totalReferrals),
-          signups: num(data.signups),
-          paidReferrals: num(data.paidReferrals),
-          freeMonths: num(data.freeMonths),
-        },
-      });
-    } catch (error) {
-      console.warn("Could not load referral stats:", error);
-    }
-  }, []);
+  // ============================================================================
+  // SAVE FUNCTIONS
+  // ============================================================================
 
   const saveStrategyPreference = useCallback(async (strategyId) => {
     localStorage.setItem("imali_selected_strategy", strategyId);
 
     try {
       await BotAPI.updateUserStrategy?.(strategyId);
-    } catch (error) {
-      console.warn("Could not save strategy preference:", error);
+    } catch (err) {
+      console.warn("Could not save strategy preference to backend", err);
     }
   }, []);
 
-  const refreshDashboard = useCallback(
-    async (manual = false) => {
-      if (refreshLockRef.current) return;
+  // ============================================================================
+  // REFRESH DASHBOARD
+  // ============================================================================
 
-      refreshLockRef.current = true;
+  const refreshDashboard = useCallback(
+    async (manual = false, options = {}) => {
+      if (refreshLock.current) {
+        console.warn("Refresh already in progress, skipping");
+        return;
+      }
+
+      refreshLock.current = true;
+
+      const {
+        refreshBot = true,
+        refreshBalance = true,
+        refreshTrades = true,
+        refreshStrategies = false,
+        refreshProfile = false,
+        refreshBilling = false,
+      } = options;
 
       if (manual) {
         dispatch({ type: ACTIONS.SET_REFRESHING, payload: true });
       }
 
+      const fns = {
+        fetchBotStatus,
+        fetchBalance,
+        fetchTradeFeed,
+        fetchStrategies,
+        fetchUser,
+        fetchIntegrationStatus,
+        fetchStats,
+        fetchPositions,
+        fetchImali,
+      };
+
+      const startTime = performance.now();
+
       try {
-        await Promise.allSettled([
-          fetchUser(),
-          fetchIntegrationStatus(),
-          fetchBotStatus(),
-          fetchBalance(),
-          fetchStats(),
-          fetchPositions(),
-          fetchTradeFeed(),
-          fetchCandles(),
-          fetchImali(),
-          fetchReferral(),
-        ]);
+        const promises = [];
+
+        if (refreshBot && fns.fetchBotStatus) {
+          promises.push(fns.fetchBotStatus().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Bot status refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshBalance && fns.fetchBalance) {
+          promises.push(fns.fetchBalance().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Balance refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshTrades && fns.fetchTradeFeed) {
+          promises.push(fns.fetchTradeFeed().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Trade feed refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshStrategies && fns.fetchStrategies) {
+          promises.push(fns.fetchStrategies().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Strategies refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshProfile && fns.fetchUser) {
+          promises.push(fns.fetchUser().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Profile refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (refreshBilling && fns.fetchIntegrationStatus) {
+          promises.push(fns.fetchIntegrationStatus().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Billing refresh failed:", err);
+            return null;
+          }));
+        }
+
+        await Promise.allSettled(promises);
+
+        const backgroundPromises = [];
+
+        if (fns.fetchStats) {
+          backgroundPromises.push(fns.fetchStats().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Stats refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (fns.fetchPositions) {
+          backgroundPromises.push(fns.fetchPositions().catch((err) => {
+            if (err.name !== "AbortError") console.warn("Positions refresh failed:", err);
+            return null;
+          }));
+        }
+
+        if (fns.fetchImali) {
+          backgroundPromises.push(fns.fetchImali().catch((err) => {
+            if (err.name !== "AbortError") console.warn("IMALI refresh failed:", err);
+            return null;
+          }));
+        }
+
+        await Promise.allSettled(backgroundPromises);
 
         if (mountedRef.current) {
+          const totalLatency = performance.now() - startTime;
           dispatch({
-            type: ACTIONS.SET_LAST_UPDATED,
-            payload: new Date(),
+            type: ACTIONS.SET_DEBUG,
+            payload: { latency: Math.round(totalLatency) },
           });
+          dispatch({ type: ACTIONS.SET_LAST_UPDATED, payload: new Date() });
+
+          if (manual) {
+            dispatch({ type: ACTIONS.SET_REFRESHING, payload: false });
+            dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
+          }
+
           dispatch({ type: ACTIONS.SET_LOADING, payload: false });
         }
-      } catch (error) {
-        showError(error?.message || "Dashboard refresh failed.");
-      } finally {
-        refreshLockRef.current = false;
-
+      } catch (err) {
+        console.error("Dashboard refresh error:", err);
         if (mountedRef.current) {
-          dispatch({ type: ACTIONS.SET_REFRESHING, payload: false });
+          dispatch({
+            type: ACTIONS.SET_ERROR,
+            payload: err?.message || "Dashboard refresh failed.",
+          });
         }
+      } finally {
+        refreshLock.current = false;
       }
     },
     [
-      fetchBalance,
       fetchBotStatus,
-      fetchCandles,
-      fetchImali,
-      fetchIntegrationStatus,
-      fetchPositions,
-      fetchReferral,
-      fetchStats,
+      fetchBalance,
       fetchTradeFeed,
+      fetchStrategies,
       fetchUser,
-      showError,
+      fetchIntegrationStatus,
+      fetchStats,
+      fetchPositions,
+      fetchImali,
     ]
   );
 
-  const handleStartBot = useCallback(async () => {
-    if (!hasPaidAccess) {
-      showError("Activate a paid plan before starting live trading.");
-      navigate("/billing");
-      return;
-    }
+  // ============================================================================
+  // HANDLERS
+  // ============================================================================
 
+  const handleSelectStrategy = useCallback(
+    async (strategy) => {
+      if (state.botRunning) {
+        showError("Stop the bot before changing strategies.");
+        return;
+      }
+
+      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+      await saveStrategyPreference(strategy.id);
+      showNotice(`Strategy changed to ${strategy.name}`);
+    },
+    [state.botRunning, saveStrategyPreference, showNotice, showError]
+  );
+
+  const handleConnect = useCallback(() => {
     if (isLocked) {
-      showError("Your current plan does not include this market.");
       navigate("/billing");
       return;
     }
 
-    if (!isConnected) {
-      showError(`Connect your ${activeTab.connectionLabel} first.`);
+    navigate(activeTab.connectRoute);
+  }, [isLocked, navigate, activeTab.connectRoute]);
+
+  const handleStartBot = useCallback(async () => {
+    if (isLocked) {
+      showError("Your current plan does not include this trading type.");
+      navigate("/billing");
+      return;
+    }
+
+    const requiresConnection = !starterPaperOnly;
+
+    if (requiresConnection && !isConnected) {
+      showError(`Please connect your ${activeTab.connectionLabel} first.`);
       navigate(activeTab.connectRoute);
       return;
+    }
+
+    const launchMode = starterPaperOnly ? "paper" : state.botMode;
+
+    if (starterPaperOnly && state.botMode !== "paper") {
+      dispatch({
+        type: ACTIONS.SET_BOT_MODE,
+        payload: "paper",
+      });
     }
 
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
@@ -1569,534 +1964,449 @@ export default function MemberDashboard() {
         tradePct: state.currentStrategy.tradePct,
       };
 
-      let response = null;
+      let res = null;
 
       if (BotAPI.startTradingBotByCategory) {
-        response = await BotAPI.startTradingBotByCategory(
+        res = await BotAPI.startTradingBotByCategory(
           activeTab.categoryId,
           state.currentStrategy.id,
-          "live",
+          launchMode,
           config
         );
       }
 
-      if (
-        (!response || response?.success === false) &&
-        BotAPI.startTradingBot
-      ) {
-        response = await BotAPI.startTradingBot(
+      if ((!res || res?.success === false) && BotAPI.startTradingBot) {
+        res = await BotAPI.startTradingBot(
           activeTab.exchange,
           state.currentStrategy.id,
-          "live",
+          launchMode,
           activeTab.categoryId,
           config
         );
       }
 
-      if (!response) {
-        throw new Error("No bot start API method is available.");
+      if (!res) {
+        throw new Error("No API method available to start bot.");
       }
 
-      if (response?.success === false) {
-        throw new Error(
-          response?.error || response?.message || "Bot failed to start."
-        );
+      if (res?.success === false) {
+        throw new Error(res?.error || res?.message || "Failed to start bot.");
       }
 
-      showNotice("Live trading bot started.");
-      await refreshDashboard(true);
-    } catch (error) {
-      showError(error?.message || "Unable to start the bot.");
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartResult: res, lastStartError: null },
+      });
+
+      showNotice(
+        starterPaperOnly
+          ? "Paper trading bot started."
+          : "Bot started successfully."
+      );
+
+      await refreshDashboard(true, {
+        refreshBot: true,
+        refreshBalance: true,
+        refreshTrades: true,
+      });
+    } catch (err) {
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartError: err.message },
+      });
+      showError(`Failed to start bot: ${err?.message || "Unknown error"}`);
     } finally {
       if (mountedRef.current) {
         dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
       }
     }
   }, [
-    activeTab,
-    hasPaidAccess,
-    isConnected,
     isLocked,
+    isConnected,
+    starterPaperOnly,
     navigate,
-    refreshDashboard,
-    saveStrategyPreference,
-    showError,
-    showNotice,
+    activeTab,
+    state.botMode,
     state.currentStrategy,
+    saveStrategyPreference,
+    refreshDashboard,
+    showNotice,
+    showError,
   ]);
 
   const handleStopBot = useCallback(async () => {
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
-      let response = null;
+      let res = null;
 
       if (BotAPI.stopTradingBotByCategory) {
-        response = await BotAPI.stopTradingBotByCategory(
-          activeTab.categoryId
-        );
+        res = await BotAPI.stopTradingBotByCategory(activeTab.categoryId);
       }
 
-      if (
-        (!response || response?.success === false) &&
-        BotAPI.stopTradingBot
-      ) {
-        response = await BotAPI.stopTradingBot(activeTab.exchange);
+      if ((!res || res?.success === false) && BotAPI.stopTradingBot) {
+        res = await BotAPI.stopTradingBot(activeTab.exchange);
       }
 
-      if (response?.success === false) {
-        throw new Error(response.error || "Bot failed to stop.");
+      if (res?.success === false) {
+        throw new Error(res?.error || "Failed to stop bot.");
       }
 
       showNotice("Bot stopped.");
-      await refreshDashboard(true);
-    } catch (error) {
-      showError(error?.message || "Unable to stop the bot.");
+      await refreshDashboard(true, {
+        refreshBot: true,
+        refreshBalance: true,
+        refreshTrades: true,
+      });
+    } catch (err) {
+      showError(err?.message || "Failed to stop bot.");
     } finally {
       if (mountedRef.current) {
         dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
       }
     }
-  }, [activeTab, refreshDashboard, showError, showNotice]);
-
-  const handleSelectStrategy = useCallback(
-    async (strategy) => {
-      if (state.botRunning) {
-        showError("Stop the bot before changing strategies.");
-        return;
-      }
-
-      dispatch({
-        type: ACTIONS.SET_CURRENT_STRATEGY,
-        payload: strategy,
-      });
-
-      await saveStrategyPreference(strategy.id);
-      showNotice(`Strategy changed to ${strategy.name}.`);
-    },
-    [
-      saveStrategyPreference,
-      showError,
-      showNotice,
-      state.botRunning,
-    ]
-  );
+  }, [activeTab, refreshDashboard, showNotice, showError]);
 
   const handleApplyImaliDiscount = useCallback(async () => {
     try {
-      const response = await BotAPI.applyImaliDiscount?.();
+      const res = await BotAPI.applyImaliDiscount?.();
 
-      if (response?.success === false) {
-        throw new Error(
-          response?.error || "Unable to apply the discount."
-        );
+      if (res?.success === false) {
+        throw new Error(res?.error || "Unable to apply IMALI discount.");
       }
 
-      await fetchImali();
+      await refreshDashboard(true, {
+        refreshBot: false,
+        refreshBalance: false,
+        refreshTrades: false,
+        refreshBilling: true,
+      });
+
       showNotice("IMALI discount applied.");
-    } catch (error) {
-      showError(error?.message || "Unable to apply the discount.");
+    } catch (err) {
+      showError(err?.message || "Unable to apply IMALI discount.");
     }
-  }, [fetchImali, showError, showNotice]);
+  }, [refreshDashboard, showNotice, showError]);
 
-  // ==============================
-  // Effects - Mount/Unmount
-  // ==============================
+  const goToSettings = useCallback((route) => {
+    navigate(route);
+  }, [navigate]);
+
+  // ============================================================================
+  // EFFECTS
+  // ============================================================================
+
+  // Page Visibility API
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      Object.values(intervalsRef.current).forEach((intervalId) => {
-        if (intervalId) {
-          window.clearInterval(intervalId);
-        }
-      });
-      intervalsRef.current = {};
-    };
-  }, []);
-
-  // ==============================
-  // Effect - Initial data load (sequential)
-  // ==============================
-  useEffect(() => {
-    let cancelled = false;
-    const loadDashboard = async () => {
-      // First: get account/billing/integration/bot/referral/imali
-      await Promise.allSettled([
-        fetchUser(),
-        fetchStrategies(),
-        fetchIntegrationStatus(),
-        fetchBotStatus(),
-        fetchImali(),
-        fetchReferral(),
-      ]);
-
-      // Then: fetch data that depends on connection status
-      await Promise.allSettled([
-        fetchBalance(),
-        fetchStats(),
-        fetchPositions(),
-        fetchTradeFeed(),
-        fetchCandles(),
-      ]);
-
-      if (!cancelled && mountedRef.current) {
-        dispatch({
-          type: ACTIONS.SET_LAST_UPDATED,
-          payload: new Date(),
-        });
-        dispatch({
-          type: ACTIONS.SET_LOADING,
-          payload: false,
-        });
-      }
-    };
-    loadDashboard();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    fetchUser,
-    fetchStrategies,
-    fetchIntegrationStatus,
-    fetchBotStatus,
-    fetchImali,
-    fetchReferral,
-    fetchBalance,
-    fetchStats,
-    fetchPositions,
-    fetchTradeFeed,
-    fetchCandles,
-  ]);
-
-  // ==============================
-  // Effect - Polling (stale closure free)
-  // ==============================
-  useEffect(() => {
-    // Clear existing intervals
-    Object.values(intervalsRef.current).forEach((intervalId) => {
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
-    });
-    intervalsRef.current = {};
-
-    if (!user || !isVisible) {
-      return undefined;
-    }
-
-    intervalsRef.current.bot = window.setInterval(() => {
-      fetchBotStatus();
-    }, POLL_INTERVALS.BOT_STATUS);
-
-    intervalsRef.current.balance = window.setInterval(() => {
-      fetchBalance();
-    }, POLL_INTERVALS.BALANCES);
-
-    // Trade interval uses the latest callbacks
-    intervalsRef.current.trades = window.setInterval(() => {
-      Promise.allSettled([
-        fetchTradeFeed(),
-        fetchStats(),
-        fetchPositions(),
-      ]);
-    }, POLL_INTERVALS.TRADES);
-
-    intervalsRef.current.candles = window.setInterval(() => {
-      fetchCandles();
-    }, POLL_INTERVALS.CANDLES);
-
-    return () => {
-      Object.values(intervalsRef.current).forEach((intervalId) => {
-        if (intervalId) {
-          window.clearInterval(intervalId);
-        }
-      });
-      intervalsRef.current = {};
-    };
-  }, [
-    user,
-    isVisible,
-    fetchBotStatus,
-    fetchBalance,
-    fetchTradeFeed,
-    fetchStats,
-    fetchPositions,
-    fetchCandles,
-  ]);
-
-  // ==============================
-  // Effect - Active tab switch refresh
-  // ==============================
-  useEffect(() => {
-    if (
-      previousActiveType === undefined ||
-      previousActiveType === state.activeType
-    ) {
-      return;
-    }
-
-    Promise.allSettled([
-      fetchIntegrationStatus(),
-      fetchBalance(),
-      fetchStats(),
-      fetchPositions(),
-      fetchTradeFeed(),
-      fetchCandles(),
-    ]);
-  }, [
-    fetchBalance,
-    fetchCandles,
-    fetchIntegrationStatus,
-    fetchPositions,
-    fetchStats,
-    fetchTradeFeed,
-    previousActiveType,
-    state.activeType,
-  ]);
-
-  // ==============================
-  // Effect - Visibility change
-  // ==============================
-  useEffect(() => {
-    const onVisibilityChange = () => {
+    const handleVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
       setIsVisible(visible);
 
-      if (visible) refreshDashboard(false);
+      if (visible) {
+        refreshDashboard(true, {
+          refreshBot: true,
+          refreshBalance: true,
+          refreshTrades: true,
+          refreshStrategies: true,
+          refreshProfile: true,
+          refreshBilling: true,
+        });
+      }
     };
 
-    document.addEventListener(
-      "visibilitychange",
-      onVisibilityChange
-    );
-
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () =>
-      document.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange
-      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [refreshDashboard]);
 
-  // ==============================
-  // Effect - Reset active type when tiers change
-  // ==============================
+  // ✅ FIX 8: Improved initial load – fetch user and bot first, then integration and balances, then background data
   useEffect(() => {
-    const activeStillVisible = visibleTradingTypes.some(
-      (item) => item.id === state.activeType
-    );
+    mountedRef.current = true;
 
-    if (
-      visibleTradingTypes.length > 0 &&
-      !activeStillVisible
-    ) {
-      dispatch({
-        type: ACTIONS.SET_ACTIVE_TYPE,
-        payload: visibleTradingTypes[0].id,
-      });
+    const loadCritical = async () => {
+      // 1. Get user (tier + subscription status) and bot status
+      await Promise.allSettled([
+        fetchUser(),
+        fetchBotStatus(),
+      ]);
+
+      // 2. Get integration status and balances (depends on user/connection)
+      await Promise.allSettled([
+        fetchIntegrationStatus(),
+        fetchBalance(),
+      ]);
+
+      // 3. Mark loading complete
+      dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+
+      // 4. Load background data after a short delay
+      setTimeout(() => {
+        if (mountedRef.current) {
+          Promise.allSettled([
+            fetchTradeFeed(),
+            fetchStats(),
+            fetchPositions(),
+            fetchImali(),
+            fetchStrategies(),
+          ]);
+        }
+      }, 500);
+    };
+
+    loadCritical();
+
+    // Only set up intervals if user is logged in
+    if (user) {
+      intervalsRef.current.bot = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: true,
+            refreshBalance: false,
+            refreshTrades: false,
+          });
+        }
+      }, POLL_INTERVALS.BOT_STATUS);
+
+      intervalsRef.current.balance = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: false,
+            refreshBalance: true,
+            refreshTrades: false,
+          });
+        }
+      }, POLL_INTERVALS.BALANCES);
+
+      intervalsRef.current.trades = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: false,
+            refreshBalance: false,
+            refreshTrades: true,
+          });
+        }
+      }, POLL_INTERVALS.TRADES);
     }
-  }, [state.activeType, visibleTradingTypes]);
 
-  // ==============================
-  // Render
-  // ==============================
+    return () => {
+      mountedRef.current = false;
+
+      Object.values(intervalsRef.current).forEach((interval) => {
+        if (interval) window.clearInterval(interval);
+      });
+
+      abortControllersRef.current.forEach((controller) => {
+        controller.abort();
+      });
+      abortControllersRef.current = [];
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (previousActiveType === undefined) return;
+    if (state.activeType === previousActiveType) return;
+
+    const timeoutId = window.setTimeout(() => {
+      if (mountedRef.current) {
+        refreshDashboard(true, {
+          refreshBot: true,
+          refreshBalance: true,
+          refreshTrades: true,
+        });
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [state.activeType, previousActiveType, refreshDashboard]);
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
   if (state.loading && !state.lastUpdated) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-950 p-4 text-white">
-        <div className="text-center">
-          <FaSpinner className="mx-auto animate-spin text-5xl text-cyan-300" />
-          <p className="mt-4 text-white/60">Loading dashboard...</p>
+      <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <FaSpinner className="animate-spin text-5xl text-cyan-300 mx-auto" />
+          <p className="text-white/60">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-slate-950 pb-10 text-white">
-      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+    <DashboardErrorBoundary>
+      <div className="min-h-screen bg-[#050816] text-white pb-10 overflow-x-hidden">
+        <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%)]" />
-
-      <header className="relative border-b border-white/10 bg-black/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-cyan-400/10 text-2xl">
-              🚀
-            </div>
-
-            <div className="min-w-0">
-              <h1 className="text-2xl font-black leading-none text-white">
-                IMALI
-              </h1>
-              <p className="mt-1 truncate text-[10px] font-black tracking-[0.2em] text-white/50">
-                LIVE TRADING PLATFORM
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => navigate("/billing")}
-              className="min-h-[44px] rounded-2xl bg-emerald-600 px-3 py-2 font-black text-white transition hover:bg-emerald-500 sm:px-4"
-            >
-              <FaCog className="sm:mr-2" />
-              <span className="hidden sm:inline">Settings</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={logout}
-              className="min-h-[44px] rounded-2xl bg-red-500 px-3 py-2 font-black text-white transition hover:bg-red-400 sm:px-4"
-            >
-              <FaSignOutAlt className="sm:mr-2" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="relative mx-auto max-w-7xl space-y-5 px-4 py-6">
-        {state.error && (
-          <GlassCard className="border-red-500/40">
-            <p className="text-sm text-red-200">{state.error}</p>
-          </GlassCard>
-        )}
-
-        {state.notice && (
-          <GlassCard className="border-emerald-500/40">
-            <p className="text-sm text-emerald-200">{state.notice}</p>
-          </GlassCard>
-        )}
-
-        <section className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          {currentTierConfig.image && (
-            <img
-              src={currentTierConfig.image}
-              alt={currentTierConfig.alt}
-              className="h-14 w-14 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
-            />
-          )}
-
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-white/50">Welcome back,</p>
-
-            <h2 className="truncate text-xl font-black text-white sm:text-2xl">
-              {user?.displayName ||
-                user?.name ||
-                user?.firstName ||
-                "Trader"}
-            </h2>
-
-            <p className="truncate text-sm text-white/50">
-              {user?.email || "Member"}
-            </p>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <StatusPill running={state.botRunning} />
-              <LivePill />
-
-              <span
-                className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-widest sm:px-4 sm:py-2 sm:text-xs ${
-                  hasPaidAccess
-                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                    : "border-amber-400/40 bg-amber-400/10 text-amber-300"
-                }`}
-              >
-                {hasPaidAccess
-                  ? `${effectiveTier.toUpperCase()} ACTIVE`
-                  : "ACTIVATION REQUIRED"}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <GlassCard>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {SETTINGS_TABS.slice(0, 4).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => navigate(tab.route)}
-                className={`min-h-[44px] rounded-xl px-2 py-2.5 text-[10px] font-black transition sm:px-3 sm:py-3 sm:text-xs ${
-                  activeSettingsTab === tab.id
-                    ? "border border-cyan-400/30 bg-cyan-400/20 text-cyan-300"
-                    : "bg-white/5 text-white/60 hover:bg-white/10"
-                }`}
-              >
-                <span className="mr-1.5 inline sm:mr-2">{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </GlassCard>
-
-        {!hasPaidAccess && (
-          <GlassCard className="border-amber-500/30">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <span className="text-3xl">⚠️</span>
-
-              <div className="flex-1">
-                <h3 className="text-lg font-black text-amber-300">
-                  Activate Live Trading
-                </h3>
-
-                <p className="mt-1 text-sm text-white/60">
-                  Add a payment method and activate Pro or Elite before
-                  connecting an exchange or starting a bot.
+        <header className="relative border-b border-white/10 bg-black/70 backdrop-blur-xl">
+          <div className="mx-auto max-w-7xl px-4 py-5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-14 w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-3xl">
+                🚀
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-3xl font-black leading-none">IMALI</h1>
+                <p className="text-xs tracking-[0.24em] text-white/50 font-black mt-1 truncate">
+                  AI TRADING PLATFORM
                 </p>
               </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => goToSettings("/billing")}
+                className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-4 py-3 font-black transition flex items-center gap-2"
+              >
+                <FaCog className="inline" />
+                Settings
+              </button>
 
               <button
-                type="button"
-                onClick={() => navigate("/billing")}
-                className="min-h-[44px] rounded-2xl bg-blue-600 px-5 py-3 font-black text-white hover:bg-blue-500"
+                onClick={logout}
+                aria-label="Logout"
+                className="shrink-0 rounded-2xl bg-red-500 px-4 py-3 font-black hover:bg-red-400 transition"
               >
-                Activate Plan
+                <FaSignOutAlt className="inline mr-2" />
+                Logout
               </button>
             </div>
-          </GlassCard>
-        )}
+          </div>
+        </header>
 
-        {visibleTradingTypes.length > 0 && (
-          <GlassCard contentClassName="p-0">
+        <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
+          {state.error && (
             <div
-              className={`grid ${
-                visibleTradingTypes.length === 2
-                  ? "grid-cols-2"
-                  : "grid-cols-4"
-              }`}
+              className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200"
+              role="alert"
+              aria-live="polite"
             >
+              {state.error}
+            </div>
+          )}
+
+          {state.notice && (
+            <div
+              className="rounded-3xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200"
+              role="status"
+              aria-live="polite"
+            >
+              {state.notice}
+            </div>
+          )}
+
+          <section>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {currentTierConfig.image && (
+                <img
+                  src={currentTierConfig.image}
+                  alt={currentTierConfig.alt}
+                  className="h-16 w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
+                  loading="lazy"
+                />
+              )}
+
+              <div className="flex-1">
+                <p className="text-white/50">Welcome back,</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-black">
+                    Welcome, {user?.displayName || user?.name || user?.firstName || "Trader"}
+                  </h2>
+                  <span className={`rounded-lg px-2 py-1 text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
+                    {accountStatus.icon} {accountStatus.label}
+                  </span>
+                  {state.refreshing && (
+                    <span className="text-xs text-cyan-300">
+                      <FaSpinner className="inline animate-spin mr-1" />
+                      Updating
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
+                <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <StatusPill running={state.botRunning} />
+                  <ModePill mode={state.botMode} />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Settings Tabs with active detection */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {SETTINGS_TABS.slice(0, 4).map((tab) => (
+                <SettingsTab
+                  key={tab.id}
+                  icon={tab.icon}
+                  label={tab.label}
+                  onClick={() => goToSettings(tab.route)}
+                  active={tab.id === activeSettingsTab}
+                />
+              ))}
+            </div>
+          </section>
+
+          {/* Billing Incomplete Warning */}
+          {state.userTier !== "starter" && !hasPaidAccess && (
+            <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-5">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">⚠️</span>
+                <div>
+                  <h3 className="text-xl font-black text-amber-300">
+                    {state.userTier.toUpperCase()} Plan Selected — Billing Incomplete
+                  </h3>
+                  <p className="text-white/60 mt-1">
+                    Paper trading is still available. Add a payment method to activate {state.userTier} live features.
+                  </p>
+                  <button
+                    onClick={() => navigate("/billing", { state: { tier: state.userTier, updateCard: true } })}
+                    className="mt-3 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-3 font-black transition"
+                  >
+                    💳 Add Payment Method
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Trading types */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
+            <div className="grid grid-cols-4">
               {visibleTradingTypes.map((tab) => {
+                const locked = !hasTierAccess(effectiveTier, tab.minTier);
                 const active = state.activeType === tab.id;
-                const locked = !hasTierAccess(
-                  effectiveTier,
-                  tab.minTier
-                );
 
                 return (
                   <button
                     key={tab.id}
-                    type="button"
                     onClick={() =>
                       dispatch({
                         type: ACTIONS.SET_ACTIVE_TYPE,
                         payload: tab.id,
                       })
                     }
-                    className={`relative min-h-[56px] px-2 py-3 font-black transition sm:min-h-[64px] ${
+                    aria-label={`Switch to ${tab.label} trading`}
+                    aria-current={active ? "page" : undefined}
+                    className={`relative min-w-0 px-1 py-4 text-center font-black transition ${
                       active
-                        ? "bg-cyan-400/10 text-cyan-300"
+                        ? "bg-cyan-400/10 text-white"
                         : "text-white/50 hover:bg-white/[0.04]"
                     }`}
                   >
-                    <span className="block text-base sm:text-lg">{tab.icon}</span>
-                    <span className="mt-0.5 block text-[9px] sm:mt-1 sm:text-sm">
-                      {tab.label}
-                    </span>
-                    {locked && (
-                      <FaLock className="mx-auto mt-0.5 text-[8px] sm:mt-1 sm:text-[10px]" />
-                    )}
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <span className={`text-xl ${active ? "text-cyan-300" : ""}`}>
+                        {tab.icon}
+                      </span>
+                      <span className="text-[11px] sm:text-base leading-none">
+                        {tab.label}
+                      </span>
+                      {locked && (
+                        <FaLock className="text-[10px] text-white/40" />
+                      )}
+                    </div>
+
                     {active && (
                       <div className="absolute bottom-0 left-4 right-4 h-1 rounded-full bg-cyan-300" />
                     )}
@@ -2104,457 +2414,406 @@ export default function MemberDashboard() {
                 );
               })}
             </div>
-          </GlassCard>
-        )}
+          </section>
 
-        <ConnectionCard
-          activeTab={activeTab}
-          connection={activeConnection}
-          isLocked={isLocked || !hasPaidAccess}
-          needsReconnect={needsReconnect}
-          onConnect={() => navigate(activeTab.connectRoute)}
-          onUpgrade={() => navigate("/billing")}
-          lastUpdated={state.lastUpdated}
-        />
-
-        <GlassCard>
-          <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
-            <div>
-              <h3 className="text-xl font-black text-white">
-                Account Overview
-              </h3>
-
-              <p className="mt-6 text-sm text-white/50">
-                Total Account Value
-              </p>
-
-              <p className="mt-2 break-words text-2xl font-black text-white sm:text-3xl md:text-5xl">
-                {formatMoney(state.totalAssetValue)}
-              </p>
-
-              <p
-                className={`mt-3 font-black ${
-                  state.stats.totalPnl >= 0
-                    ? "text-emerald-300"
-                    : "text-red-300"
-                }`}
-              >
-                {state.stats.totalPnl >= 0 ? "+" : ""}
-                {formatMoney(state.stats.totalPnl)} realized
-              </p>
-
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                <MiniBox
-                  label="Open Positions"
-                  value={state.openPositionsCount}
-                />
-                <MiniBox
-                  label="USD Cash"
-                  value={formatMoney(state.usdCashValue)}
-                />
-                <MiniBox
-                  label="USDT"
-                  value={formatMoney(state.usdtValue)}
-                />
+          {/* Connection Card */}
+          {starterPaperOnly ? (
+            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
+              <div className="flex items-start gap-4">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/20 text-emerald-300">
+                  <FaCheckCircle />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black">Paper Trading Ready</h3>
+                  <p className="text-sm text-emerald-100/80">
+                    No exchange API key or credit card is required for Starter paper trading.
+                  </p>
+                </div>
               </div>
+            </section>
+          ) : (
+            <ConnectionCard
+              activeTab={activeTab}
+              connection={activeConnection}
+              isLocked={isLocked}
+              needsReconnect={needsReconnect}
+              userTier={effectiveTier}
+              onConnect={handleConnect}
+              onUpgrade={() => navigate("/billing")}
+              lastUpdated={state.lastUpdated}
+            />
+          )}
+
+          {starterPaperOnly && (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-sm">
+              Starter accounts support paper trading only. Upgrade to Pro for live trading.
             </div>
+          )}
 
-            <div className="grid grid-cols-[120px_1fr] items-center gap-3 sm:grid-cols-[130px_1fr] sm:gap-4">
-              <div className="relative h-[120px] sm:h-[130px]">
-                <Doughnut
-                  data={donutData}
-                  options={donutOptions}
-                />
+          <TierUpgradeCard
+            currentTier={normalizeTier(state.userTier)}
+            onUpgrade={() => navigate("/billing")}
+          />
 
-                <div className="absolute inset-0 grid place-items-center text-center">
-                  <div>
-                    <p className="text-base font-black text-white sm:text-xl">
-                      {formatPercent(winRate)}
-                    </p>
-                    <p className="text-[10px] text-white/50 sm:text-xs">Win Rate</p>
-                  </div>
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
+              <div>
+                <h3 className="text-xl font-black">Account Overview</h3>
+                <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
+                <p className="mt-2 text-5xl font-black">
+                  {formatMoney(state.totalAssetValue)}
+                </p>
+                <p
+                  className={`mt-3 font-black ${
+                    state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
+                  }`}
+                >
+                  {state.stats.totalPnl >= 0 ? "+" : ""}
+                  {formatMoney(state.stats.totalPnl)} realized
+                </p>
+
+                <div className="mt-5 grid grid-cols-3 gap-3">
+                  <MiniBox label="Open Positions" value={state.openPositionsCount} />
+                  <MiniBox label="USD Cash" value={formatMoney(state.usdCashValue)} />
+                  <MiniBox label="USDT" value={formatMoney(state.usdtValue)} />
                 </div>
               </div>
 
-              <div className="space-y-2 text-xs sm:space-y-3 sm:text-sm">
-                <p className="flex justify-between gap-3">
-                  <span className="text-white/50">Wins</span>
-                  <strong>{state.stats.wins}</strong>
-                </p>
-                <p className="flex justify-between gap-3">
-                  <span className="text-white/50">Losses</span>
-                  <strong>{state.stats.losses}</strong>
-                </p>
-                <p className="flex justify-between gap-3">
-                  <span className="text-white/50">Trades</span>
-                  <strong>{state.stats.totalTrades}</strong>
-                </p>
+              <div className="grid grid-cols-[130px_1fr] sm:grid-cols-[140px_1fr] items-center gap-4">
+                <div className="relative h-[130px] sm:h-[140px]">
+                  <Doughnut data={donutData} options={donutOptions} />
+                  <div className="absolute inset-0 grid place-items-center text-center">
+                    <div>
+                      <p className="text-xl sm:text-2xl font-black">
+                        {formatPercent(winRate)}
+                      </p>
+                      <p className="text-xs text-white/60">Win Rate</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 text-sm">
+                  <LegendRow label="Wins" value={state.stats.wins} color="bg-emerald-400" />
+                  <LegendRow label="Losses" value={state.stats.losses} color="bg-red-400" />
+                  <LegendRow label="Trades" value={state.stats.totalTrades} color="bg-white/40" />
+                </div>
               </div>
             </div>
-          </div>
-        </GlassCard>
+          </section>
 
-        <GlassCard>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-xl font-black text-white">Assets</h3>
-
-            <button
-              type="button"
-              onClick={() => refreshDashboard(true)}
-              disabled={state.refreshing}
-              className="min-h-[44px] font-black text-cyan-300 disabled:opacity-50"
-            >
-              {state.refreshing ? (
-                <FaSpinner className="mr-2 inline animate-spin" />
-              ) : (
-                <FaSyncAlt className="mr-2 inline" />
-              )}
-              Refresh
-            </button>
-          </div>
-
-          {visibleAssets.length === 0 ? (
-            <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">
-              {isConnected
-                ? "No assets detected."
-                : "Connect an account to load assets."}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-xl font-black">Assets</h3>
+              <button
+                onClick={() =>
+                  refreshDashboard(true, {
+                    refreshBot: true,
+                    refreshBalance: true,
+                    refreshTrades: true,
+                  })
+                }
+                disabled={state.refreshing}
+                className="text-cyan-300 font-black disabled:opacity-50 transition"
+              >
+                {state.refreshing ? (
+                  <FaSpinner className="animate-spin inline mr-2" />
+                ) : (
+                  <FaSyncAlt className="inline mr-2" />
+                )}
+                Refresh
+              </button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {visibleAssets.map((asset) => (
-                <AssetRow
-                  key={`${asset.symbol}-${asset.value}`}
-                  asset={asset}
-                  total={state.totalAssetValue}
+
+            {visibleAssets.length === 0 ? (
+              <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">
+                {isConnected
+                  ? "No assets detected yet"
+                  : "Connect account to load assets"}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {visibleAssets.map((asset) => (
+                  <AssetRow
+                    key={`${asset.symbol}-${asset.value}`}
+                    asset={asset}
+                    total={state.totalAssetValue}
+                  />
+                ))}
+
+                {smallBalancesCount > 0 && (
+                  <div className="mt-4 rounded-2xl bg-black/25 p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-black">Small balances</p>
+                      <p className="text-sm text-white/40">
+                        {smallBalancesCount} assets under $0.50
+                      </p>
+                    </div>
+                    <FaArrowRight className="text-white/40" />
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div className="flex items-center gap-2">
+                <FaChartLine className="text-emerald-300" />
+                <h3 className="text-xl font-black">Live Trade Feed</h3>
+              </div>
+
+              {state.botRunning && (
+                <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Bot Running • {(state.botMode || "paper").toUpperCase()} MODE
+                </div>
+              )}
+            </div>
+
+            {state.tradeFeed.length === 0 ? (
+              <div className="py-16 text-center text-white/30">
+                <div className="text-6xl mb-4">🤖</div>
+                <p>Start the bot to see trades appear here.</p>
+                <p className="text-xs text-white/40 mt-2">
+                  Bot status: {state.botRunning ? "Running" : "Stopped"}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                {state.tradeFeed.map((trade) => (
+                  <TradeItem key={trade.id} trade={trade} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-5 lg:grid-cols-2">
+            <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="text-xl font-black">Active Bot</h3>
+                <span className="text-cyan-300 text-2xl">
+                  <FaRobot />
+                </span>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="text-4xl shrink-0">
+                  {state.currentStrategy.icon}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-2xl font-black">
+                      {state.currentStrategy.name}
+                    </h4>
+                    <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
+                      {state.currentStrategy.risk}
+                    </span>
+                  </div>
+
+                  <p className="text-white/50">
+                    {state.currentStrategy.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="my-5 h-px bg-white/10" />
+
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                <div>
+                  <p className="text-white/40">Market</p>
+                  <p className="font-black">{activeTab.label}</p>
+                </div>
+                <div>
+                  <p className="text-white/40">Mode</p>
+                  <p className="font-black">{state.botMode.toUpperCase()}</p>
+                </div>
+                <div>
+                  <p className="text-white/40">Positions</p>
+                  <p className="font-black">
+                    {state.openPositionsCount} / {state.currentStrategy.maxPositions || 5}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                {!state.botRunning ? (
+                  <button
+                    onClick={handleStartBot}
+                    disabled={state.processing}
+                    className={`w-full rounded-2xl py-4 font-black disabled:opacity-50 transition ${
+                      isLocked || !isConnected
+                        ? "bg-cyan-500 text-black hover:bg-cyan-400"
+                        : "bg-emerald-500 text-black hover:bg-emerald-400"
+                    }`}
+                  >
+                    {state.processing ? (
+                      <FaSpinner className="animate-spin inline mr-2" />
+                    ) : isLocked ? (
+                      <FaLock className="inline mr-2" />
+                    ) : !isConnected ? (
+                      <FaPlug className="inline mr-2" />
+                    ) : (
+                      <FaPlay className="inline mr-2" />
+                    )}
+                    {isLocked
+                      ? "Upgrade to Unlock"
+                      : !isConnected
+                      ? "Connect to Start"
+                      : starterPaperOnly
+                      ? "Start Paper Bot"
+                      : "Start Bot"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopBot}
+                    disabled={state.processing}
+                    className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50 transition"
+                  >
+                    {state.processing ? (
+                      <FaSpinner className="animate-spin inline mr-2" />
+                    ) : (
+                      <FaStop className="inline mr-2" />
+                    )}
+                    Stop Bot
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="text-xl font-black">Performance</h3>
+                <span className="text-cyan-300 text-2xl">
+                  <FaChartLine />
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-black/25 p-4">
+                  <p className="text-sm text-white/40">Realized PnL</p>
+                  <p className={`mt-2 text-2xl font-black ${
+                    state.stats.realizedPnl >= 0 ? "text-emerald-300" : "text-red-300"
+                  }`}>
+                    {formatMoney(state.stats.realizedPnl)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-black/25 p-4">
+                  <p className="text-sm text-white/40">Total PnL</p>
+                  <p className={`mt-2 text-2xl font-black ${
+                    state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
+                  }`}>
+                    {formatMoney(state.stats.totalPnl)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-black/25 p-4">
+                  <p className="text-sm text-white/40">Total Trades</p>
+                  <p className="mt-2 text-2xl font-black">
+                    {Number(state.stats.totalTrades || 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-black/25 p-4">
+                  <p className="text-sm text-white/40">Win Rate</p>
+                  <p className="mt-2 text-2xl font-black">
+                    {formatPercent(winRate)}
+                  </p>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <h3 className="mb-5 text-xl sm:text-2xl font-black">
+              Available Bot Strategies
+            </h3>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {state.strategies.map((strategy) => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  selected={state.currentStrategy.id === strategy.id}
+                  onClick={() => handleSelectStrategy(strategy)}
+                  disabled={state.botRunning}
                 />
               ))}
             </div>
-          )}
-        </GlassCard>
+          </section>
 
-        <GlassCard>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-xl font-black text-white">
-                Live Market Candles
-              </h3>
-              <p className="text-xs text-white/40">
-                {state.candlesSource === "live"
-                  ? "Connected exchange market data"
-                  : "Connect and activate an account to load data"}
+          <section className="grid gap-5 lg:grid-cols-2">
+            <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-2xl font-black">IMALI Utility</h3>
+                <FaCoins className="text-2xl text-emerald-300" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <MiniBox
+                  label="Balance"
+                  value={`${num(state.imali.balance).toLocaleString()} IMALI`}
+                />
+                <MiniBox label="Discount" value={formatPercent(state.imali.discountPct)} />
+                <MiniBox label="Status" value={state.imali.discountActive ? "Active" : "Inactive"} />
+              </div>
+
+              <p className="mt-4 text-sm text-white/60">
+                Hold IMALI for platform discounts, lower fees, early access, and future
+                ecosystem benefits.
               </p>
-            </div>
 
-            <span className="text-xs text-red-300">
-              🔴 LIVE DATA
-            </span>
-          </div>
-
-          {state.candlesLoading ? (
-            <div className="grid h-[200px] place-items-center rounded-2xl bg-black/25 sm:h-[240px]">
-              <FaSpinner className="animate-spin text-3xl text-cyan-300" />
-            </div>
-          ) : state.candles.length > 0 ? (
-            <div className="h-[220px] rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:h-[300px] sm:p-2">
-              <CandlestickChart
-                data={state.candles}
-                liveCandle={state.candles[state.candles.length - 1]}
-                height={300}
-              />
-            </div>
-          ) : (
-            <div className="grid h-[200px] place-items-center rounded-2xl bg-black/25 p-4 text-center text-white/40 sm:h-[240px]">
-              No live candle data is available.
-            </div>
-          )}
-        </GlassCard>
-
-        <GlassCard>
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <h3 className="text-xl font-black text-white">
-              Live Trade Feed
-            </h3>
-
-            {state.botRunning && (
-              <span className="text-sm text-emerald-400">
-                ● Bot Running
-              </span>
-            )}
-          </div>
-
-          {state.tradeFeed.length === 0 ? (
-            <div className="py-14 text-center text-white/30">
-              <div className="mb-3 text-5xl">🤖</div>
-              <p>No live trades are available yet.</p>
-            </div>
-          ) : (
-            <div className="max-h-[500px] space-y-3 overflow-y-auto">
-              {state.tradeFeed.map((trade) => (
-                <TradeItem key={trade.id} trade={trade} />
-              ))}
-            </div>
-          )}
-        </GlassCard>
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          <GlassCard>
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-xl font-black text-white">
-                Active Bot
-              </h3>
-              <FaRobot className="text-2xl text-cyan-300" />
-            </div>
-
-            <div className="flex items-start gap-4">
-              <span className="text-3xl sm:text-4xl">
-                {state.currentStrategy.icon}
-              </span>
-
-              <div>
-                <h4 className="text-lg font-black text-white sm:text-2xl">
-                  {state.currentStrategy.name}
-                </h4>
-                <p className="text-xs text-white/50 sm:text-sm">
-                  {state.currentStrategy.description}
-                </p>
-              </div>
-            </div>
-
-            <div className="my-5 h-px bg-white/10" />
-
-            <div className="grid grid-cols-3 gap-2 text-center text-xs sm:gap-3 sm:text-sm">
-              <div>
-                <p className="text-white/40">Market</p>
-                <p className="font-black">{activeTab.label}</p>
-              </div>
-
-              <div>
-                <p className="text-white/40">Mode</p>
-                <p className="font-black text-red-300">LIVE</p>
-              </div>
-
-              <div>
-                <p className="text-white/40">Positions</p>
-                <p className="font-black">
-                  {state.openPositionsCount} /{" "}
-                  {state.currentStrategy.maxPositions || 5}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              {!state.botRunning ? (
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <button
-                  type="button"
-                  onClick={handleStartBot}
-                  disabled={state.processing}
-                  className="min-h-[52px] w-full rounded-2xl bg-emerald-500 py-3 font-black text-black transition hover:bg-emerald-400 disabled:opacity-50 sm:py-4"
+                  onClick={() => goToSettings("/buy-imali")}
+                  className="rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400 transition"
                 >
-                  {state.processing ? (
-                    <FaSpinner className="mr-2 inline animate-spin" />
-                  ) : !hasPaidAccess || isLocked ? (
-                    <FaLock className="mr-2 inline" />
-                  ) : !isConnected ? (
-                    <FaPlug className="mr-2 inline" />
-                  ) : (
-                    <FaPlay className="mr-2 inline" />
-                  )}
-
-                  {!hasPaidAccess
-                    ? "Activate Live Trading"
-                    : isLocked
-                    ? "Upgrade to Unlock"
-                    : !isConnected
-                    ? "Connect Account"
-                    : "Start Live Bot"}
+                  Buy IMALI
                 </button>
-              ) : (
+
                 <button
-                  type="button"
-                  onClick={handleStopBot}
-                  disabled={state.processing}
-                  className="min-h-[52px] w-full rounded-2xl bg-red-500 py-3 font-black text-white transition hover:bg-red-400 disabled:opacity-50 sm:py-4"
+                  onClick={handleApplyImaliDiscount}
+                  className="rounded-2xl bg-white/10 py-3 font-black hover:bg-white/15 transition"
                 >
-                  {state.processing ? (
-                    <FaSpinner className="mr-2 inline animate-spin" />
-                  ) : (
-                    <FaStop className="mr-2 inline" />
-                  )}
-                  Stop Bot
+                  Apply Discount
                 </button>
-              )}
-            </div>
+              </div>
+            </section>
 
-            <p className="mt-3 text-center text-[10px] text-white/35 sm:text-xs">
-              Live trading uses real funds and can result in losses.
-            </p>
-          </GlassCard>
-
-          <GlassCard>
-            <h3 className="mb-5 text-xl font-black text-white">
-              Performance
-            </h3>
-
-            <div className="grid grid-cols-2 gap-3">
-              <MiniBox
-                label="Realized PnL"
-                value={formatMoney(state.stats.realizedPnl)}
-              />
-              <MiniBox
-                label="Total PnL"
-                value={formatMoney(state.stats.totalPnl)}
-              />
-              <MiniBox
-                label="Total Trades"
-                value={state.stats.totalTrades}
-              />
-              <MiniBox
-                label="Win Rate"
-                value={formatPercent(winRate)}
-              />
-            </div>
-          </GlassCard>
-        </div>
-
-        <AIThinkingPanel
-          strategy={state.currentStrategy}
-          stats={state.stats}
-          effectiveTier={effectiveTier}
-        />
-
-        <GlassCard className="border-emerald-500/20">
-          <div className="mb-4 flex items-center gap-3">
-            <FaUsers className="text-xl text-emerald-400" />
-            <h3 className="font-bold text-white">
-              Referral Program
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-            {[
-              ["Clicks", state.referral.totalReferrals],
-              ["Signups", state.referral.signups],
-              ["Paid", state.referral.paidReferrals],
-              ["Free Months", state.referral.freeMonths],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl bg-white/5 p-2 text-center sm:p-3"
-              >
-                <p className="text-lg font-bold text-white sm:text-2xl">
-                  <CountUp end={num(value)} duration={1.2} />
-                </p>
-                <p className="text-[9px] text-white/40 sm:text-[10px]">
-                  {label}
+            <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-5 flex flex-col justify-between gap-4">
+              <div>
+                <h3 className="font-black text-2xl">Unlock More Power</h3>
+                <p className="text-sm sm:text-base text-white/60 leading-relaxed">
+                  Upgrade to Elite for Futures, DEX sniper bots, advanced AI
+                  strategies, and priority support.
                 </p>
               </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigate("/referrals")}
-            className="mt-4 min-h-[44px] text-sm font-black text-emerald-400"
-          >
-            View Referral Dashboard
-            <FaArrowRight className="ml-2 inline" />
-          </button>
-        </GlassCard>
-
-        <GlassCard>
-          <h3 className="mb-5 text-xl font-black text-white">
-            Trading Strategies
-          </h3>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {state.strategies.map((strategy) => (
-              <StrategyCard
-                key={strategy.id}
-                strategy={strategy}
-                selected={
-                  state.currentStrategy.id === strategy.id
-                }
-                disabled={state.botRunning}
-                onClick={() =>
-                  handleSelectStrategy(strategy)
-                }
-              />
-            ))}
-          </div>
-        </GlassCard>
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          <GlassCard className="border-emerald-500/30">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-2xl font-black text-white">
-                IMALI Utility
-              </h3>
-              <FaCoins className="text-2xl text-emerald-300" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <MiniBox
-                label="Balance"
-                value={`${num(
-                  state.imali.balance
-                ).toLocaleString()} IMALI`}
-              />
-              <MiniBox
-                label="Discount"
-                value={formatPercent(
-                  state.imali.discountPct
-                )}
-              />
-              <MiniBox
-                label="Status"
-                value={
-                  state.imali.discountActive
-                    ? "Active"
-                    : "Inactive"
-                }
-              />
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => navigate("/buy-imali")}
-                className="min-h-[44px] rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400"
-              >
-                Buy IMALI
-              </button>
 
               <button
-                type="button"
-                onClick={handleApplyImaliDiscount}
-                className="min-h-[44px] rounded-2xl bg-white/10 py-3 font-black text-white hover:bg-white/15"
+                onClick={() => goToSettings("/billing")}
+                className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400 transition"
               >
-                Apply Discount
+                <FaCrown className="inline mr-2" />
+                Upgrade Now
               </button>
-            </div>
-          </GlassCard>
+            </section>
+          </section>
+        </main>
 
-          <GlassCard className="border-purple-500/30">
-            <h3 className="text-2xl font-black text-white">
-              Need More Access?
-            </h3>
-
-            <p className="mt-2 text-sm text-white/60">
-              Upgrade to Elite for futures, DEX trading,
-              additional automation, and advanced controls.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => navigate("/billing")}
-              className="mt-5 min-h-[44px] w-full rounded-2xl bg-purple-500 px-5 py-3 font-black text-white hover:bg-purple-400"
-            >
-              <FaCrown className="mr-2 inline" />
-              View Plans
-            </button>
-          </GlassCard>
-        </div>
-      </main>
-    </div>
+        <DebugPanel state={state} />
+      </div>
+    </DashboardErrorBoundary>
   );
+}
+
+// ============================================================================
+// HOOKS
+// ============================================================================
+
+function usePrevious(value) {
+  const ref = useRef();
+
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+
+  return ref.current;
 }
