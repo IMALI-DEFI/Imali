@@ -1174,7 +1174,11 @@ export default function MemberDashboard() {
   ]);
 
   const fetchStats = useCallback(async () => {
-    if (!hasPaidAccess || !isConnected) return;
+    if (!hasPaidAccess || !isConnected) {
+      // Clear stats if not connected/paid – but we might keep existing data?
+      // Better to keep last known stats to avoid flickering.
+      return;
+    }
 
     try {
       const response = await fetchWithRetry(() =>
@@ -1225,48 +1229,134 @@ export default function MemberDashboard() {
     }
   }, [activeTab.exchange, hasPaidAccess, isConnected]);
 
+  // ===== RESILIENT TRADE FEED =====
   const fetchTradeFeed = useCallback(async () => {
-    if (!hasPaidAccess || !isConnected) {
-      dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: [] });
-      return;
-    }
-
     try {
-      const response = await fetchWithRetry(() =>
-        BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true)
-      );
-
-      const data = unwrapData(response);
-      const trades = data.trades || data.data || [];
-
-      const formatted = trades.slice(0, 20).map((trade) => ({
-        id:
-          trade.id ||
-          `${trade.symbol}-${trade.created_at}-${Math.random()}`,
-        symbol: String(trade.symbol || "Unknown")
+      let response;
+      /*
+       * Try the current signature first:
+       * getLiveTradeHistory(limit, exchange, forceRefresh)
+       */
+      try {
+        response = await fetchWithRetry(() =>
+          BotAPI.getLiveTradeHistory?.(
+            20,
+            activeTab.exchange,
+            true
+          )
+        );
+      } catch (firstError) {
+        console.warn(
+          "Three-argument trade-history request failed. Trying fallback:",
+          firstError
+        );
+        /*
+         * Fallback for BotAPI versions using:
+         * getLiveTradeHistory(limit, forceRefresh)
+         */
+        response = await fetchWithRetry(() =>
+          BotAPI.getLiveTradeHistory?.(20, true)
+        );
+      }
+      const firstLayer = response?.data ?? response ?? {};
+      const secondLayer = firstLayer?.data ?? firstLayer;
+      const trades =
+        secondLayer?.trades ??
+        firstLayer?.trades ??
+        secondLayer?.history ??
+        firstLayer?.history ??
+        (Array.isArray(secondLayer) ? secondLayer : []);
+      console.log("Live trade history response:", {
+        exchange: activeTab.exchange,
+        response,
+        trades,
+      });
+      if (!Array.isArray(trades)) {
+        throw new Error(
+          "Trade-history response did not contain a trades array."
+        );
+      }
+      const formatted = trades.slice(0, 20).map((trade, index) => {
+        const pnl = num(
+          trade.pnl_usd ??
+            trade.pnlUsd ??
+            trade.realized_pnl ??
+            trade.realizedPnl ??
+            trade.pnl
+        );
+        const pnlPercent = num(
+          trade.pnl_percent ??
+            trade.pnlPercent ??
+            trade.return_percent ??
+            trade.returnPercent
+        );
+        const timestamp =
+          trade.closed_at ??
+          trade.closedAt ??
+          trade.executed_at ??
+          trade.executedAt ??
+          trade.created_at ??
+          trade.createdAt;
+        const symbol = String(
+          trade.symbol ??
+            trade.instrument ??
+            trade.asset ??
+            "Unknown"
+        )
           .replace("-USDT", "")
-          .replace("/USDT", ""),
-        pnl: num(trade.pnl_usd),
-        pnlPercent: num(trade.pnl_percent),
-        price: num(trade.price),
-        time: trade.closed_at
-          ? new Date(trade.closed_at).toLocaleTimeString()
-          : trade.created_at
-          ? new Date(trade.created_at).toLocaleTimeString()
-          : new Date().toLocaleTimeString(),
-        type:
-          trade.exit_reason === "take_profit"
-            ? "Take Profit"
-            : trade.exit_reason === "stop_loss"
-            ? "Stop Loss"
-            : trade.side || "Trade",
-      }));
-
-      dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formatted });
+          .replace("/USDT", "")
+          .replace("-USD", "");
+        let type = trade.side
+          ? String(trade.side).toUpperCase()
+          : "TRADE";
+        if (trade.exit_reason === "take_profit") {
+          type = "Take Profit";
+        } else if (trade.exit_reason === "stop_loss") {
+          type = "Stop Loss";
+        } else if (trade.exitReason === "take_profit") {
+          type = "Take Profit";
+        } else if (trade.exitReason === "stop_loss") {
+          type = "Stop Loss";
+        }
+        return {
+          id:
+            trade.id ??
+            trade.trade_id ??
+            trade.order_id ??
+            `${symbol}-${timestamp || "unknown"}-${index}`,
+          symbol,
+          pnl,
+          pnlPercent,
+          price: num(
+            trade.exit_price ??
+              trade.exitPrice ??
+              trade.price ??
+              trade.fill_price ??
+              trade.fillPrice
+          ),
+          time: timestamp
+            ? new Date(timestamp).toLocaleString()
+            : "Time unavailable",
+          type,
+        };
+      });
+      dispatch({
+        type: ACTIONS.SET_TRADE_FEED,
+        payload: formatted,
+      });
     } catch (error) {
-      console.warn("Could not load trade history:", error);
+      console.error("Could not load live trade history:", error);
+      /*
+       * Do not erase trades already displayed because one refresh failed.
+       */
+      showError(
+        error?.message || "Unable to load live trade history."
+      );
     }
-  }, [activeTab.exchange, hasPaidAccess, isConnected]);
+  }, [
+    activeTab.exchange,
+    showError,
+  ]);
 
   const fetchCandles = useCallback(async () => {
     dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: true });
@@ -1626,11 +1716,12 @@ export default function MemberDashboard() {
   }, []);
 
   // ==============================
-  // Effect - Initial data load
+  // Effect - Initial data load (sequential)
   // ==============================
   useEffect(() => {
     let cancelled = false;
     const loadDashboard = async () => {
+      // First: get account/billing/integration/bot/referral/imali
       await Promise.allSettled([
         fetchUser(),
         fetchStrategies(),
@@ -1639,7 +1730,21 @@ export default function MemberDashboard() {
         fetchImali(),
         fetchReferral(),
       ]);
+
+      // Then: fetch data that depends on connection status
+      await Promise.allSettled([
+        fetchBalance(),
+        fetchStats(),
+        fetchPositions(),
+        fetchTradeFeed(),
+        fetchCandles(),
+      ]);
+
       if (!cancelled && mountedRef.current) {
+        dispatch({
+          type: ACTIONS.SET_LAST_UPDATED,
+          payload: new Date(),
+        });
         dispatch({
           type: ACTIONS.SET_LOADING,
           payload: false,
@@ -1657,6 +1762,11 @@ export default function MemberDashboard() {
     fetchBotStatus,
     fetchImali,
     fetchReferral,
+    fetchBalance,
+    fetchStats,
+    fetchPositions,
+    fetchTradeFeed,
+    fetchCandles,
   ]);
 
   // ==============================
@@ -1683,6 +1793,7 @@ export default function MemberDashboard() {
       fetchBalance();
     }, POLL_INTERVALS.BALANCES);
 
+    // Trade interval uses the latest callbacks
     intervalsRef.current.trades = window.setInterval(() => {
       Promise.allSettled([
         fetchTradeFeed(),
