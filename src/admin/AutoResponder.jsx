@@ -23,12 +23,12 @@ const DEFAULT_RULES = [
   },
   {
     id: "daily-digest",
-    name: "Daily Trade Digest",
+    name: "IMALI AI Signals Summary",
     trigger_event: "manual",
-    subject: "IMALI Daily Trade Digest",
+    subject: "📈 IMALI AI Signals — Daily Market Summary",
     delay_minutes: 0,
     is_active: true,
-    description: "Sends at 9am daily with 24h trade stats to all active users",
+    description: "Sends a daily summary of IMALI AI Signals, trade performance, market highlights, and Telegram updates.",
     sent_count: 0,
   },
 ];
@@ -72,7 +72,7 @@ export default function AutoResponder({ apiBase, showToast }) {
   // =============================================
   // SEND DAILY TRADE DIGEST
   // =============================================
-  const sendTradeDigest = async () => {
+  const sendAISignalsSummary = async () => {
     setSendingDigest(true);
     setErrorDetail(null);
     try {
@@ -82,13 +82,13 @@ export default function AutoResponder({ apiBase, showToast }) {
       });
       const data = await res.json();
       if (data.success) {
-        showToast?.(`Digest sent to ${data.data?.sent || 0} users (${data.data?.failed || 0} failed)`, "success");
+        showToast?.(`AI Signals Summary sent to ${data.data?.sent || 0} users (${data.data?.failed || 0} failed)`, "success");
         setStats(prev => ({ ...prev, total_sent: prev.total_sent + (data.data?.sent || 0) }));
       } else {
-        showToast?.(data.error || "Failed to send digest", "error");
+        showToast?.(data.error || "Failed to send AI Signals Summary", "error");
       }
     } catch (err) {
-      showToast?.("Failed to send digest", "error");
+      showToast?.("Failed to send AI Signals Summary", "error");
     } finally {
       setSendingDigest(false);
     }
@@ -172,13 +172,13 @@ export default function AutoResponder({ apiBase, showToast }) {
           <h3 className="flex items-center gap-2 text-lg font-semibold text-white">
             <FaRobot className="text-emerald-400" /> Email & Auto-Responder
           </h3>
-          <p className="text-sm text-white/50">Welcome emails and daily trade digests</p>
+          <p className="text-sm text-white/50">Welcome emails and IMALI AI Signals summaries</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={sendTradeDigest} disabled={sendingDigest}
+          <button onClick={sendAISignalsSummary} disabled={sendingDigest}
             className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
             {sendingDigest ? <FaSpinner className="animate-spin" /> : <FaClock />}
-            Send Daily Digest Now
+            Send AI Signals Summary
           </button>
           <button onClick={() => setShowBulkEmailModal(true)}
             className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500">
