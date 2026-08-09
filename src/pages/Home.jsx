@@ -443,7 +443,7 @@ const HeroSection = ({ activity, onClaimClick }) => {
             >
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm text-emerald-400 backdrop-blur-sm">
                 <span className="h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full bg-emerald-400 animate-pulse" />
-                AI-Powered Automated Trading
+                Free AI Trading Signals + Automated Trading
               </div>
             </motion.div>
             
@@ -453,9 +453,9 @@ const HeroSection = ({ activity, onClaimClick }) => {
               transition={{ duration: 0.6, delay: 0.1 }}
               className="mt-4 sm:mt-6 text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight"
             >
-              Learn. Test.
+              Get AI Signals.
               <br />
-              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Automate. Trade.</span>
+              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Then Automate.</span>
             </motion.h1>
             
             <motion.p
@@ -464,8 +464,8 @@ const HeroSection = ({ activity, onClaimClick }) => {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-white/70 max-w-xl mx-auto lg:mx-0"
             >
-              One AI platform for Stocks, Crypto, Futures, and DeFi. 
-              Start with a <span className="text-emerald-400 font-bold">$1,000 demo account</span>.
+              Join the free IMALI AI Signals newsletter and receive market opportunities, confidence scores,
+              AI scores, pricing, and risk ratings across Crypto, Futures, Stocks, and DeFi.
             </motion.p>
             
             <motion.div
@@ -474,18 +474,19 @@ const HeroSection = ({ activity, onClaimClick }) => {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="mt-6 sm:mt-8 flex flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start"
             >
-              <Link
-                to="/pricing"
+              <button
+                type="button"
+                onClick={onClaimClick}
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:scale-105"
               >
-                Start Demo
+                Get Free AI Signals
                 <FaArrowRight className="group-hover:translate-x-1 transition" />
-              </Link>
+              </button>
               <Link
                 to="/trade-demo"
                 className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
               >
-                Try Live Demo
+                Explore Trading Platform
               </Link>
             </motion.div>
             
@@ -497,15 +498,15 @@ const HeroSection = ({ activity, onClaimClick }) => {
             >
               <span className="flex items-center gap-1.5 sm:gap-2">
                 <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
-                No credit card
+                Free newsletter
               </span>
               <span className="flex items-center gap-1.5 sm:gap-2">
                 <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
-                7-day demo
+                AI signal updates
               </span>
               <span className="flex items-center gap-1.5 sm:gap-2">
                 <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
-                Cancel anytime
+                Unsubscribe anytime
               </span>
             </motion.div>
           </div>
@@ -632,13 +633,13 @@ export default function Home() {
       if (success) {
         setClaimStatus({ loading: false, error: null, success: true });
         setShowForm(false);
-        toast.success("Demo access activated! Check your email.");
+        toast.success("You’re subscribed! Check your email for IMALI AI Signals.");
         setTimeout(() => setClaimStatus({ loading: false, error: null, success: false }), 5000);
       } else {
-        setClaimStatus({ loading: false, error: promoClaim.state.error || "Failed to claim promo", success: false });
+        setClaimStatus({ loading: false, error: promoClaim.state.error || "Failed to subscribe", success: false });
       }
     } catch (err) {
-      setClaimStatus({ loading: false, error: err.message || "Failed to claim promo", success: false });
+      setClaimStatus({ loading: false, error: err.message || "Failed to subscribe", success: false });
     }
   };
 
@@ -664,15 +665,15 @@ export default function Home() {
             <div className="flex items-center gap-2 sm:gap-3">
               <span className="text-xl sm:text-2xl animate-bounce flex-shrink-0">🎁</span>
               <div className="min-w-0">
-                <p className="text-xs sm:text-sm font-bold text-white truncate">🚀 $1,000 Demo Account - 7 Days Free!</p>
-                <p className="text-[10px] sm:text-xs text-white/90 hidden xs:block">No credit card required. Cancel anytime.</p>
+                <p className="text-xs sm:text-sm font-bold text-white truncate">🧠 Free AI Trading Signals — Delivered to Your Inbox</p>
+                <p className="text-[10px] sm:text-xs text-white/90 hidden xs:block">Free newsletter required. Unsubscribe anytime.</p>
               </div>
             </div>
             <button 
               onClick={() => setShowForm(true)} 
               className="rounded-full bg-white px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100 whitespace-nowrap flex-shrink-0"
             >
-              Claim Demo Access →
+              Get Free Signals →
             </button>
           </div>
         </div>
@@ -699,16 +700,16 @@ export default function Home() {
             className="text-center mb-8 sm:mb-12"
           >
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
-              Start with Demo → <span className="text-emerald-400">Go Live</span>
+              Start with Free Signals → <span className="text-emerald-400">Automate When Ready</span>
             </h2>
             <p className="mt-2 sm:mt-4 text-base sm:text-lg text-white/60 max-w-2xl mx-auto px-4">
-              From demo to live trading in minutes. No hidden fees, no profit sharing.
+              Start with the free AI Signals newsletter, explore the platform, then automate trading when you are ready.
             </p>
           </motion.div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {[
-              { num: "01", title: "Start Demo", text: "Sign up for your 7-day demo with $1,000 virtual account. No credit card required.", icon: "🎯" },
+              { num: "01", title: "Start Demo", text: "Sign up for your AI signal updates with $1,000 virtual account. Free newsletter required.", icon: "🎯" },
               { num: "02", title: "Upgrade to Pro", text: "Choose a monthly subscription. No profit sharing, no hidden fees.", icon: "🚀" },
               { num: "03", title: "Connect & Trade", text: "Link OKX, Alpaca, or MetaMask. Enable live trading and launch your bots.", icon: "⚡" },
             ].map((step, idx) => (
@@ -795,17 +796,18 @@ export default function Home() {
             <div className="relative z-10">
               <div className="text-center mb-4 sm:mb-6">
                 <span className="text-4xl sm:text-5xl block mb-3 sm:mb-4 animate-pulse">🎁</span>
-                <h3 className="text-xl sm:text-2xl font-bold text-white">7-Day Demo Access</h3>
-                <p className="text-sm sm:text-base text-white/60 mt-1 sm:mt-2">Get $1,000 in virtual trading credits. No risk, no credit card required.</p>
+                <h3 className="text-xl sm:text-2xl font-bold text-white">Free IMALI AI Signals Newsletter</h3>
+                <p className="text-sm sm:text-base text-white/60 mt-1 sm:mt-2">Get AI-generated market opportunities delivered to your inbox. Free to join. No credit card required.</p>
               </div>
 
               <div className="space-y-2 sm:space-y-3 rounded-xl bg-white/5 border border-white/10 p-3 sm:p-4 mb-4 sm:mb-6">
                 {[
-                  "💰 $1,000 Demo Account",
-                  "🤖 Test all automated bots risk-free",
-                  "🎯 Learn to trade without losing real money",
-                  "🚀 Switch to live trading when you're ready",
-                  "✅ Cancel any time, no commitment",
+                  "🧠 AI-generated trading signals",
+                  "📊 Confidence scores and AI ratings",
+                  "💰 Price and market opportunity details",
+                  "⚠️ Risk ratings for each highlighted setup",
+                  "🔥 Top opportunities across supported markets",
+                  "✅ Free to join — unsubscribe anytime",
                 ].map((feature, idx) => (
                   <div key={idx} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-white/70">
                     <FaCheckCircle className="text-emerald-400 text-[10px] sm:text-xs flex-shrink-0" />
@@ -821,7 +823,7 @@ export default function Home() {
                   onClick={() => setShowForm(true)} 
                   className="mt-4 sm:mt-6 w-full rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-3 sm:py-4 text-sm sm:text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 transition"
                 >
-                  🎁 Claim Demo Access Now
+                  📩 Get Free AI Signals
                 </button>
               )}
 
@@ -850,7 +852,7 @@ export default function Home() {
                       disabled={claimStatus.loading} 
                       className="flex-1 rounded-xl bg-emerald-600 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500 transition"
                     >
-                      {claimStatus.loading ? "Processing..." : "✅ Start Demo"}
+                      {claimStatus.loading ? "Subscribing..." : "✅ Subscribe Free"}
                     </button>
                     <button 
                       type="button" 
@@ -870,9 +872,9 @@ export default function Home() {
                   className="mt-4 sm:mt-6 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 sm:p-5 text-center"
                 >
                   <div className="text-3xl sm:text-4xl mb-2">🎉</div>
-                  <p className="text-base sm:text-lg font-bold text-emerald-400">Demo Access Activated!</p>
+                  <p className="text-base sm:text-lg font-bold text-emerald-400">You’re Subscribed!</p>
                   <p className="mt-1 text-xs sm:text-sm text-white/60">
-                    Check your email, then <Link to="/signup?plan=demo&tier=demo" className="text-emerald-400 underline">create your account</Link> to start trading.
+                    Check your inbox for IMALI AI Signals. You can <Link to="/signup" className="text-emerald-400 underline">create an IMALI account</Link> anytime to explore automation.
                   </p>
                 </motion.div>
               )}
@@ -915,9 +917,9 @@ export default function Home() {
             transition={{ duration: 0.6 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">Ready to Start Trading?</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">Want AI Signals in Your Inbox?</h2>
             <p className="mt-2 sm:mt-4 text-base sm:text-lg text-white/90 max-w-2xl mx-auto px-4">
-              Join thousands of traders using IMALI to automate their trading strategy.
+              Join the free IMALI AI Signals newsletter and see the opportunities our systems are finding before you decide whether to automate.
             </p>
             <Link 
               to="/pricing" 
@@ -925,7 +927,7 @@ export default function Home() {
             >
               Start Your Demo →
             </Link>
-            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/75">No credit card required. Cancel anytime.</p>
+            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/75">Free newsletter required. Unsubscribe anytime.</p>
           </motion.div>
         </div>
       </section>
