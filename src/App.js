@@ -46,6 +46,7 @@ const Pricing = lazy(() => import("./pages/Pricing"));
 
 // Connection pages
 const ConnectOKX = lazy(() => import("./pages/ConnectOKX"));
+const ConnectRobinhood = lazy(() => import("./pages/ConnectRobinhood"));
 const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpaca"));
 const ConnectWallet = lazy(() => import("./pages/ConnectWallet"));
 
@@ -285,6 +286,12 @@ function MainAppRoutes() {
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
             {/* CONNECTION PAGES */}
+            <Route path="/connect-robinhood" element={
+              <ProtectedRoute requirePaid={true} requireActivation={true}>
+                <ConnectRobinhood />
+              </ProtectedRoute>
+            } />
+
             <Route path="/connect-okx" element={
               <ProtectedRoute requirePaid={true} requireActivation={true}>
                 <ConnectOKX />
