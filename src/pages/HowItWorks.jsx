@@ -225,9 +225,7 @@ export default function HowItWorks() {
                             number="2"
                             title="Connect an Exchange"
                         >
-                            Connect OKX for cryptocurrency trading or
-                            Alpaca for U.S. stocks and ETFs using
-                            secure exchange API credentials.
+                            Connect Robinhood Crypto or OKX for cryptocurrency trading, or Alpaca for U.S. stocks and ETFs, using supported secure account connections.
                         </StepCard>
 
                         <StepCard
@@ -260,6 +258,24 @@ export default function HowItWorks() {
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className={card}>
                             <h3 className="flex items-center gap-2 font-bold text-slate-900">
+                                <span className="text-xl">🟢</span>
+                                Robinhood Crypto
+                            </h3>
+
+                            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                Connect a Robinhood Crypto Trading API credential and use IMALI as the decision and execution layer for supported crypto orders.
+                            </p>
+
+                            <ul className="mt-3 space-y-1 text-xs text-slate-500">
+                                <li>• Crypto account and holdings access</li>
+                                <li>• Supported crypto market data</li>
+                                <li>• Automated order execution</li>
+                                <li>• Funds remain with Robinhood</li>
+                            </ul>
+                        </div>
+
+                        <div className={card}>
+                            <h3 className="flex items-center gap-2 font-bold text-slate-900">
                                 <span className="text-xl">₿</span>
                                 OKX Cryptocurrency Trading
                             </h3>
@@ -288,7 +304,7 @@ export default function HowItWorks() {
                             <p className="mt-2 text-sm leading-relaxed text-slate-600">
                                 Trade supported U.S. stocks and ETFs
                                 through your connected Alpaca brokerage
-                                account.
+                                account. Robinhood stock automation is handled separately through Robinhood Agentic Trading rather than the Crypto API.
                             </p>
 
                             <ul className="mt-3 space-y-1 text-xs text-slate-500">
@@ -445,14 +461,7 @@ export default function HowItWorks() {
                         </li>
 
                         <li>
-                            Choose{" "}
-                            <span className="font-bold">
-                                OKX
-                            </span>{" "}
-                            or{" "}
-                            <span className="font-bold">
-                                Alpaca
-                            </span>
+                            Choose <span className="font-bold">Robinhood Crypto</span>, <span className="font-bold">OKX</span>, or <span className="font-bold">Alpaca</span>
                             .
                         </li>
 
@@ -870,8 +879,7 @@ export default function HowItWorks() {
                             </h3>
 
                             <p className="mt-1 text-sm text-slate-600">
-                                You can connect supported OKX and
-                                Alpaca accounts. The exact number of
+                                You can connect supported Robinhood Crypto, OKX, and Alpaca accounts. The exact number of
                                 available connections may depend on
                                 your plan and current platform
                                 configuration.
@@ -956,6 +964,7 @@ export default function HowItWorks() {
                         <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
                             {[
                                 "Account setup",
+                                "Robinhood Crypto connection",
                                 "OKX connection",
                                 "Alpaca connection",
                                 "Strategy selection",
@@ -981,8 +990,7 @@ export default function HowItWorks() {
                     </h2>
 
                     <p className="mx-auto mb-5 mt-2 max-w-xl text-sm text-slate-600">
-                        Create your IMALI account, connect a supported
-                        trading platform, and configure your live
+                        Create your IMALI account, connect a supported trading platform such as Robinhood Crypto, OKX, or Alpaca, and configure your live
                         trading strategy.
                     </p>
 

@@ -125,6 +125,12 @@ const normalizeUser = (userData) => {
   return {
     id: userData.id || null,
     email: userData.email || null,
+    first_name: userData.first_name || userData.firstName || null,
+    last_name: userData.last_name || userData.lastName || null,
+    profile_picture: userData.profile_picture || userData.photoURL || null,
+    email_verified: normalizeBoolean(userData.email_verified),
+    auth_provider: userData.auth_provider || "local",
+    product_type: userData.product_type || userData.productType || null,
     role: userData.role || null,
     tier: tier,
     rawTier: rawTier, // Keep original for database
@@ -148,6 +154,7 @@ const normalizeUser = (userData) => {
     admin_panel_access: normalizeBoolean(userData.admin_panel_access),
     alpaca_connected: normalizeBoolean(userData.alpaca_connected),
     okx_connected: normalizeBoolean(userData.okx_connected),
+    robinhood_connected: normalizeBoolean(userData.robinhood_connected),
     wallet_connected: normalizeBoolean(userData.wallet_connected),
     trial_status: userData.trial_status || "trial",
     trial_ends_at: userData.trial_ends_at || null,
@@ -590,6 +597,16 @@ export function AuthProvider({ children }) {
           strategy: userData.strategy || "ai_weighted",
           accepted_terms: true,
           referral_code: userData.referral_code || null,
+
+          // Preserve signup metadata instead of silently dropping it.
+          name: userData.name || null,
+          company: userData.company || null,
+          organization_name: userData.organization_name || null,
+          product_type: userData.product_type || userData.productType || "trading",
+          billingModel: userData.billingModel || userData.billing_model || "fixed",
+          profitSharePct: userData.profitSharePct ?? userData.profit_share_pct ?? null,
+          tokenTier: userData.tokenTier || userData.token_tier || "none",
+          newsletter_subscribed: userData.newsletter_subscribed === true,
         };
 
         console.log("[Auth] Signup payload:", { email: payload.email, tier: payload.tier });
@@ -646,6 +663,129 @@ export function AuthProvider({ children }) {
       }
     },
     [persistUser, refreshActivation]
+  );
+
+
+  const googleAuth = useCallback(
+    async ({
+      idToken,
+      tier = "starter",
+      strategy = "ai_weighted",
+      acceptedTerms = false,
+      newsletterSubscribed = false,
+      referralCode = null,
+      productType = "trading",
+      billingModel = "fixed",
+      profitSharePct = null,
+      tokenTier = "none",
+    } = {}) => {
+      setError(null);
+
+      if (!idToken) {
+        const message = "Google authentication token is required";
+        setError(message);
+        return { success: false, error: message };
+      }
+
+      const normalizedTier = normalizeTier(tier);
+
+      try {
+        const payload = {
+          id_token: idToken,
+          tier: normalizedTier,
+          strategy,
+          accepted_terms: acceptedTerms === true,
+          newsletter_subscribed: newsletterSubscribed === true,
+          referral_code: referralCode || null,
+
+          // These are retained for frontend/session context.
+          product_type: productType || "trading",
+          billingModel: billingModel || "fixed",
+          profitSharePct,
+          tokenTier: tokenTier || "none",
+        };
+
+        const data = await apiFetch("/api/auth/google", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        const token = data?.data?.token || data?.token;
+        const userFromResponse = data?.data?.user || data?.user || null;
+        const isNewUser =
+          data?.data?.is_new_user === true || data?.is_new_user === true;
+
+        if (!token) {
+          const message = "Google authentication succeeded but no IMALI token was returned";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        setToken(token);
+
+        const userWithContext = {
+          ...(userFromResponse || {}),
+          product_type:
+            userFromResponse?.product_type ||
+            productType ||
+            safeStorageGet("IMALI_PRODUCT_TYPE") ||
+            "trading",
+        };
+
+        if (productType) {
+          safeStorageSet("IMALI_PRODUCT_TYPE", productType);
+        }
+
+        if (normalizedTier) {
+          safeStorageSet("IMALI_SELECTED_TIER", normalizedTier);
+        }
+
+        if (billingModel) {
+          safeStorageSet("IMALI_BILLING_MODEL", billingModel);
+        }
+
+        if (profitSharePct !== null && profitSharePct !== undefined) {
+          safeStorageSet("IMALI_PROFIT_SHARE_PCT", String(profitSharePct));
+        }
+
+        if (tokenTier) {
+          safeStorageSet("IMALI_TOKEN_TIER", tokenTier);
+        }
+
+        const normalizedUser = persistUser(userWithContext);
+        await refreshActivation(true);
+
+        const redirectTo = getRedirectPath(normalizedUser);
+
+        setLoading(false);
+        setIsInitialized(true);
+
+        return {
+          success: true,
+          token,
+          user: normalizedUser,
+          redirectTo,
+          isNewUser,
+          newsletterSubscribed:
+            data?.data?.newsletter_subscribed === true ||
+            data?.newsletter_subscribed === true,
+        };
+      } catch (err) {
+        let message = err.message || "Google authentication failed";
+
+        if (
+          err.status === 400 &&
+          /terms|privacy/i.test(message)
+        ) {
+          message =
+            "No IMALI account was found for this Google account. Create an account first and accept the Terms and Privacy Policy.";
+        }
+
+        setError(message);
+        return { success: false, error: message };
+      }
+    },
+    [persistUser, refreshActivation, getRedirectPath]
   );
 
   const logout = useCallback(() => {
@@ -1011,6 +1151,7 @@ export function AuthProvider({ children }) {
       isPaidUser,
       signup,
       login,
+      googleAuth,
       logout,
       loadUser,
       refreshActivation,
@@ -1052,6 +1193,7 @@ export function AuthProvider({ children }) {
       isPaidUser,
       signup,
       login,
+      googleAuth,
       logout,
       loadUser,
       refreshActivation,

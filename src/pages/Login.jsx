@@ -3,6 +3,7 @@ import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
+import { getGoogleIdToken, signOutGoogle } from "../firebase";
 
 function safeInternalPath(path, fallback = "/dashboard") {
   if (!path || typeof path !== "string") return fallback;
@@ -141,7 +142,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail = "" }) => {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, user } = useAuth();
+  const { login, googleAuth, user } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -302,6 +303,58 @@ export default function Login() {
     }
   };
 
+
+  const handleGoogleLogin = async () => {
+    if (loading) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { idToken } = await getGoogleIdToken();
+
+      const result = await googleAuth({
+        idToken,
+        acceptedTerms: false,
+        newsletterSubscribed: false,
+        productType: localStorage.getItem("IMALI_PRODUCT_TYPE") || "trading",
+      });
+
+      if (!result?.success) {
+        await signOutGoogle();
+        setError(result?.error || "Google login failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const userData = result.user;
+
+      if (userData?.email) {
+        localStorage.setItem("IMALI_EMAIL", userData.email);
+      }
+
+      if (userData?.tier) {
+        localStorage.setItem("IMALI_SELECTED_TIER", userData.tier);
+      }
+
+      const redirectPath = getRedirectDestination(userData);
+
+      navigate(redirectPath, { replace: true });
+    } catch (err) {
+      const code = err?.code || "";
+
+      if (code === "auth/popup-closed-by-user") {
+        setError("Google sign-in was canceled.");
+      } else if (code === "auth/popup-blocked") {
+        setError("Your browser blocked the Google sign-in window. Allow pop-ups and try again.");
+      } else {
+        setError(parseApiError(err, "Google login failed. Please try again."));
+      }
+
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
@@ -324,6 +377,29 @@ export default function Login() {
             {location.state.message}
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white px-4 py-3 font-semibold text-gray-900 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18">
+            <path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.716v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z" />
+            <path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.332A9 9 0 0 0 9 18Z" />
+            <path fill="#FBBC05" d="M3.963 10.706A5.42 5.42 0 0 1 3.681 9c0-.592.102-1.167.282-1.706V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.332Z" />
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.507.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.332C4.672 5.165 6.656 3.58 9 3.58Z" />
+          </svg>
+          {loading ? "Signing in..." : "Continue with Google"}
+        </button>
+
+        <div className="mb-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-xs uppercase tracking-wider text-gray-500">
+            or continue with email
+          </span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="off">
           <input

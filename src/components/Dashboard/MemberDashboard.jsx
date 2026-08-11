@@ -129,6 +129,17 @@ const TRADING_TYPES = [
     connectRoute: "/connect-okx",
   },
   {
+    id: "robinhood",
+    categoryId: "spot",
+    label: "Robinhood",
+    icon: <FaCoins />,
+    exchange: "robinhood",
+    connectionKey: "robinhood",
+    connectionLabel: "Robinhood Crypto",
+    minTier: "pro",
+    connectRoute: "/connect-robinhood",
+  },
+  {
     id: "futures",
     categoryId: "futures",
     label: "Futures",
@@ -903,6 +914,7 @@ const initialState = {
   botMode: "paper",
   connections: {
     okx: { connected: false, mode: "paper", keyMasked: "" },
+    robinhood: { connected: false, mode: "live", keyMasked: "" },
     alpaca: { connected: false, mode: "paper", keyMasked: "" },
     wallet: { connected: false, mode: "live", keyMasked: "" },
   },
@@ -1219,7 +1231,10 @@ export default function MemberDashboard() {
     }
     if (effectiveTier === "pro") {
       return TRADING_TYPES.filter(
-        (item) => item.id === "crypto" || item.id === "stocks"
+        (item) =>
+          item.id === "crypto" ||
+          item.id === "robinhood" ||
+          item.id === "stocks"
       );
     }
     if (effectiveTier === "elite" || effectiveTier === "enterprise") {
@@ -1659,6 +1674,17 @@ export default function MemberDashboard() {
           )
       );
 
+      const robinhoodConnected = toBool(
+        data.robinhood_connected ??
+          data.robinhoodConnected ??
+          data.robinhood?.connected ??
+          Boolean(
+            data.robinhood_api_key_masked ||
+              data.robinhood_key_masked ||
+              data.robinhoodKeyMasked
+          )
+      );
+
       const walletConnected = toBool(
         data.wallet_connected ?? data.walletConnected ?? data.wallet?.connected
       );
@@ -1682,6 +1708,16 @@ export default function MemberDashboard() {
               data.okx_key_masked ??
               data.okxKeyMasked ??
               data.okx?.keyMasked ??
+              "",
+          },
+          robinhood: {
+            connected: robinhoodConnected,
+            mode: "live",
+            keyMasked:
+              data.robinhood_api_key_masked ??
+              data.robinhood_key_masked ??
+              data.robinhoodKeyMasked ??
+              data.robinhood?.keyMasked ??
               "",
           },
           alpaca: {
@@ -1712,6 +1748,10 @@ export default function MemberDashboard() {
 
       if (activeTab.connectionKey === "alpaca") {
         dispatch({ type: ACTIONS.SET_BOT_MODE, payload: alpacaMode });
+      }
+
+      if (activeTab.connectionKey === "robinhood") {
+        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: "live" });
       }
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -1758,6 +1798,45 @@ export default function MemberDashboard() {
             usdtValue: usdtAvailable,
             usdtQty: usdtQuantity,
             assets: otherAssets,
+          },
+        });
+
+        return;
+      }
+
+      if (activeTab.exchange === "robinhood") {
+        const rawAssets = Array.isArray(data.robinhood_assets)
+          ? data.robinhood_assets
+          : Array.isArray(data.assets)
+            ? data.assets
+            : [];
+
+        const normalized = rawAssets
+          .map(normalizeAsset)
+          .filter((asset) => asset.symbol);
+
+        const cash = num(
+          data.robinhood_available_usd ??
+            data.buying_power ??
+            data.cash ??
+            0
+        );
+        const holdingsValue = normalized.reduce(
+          (sum, asset) => sum + num(asset.value),
+          0
+        );
+        const total =
+          num(data.robinhood_total ?? data.portfolio_value ?? data.total) ||
+          cash + holdingsValue;
+
+        dispatch({
+          type: ACTIONS.SET_BALANCE_DATA,
+          payload: {
+            totalAssetValue: total,
+            usdCashValue: cash,
+            usdtValue: 0,
+            usdtQty: 0,
+            assets: normalized,
           },
         });
 
@@ -2759,7 +2838,7 @@ export default function MemberDashboard() {
                 <div className="flex items-center gap-2">
                   <FaChartLine className="text-emerald-400" />
                   <h2 className="text-lg font-bold text-white">
-                    {activeTab.exchange === "alpaca" ? "AAPL" : "BTC/USD"} Market
+                    {activeTab.exchange === "alpaca" ? "AAPL" : activeTab.exchange === "robinhood" ? "BTC/USD" : "BTC/USD"} Market
                   </h2>
                 </div>
                 <p className="mt-0.5 text-xs text-white/40">

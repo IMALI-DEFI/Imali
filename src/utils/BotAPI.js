@@ -210,6 +210,9 @@ const getIntegrationStatus = async (skipCache = false) =>
       alpaca_api_key_masked: d.alpaca_api_key_masked || "",
       alpaca_mode: mode(d.alpaca_mode),
       alpaca_key_updated_at: d.alpaca_key_updated_at || null,
+      robinhood_connected: bool(d.robinhood_connected),
+      robinhood_api_key_masked: d.robinhood_api_key_masked || "",
+      robinhood_connected_at: d.robinhood_connected_at || null,
     };
   }, skipCache);
 
@@ -242,6 +245,32 @@ const connectAlpaca = async (payload = {}) => {
 
 const disconnectAlpaca = async () => {
   const r = unwrap(await api.delete("/api/integrations/alpaca"));
+  clearCache();
+  return r;
+};
+
+const getRobinhoodStatus = async (skipCache = false) =>
+  cachedGet("robinhood_status", 10000, async () => {
+    const d = getData(await api.get("/api/integrations/robinhood/status"));
+    return {
+      connected: bool(d.connected ?? d.robinhood_connected),
+      api_key_masked: d.api_key_masked || d.robinhood_api_key_masked || "",
+      connected_at: d.connected_at || d.robinhood_connected_at || null,
+      _raw: d,
+    };
+  }, skipCache);
+
+const connectRobinhood = async (payload = {}) => {
+  const r = unwrap(await api.post("/api/integrations/robinhood", {
+    api_key: payload.api_key || payload.apiKey || payload.public_key || payload.publicKey,
+    private_key: payload.private_key || payload.privateKey,
+  }));
+  clearCache();
+  return r;
+};
+
+const disconnectRobinhood = async () => {
+  const r = unwrap(await api.delete("/api/integrations/robinhood"));
   clearCache();
   return r;
 };
@@ -563,6 +592,9 @@ const BotAPI = {
   disconnectOKX,
   connectAlpaca,
   disconnectAlpaca,
+  getRobinhoodStatus,
+  connectRobinhood,
+  disconnectRobinhood,
   switchExchangeMode,
   switchOKXToLive,
   switchAlpacaToLive,

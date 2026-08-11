@@ -443,7 +443,7 @@ const HeroSection = ({ activity, onClaimClick }) => {
             >
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm text-emerald-400 backdrop-blur-sm">
                 <span className="h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full bg-emerald-400 animate-pulse" />
-                Free AI Trading Signals + Automated Trading
+                AI Signals + Automated Trading with Robinhood, OKX & Alpaca
               </div>
             </motion.div>
             
@@ -464,8 +464,7 @@ const HeroSection = ({ activity, onClaimClick }) => {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-white/70 max-w-xl mx-auto lg:mx-0"
             >
-              Join the free IMALI AI Signals newsletter and receive market opportunities, confidence scores,
-              AI scores, pricing, and risk ratings across Crypto, Futures, Stocks, and DeFi.
+              Start free with IMALI AI Signals. When you are ready to automate, connect a supported account such as Robinhood Crypto, OKX, or Alpaca while your funds remain with the provider.
             </motion.p>
             
             <motion.div
@@ -483,10 +482,10 @@ const HeroSection = ({ activity, onClaimClick }) => {
                 <FaArrowRight className="group-hover:translate-x-1 transition" />
               </button>
               <Link
-                to="/trade-demo"
+                to="/how-it-works"
                 className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
               >
-                Explore Trading Platform
+                See How IMALI Works
               </Link>
             </motion.div>
             
@@ -507,6 +506,10 @@ const HeroSection = ({ activity, onClaimClick }) => {
               <span className="flex items-center gap-1.5 sm:gap-2">
                 <FaCheckCircle className="text-emerald-400 text-xs sm:text-sm" />
                 Unsubscribe anytime
+              </span>
+              <span className="flex items-center gap-1.5 sm:gap-2">
+                <FaShieldAlt className="text-emerald-400 text-xs sm:text-sm" />
+                Noncustodial connections
               </span>
             </motion.div>
           </div>
@@ -709,9 +712,9 @@ export default function Home() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {[
-              { num: "01", title: "Start Demo", text: "Sign up for your AI signal updates with $1,000 virtual account. Free newsletter required.", icon: "🎯" },
-              { num: "02", title: "Upgrade to Pro", text: "Choose a monthly subscription. No profit sharing, no hidden fees.", icon: "🚀" },
-              { num: "03", title: "Connect & Trade", text: "Link OKX, Alpaca, or MetaMask. Enable live trading and launch your bots.", icon: "⚡" },
+              { num: "01", title: "Get Free AI Signals", text: "Join the free newsletter and see the market opportunities IMALI is identifying.", icon: "📩" },
+              { num: "02", title: "Create Your IMALI Account", text: "Choose your market, strategy, and risk settings when you are ready to automate.", icon: "🤖" },
+              { num: "03", title: "Connect & Automate", text: "Connect Robinhood Crypto, OKX, Alpaca, or a supported wallet. IMALI sends orders without taking custody of your funds.", icon: "⚡" },
             ].map((step, idx) => (
               <motion.div
                 key={idx}
@@ -747,8 +750,9 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {[
                       { icon: "📊", name: "Futures Bot", desc: "High leverage" },
-                      { icon: "📈", name: "Stock Bot", desc: "Alpaca integration" },
+                      { icon: "📈", name: "Stock Bot", desc: "Alpaca + Robinhood Agentic path" },
                       { icon: "🎯", name: "Sniper Bot", desc: "DEX trading" },
+                      { icon: "🟢", name: "Robinhood Crypto", desc: "Familiar crypto account" },
                       { icon: "🔷", name: "OKX Spot", desc: "CEX trading" },
                     ].map((bot, idx) => (
                       <motion.div
@@ -917,16 +921,17 @@ export default function Home() {
             transition={{ duration: 0.6 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">Want AI Signals in Your Inbox?</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">Start Free. Automate Later.</h2>
             <p className="mt-2 sm:mt-4 text-base sm:text-lg text-white/90 max-w-2xl mx-auto px-4">
-              Join the free IMALI AI Signals newsletter and see the opportunities our systems are finding before you decide whether to automate.
+              Get IMALI AI Signals first. If the platform fits you, create an account and connect Robinhood Crypto, OKX, Alpaca, or a supported wallet when you are ready.
             </p>
-            <Link 
-              to="/pricing" 
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
               className="mt-6 sm:mt-8 inline-block rounded-full bg-white px-8 sm:px-10 py-3 sm:py-4 text-sm sm:text-base font-bold text-emerald-700 shadow-lg transition hover:scale-105 hover:bg-gray-100"
             >
-              Start Your Demo →
-            </Link>
+              Get Free AI Signals →
+            </button>
             <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/75">Free newsletter required. Unsubscribe anytime.</p>
           </motion.div>
         </div>

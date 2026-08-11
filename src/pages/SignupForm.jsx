@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getGoogleIdToken, signOutGoogle } from "../firebase";
 
 const TIERS = {
   starter: {
@@ -75,7 +76,7 @@ const ADMIN_TIERS = {
 export default function SignupForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signup } = useAuth();
+  const { signup, googleAuth } = useAuth();
 
   // Read tier and product_type from URL
   const params = new URLSearchParams(location.search);
@@ -127,6 +128,7 @@ export default function SignupForm() {
     password: "",
     confirmPassword: "",
     acceptTerms: false,
+    newsletterSubscribed: true,
     tier: initialTier,
     billingModel: initialBillingModel,
     profitSharePct: initialProfitSharePct,
@@ -192,6 +194,123 @@ export default function SignupForm() {
     return null;
   };
 
+
+  const persistSignupContext = () => {
+    localStorage.setItem("IMALI_SELECTED_TIER", form.tier);
+    localStorage.setItem("IMALI_BILLING_MODEL", form.billingModel);
+    localStorage.setItem("IMALI_PRODUCT_TYPE", form.productType);
+
+    if (form.profitSharePct) {
+      localStorage.setItem("IMALI_PROFIT_SHARE_PCT", String(form.profitSharePct));
+    }
+
+    if (form.tokenTier) {
+      localStorage.setItem("IMALI_TOKEN_TIER", form.tokenTier);
+    }
+  };
+
+  const getSignupRedirect = (result, email = "") => {
+    if (result?.requiresApproval || form.tier === "enterprise") {
+      return "/enterprise-pending";
+    }
+
+    if (isAdminSignup) {
+      const tierInfo = ADMIN_TIERS[form.tier];
+
+      if (tierInfo?.requiresPayment) {
+        return `/billing?tier=${form.tier}&product_type=admin`;
+      }
+
+      return "/admin/dashboard";
+    }
+
+    if (form.tier === "starter") {
+      return "/dashboard";
+    }
+
+    if (TIERS[form.tier]?.requiresPayment) {
+      const emailParam = email ? `&email=${encodeURIComponent(email)}` : "";
+      return `/billing?tier=${form.tier}${emailParam}`;
+    }
+
+    return result?.redirectTo || TIERS[form.tier]?.redirectTo || "/dashboard";
+  };
+
+  const handleGoogleSignup = async () => {
+    if (loading) return;
+
+    // Google signup is kept off the admin-platform signup path because the
+    // backend Google route currently creates standard IMALI accounts.
+    if (isAdminSignup) {
+      setError("Use the email signup form for Admin Platform accounts.");
+      return;
+    }
+
+    if (!form.acceptTerms) {
+      setError("You must accept the Terms and Privacy Policy before continuing with Google.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      persistSignupContext();
+
+      const { idToken, firebaseUser } = await getGoogleIdToken();
+
+      const result = await googleAuth({
+        idToken,
+        tier: form.tier,
+        strategy: "ai_weighted",
+        acceptedTerms: true,
+        newsletterSubscribed: form.newsletterSubscribed,
+        productType: form.productType,
+        billingModel: form.billingModel,
+        profitSharePct: form.profitSharePct,
+        tokenTier: form.tokenTier,
+      });
+
+      if (!result?.success) {
+        await signOutGoogle();
+        setError(result?.error || "Google signup failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const googleEmail =
+        result?.user?.email ||
+        firebaseUser?.email ||
+        "";
+
+      const redirectPath = getSignupRedirect(result, googleEmail);
+
+      navigate(redirectPath, {
+        replace: true,
+        state: {
+          tier: form.tier,
+          billingModel: form.billingModel,
+          profitSharePct: form.profitSharePct,
+          tokenTier: form.tokenTier,
+          product_type: form.productType,
+          from: "google-signup",
+        },
+      });
+    } catch (err) {
+      const code = err?.code || "";
+
+      if (code === "auth/popup-closed-by-user") {
+        setError("Google sign-up was canceled.");
+      } else if (code === "auth/popup-blocked") {
+        setError("Your browser blocked the Google sign-in window. Allow pop-ups and try again.");
+      } else {
+        setError(err?.message || "Google signup failed. Please try again.");
+      }
+
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -207,11 +326,7 @@ export default function SignupForm() {
 
     try {
       // Save all context before signup
-      localStorage.setItem("IMALI_SELECTED_TIER", form.tier);
-      localStorage.setItem("IMALI_BILLING_MODEL", form.billingModel);
-      localStorage.setItem("IMALI_PRODUCT_TYPE", form.productType);
-      if (form.profitSharePct) localStorage.setItem("IMALI_PROFIT_SHARE_PCT", String(form.profitSharePct));
-      if (form.tokenTier) localStorage.setItem("IMALI_TOKEN_TIER", form.tokenTier);
+      persistSignupContext();
 
       // MODIFIED: Include admin platform fields in signup
       const signupData = {
@@ -223,6 +338,7 @@ export default function SignupForm() {
         profitSharePct: form.profitSharePct,
         tokenTier: form.tokenTier,
         product_type: form.productType,
+        newsletter_subscribed: form.newsletterSubscribed,
         ...(isAdminSignup && {
           name: form.name.trim(),
           company: form.company.trim(),
@@ -238,26 +354,10 @@ export default function SignupForm() {
         return;
       }
 
-      // Determine redirect path
-      let redirectPath;
-
-      if (result.requiresApproval || form.tier === "enterprise") {
-        redirectPath = "/enterprise-pending";
-      } else if (isAdminSignup) {
-        // NEW: Admin platform users go to admin dashboard
-        const tierInfo = ADMIN_TIERS[form.tier];
-        if (tierInfo?.requiresPayment) {
-          redirectPath = `/billing?tier=${form.tier}&product_type=admin`;
-        } else {
-          redirectPath = "/admin/dashboard";
-        }
-      } else if (form.tier === "starter") {
-        redirectPath = "/dashboard";
-      } else if (TIERS[form.tier]?.requiresPayment) {
-        redirectPath = `/billing?tier=${form.tier}&email=${encodeURIComponent(form.email.trim().toLowerCase())}`;
-      } else {
-        redirectPath = result.redirectTo || TIERS[form.tier]?.redirectTo || "/dashboard";
-      }
+      const redirectPath = getSignupRedirect(
+        result,
+        form.email.trim().toLowerCase()
+      );
 
       navigate(redirectPath, {
         replace: true,
@@ -337,6 +437,50 @@ export default function SignupForm() {
             </div>
           )}
 
+          {!isAdminSignup && (
+            <>
+              <button
+                type="button"
+                onClick={handleGoogleSignup}
+                disabled={loading}
+                className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white px-4 py-3 font-semibold text-gray-900 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                >
+                  <path
+                    fill="#4285F4"
+                    d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.716v2.258h2.909c1.703-1.568 2.684-3.878 2.684-6.614Z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.332A9 9 0 0 0 9 18Z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M3.963 10.706A5.42 5.42 0 0 1 3.681 9c0-.592.102-1.167.282-1.706V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.332Z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M9 3.58c1.321 0 2.507.454 3.441 1.346l2.581-2.581C13.464.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.332C4.672 5.165 6.656 3.58 9 3.58Z"
+                  />
+                </svg>
+                {loading ? "Connecting..." : "Continue with Google"}
+              </button>
+
+              <div className="mb-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs uppercase tracking-wider text-gray-500">
+                  or continue with email
+                </span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+            </>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* NEW: Admin platform fields */}
             {isAdminSignup && (
@@ -408,6 +552,27 @@ export default function SignupForm() {
                 <Link to="/privacy" className="text-emerald-400 underline">Privacy Policy</Link>
               </span>
             </label>
+
+            {!isAdminSignup && (
+              <label className="flex items-start gap-3 text-sm text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={form.newsletterSubscribed}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      newsletterSubscribed: e.target.checked,
+                    }))
+                  }
+                  className="mt-1"
+                  disabled={loading}
+                />
+                <span>
+                  Send me IMALI AI Signals summaries, market updates, product
+                  news, and educational trading content. I can unsubscribe later.
+                </span>
+              </label>
+            )}
 
             <button
               type="submit"

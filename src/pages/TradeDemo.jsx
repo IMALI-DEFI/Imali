@@ -555,7 +555,7 @@ export default function TradeDemo() {
             <div>
               <p className="text-sm font-bold text-white">Demo Access Active</p>
               <p className="text-xs text-white/90">
-                Experience IMALI with a $1,000 virtual account before connecting a real exchange.
+                Experience IMALI with a $1,000 virtual account before connecting Robinhood, OKX, Alpaca, or another supported account.
               </p>
             </div>
           </div>
@@ -588,7 +588,7 @@ export default function TradeDemo() {
               </h1>
 
               <p className="text-slate-300 mt-5 text-base md:text-lg leading-8">
-                Experience IMALI with a <span className="text-emerald-400 font-bold">$1,000 virtual account</span> before connecting a real exchange.
+                Experience IMALI with a <span className="text-emerald-400 font-bold">$1,000 virtual account</span> before connecting Robinhood, OKX, Alpaca, or another supported account.
               </p>
 
               <div className="flex flex-wrap gap-3 mt-7">
@@ -789,7 +789,7 @@ export default function TradeDemo() {
               <div className="space-y-2">
                 {[
                   { tier: "Demo", desc: "$1,000 Demo Account • AI Simulator", color: "emerald" },
-                  { tier: "Pro", desc: "Live trading • OKX • Alpaca • AI automation", color: "blue" },
+                  { tier: "Pro", desc: "Live trading • Robinhood • OKX • Alpaca • AI automation", color: "blue" },
                   { tier: "Elite", desc: "DEX • Advanced bots • Sniper • Priority support", color: "purple" },
                 ].map((plan) => (
                   <div key={plan.tier} className={`rounded-xl border border-${plan.color}-500/20 bg-${plan.color}-500/5 p-3`}>
@@ -813,7 +813,7 @@ export default function TradeDemo() {
           <div className="text-5xl mb-4">🚀</div>
           <h2 className="text-2xl md:text-3xl font-extrabold text-white">Ready to trade with your own account?</h2>
           <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-8 text-sm md:text-base">
-            Upgrade to Pro for live trading, connect OKX, Alpaca, or MetaMask, and start live trading.
+            Upgrade to Pro for live trading, connect Robinhood Crypto, OKX, Alpaca, or MetaMask, and start live trading.
             <span className="block text-emerald-400 mt-2">You keep 100% of your profits. No hidden fees.</span>
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-8">
