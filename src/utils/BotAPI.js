@@ -293,7 +293,7 @@ const getRobinhoodStockStatus = async (skipCache = false) =>
 
 const connectRobinhoodStocks = async () => {
   const res = unwrap(
-    await api.post("/api/integrations/robinhood-stock/connect")
+    await api.get("/api/integrations/robinhood-stock/connect")
   );
 
   const data = res?.data || res;
