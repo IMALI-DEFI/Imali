@@ -1,3 +1,8 @@
+import {
+  captureMarketingAttribution,
+  getMarketingAttribution,
+} from "../utils/marketingAttribution";
+
 // src/context/AuthContext.js - CORRECTED
 import React, {
   createContext,
@@ -552,6 +557,9 @@ export function AuthProvider({ children }) {
     [persistUser, refreshActivation, getRedirectPath]
   );
 
+  // Preserve inbound campaign attribution across navigation.
+  captureMarketingAttribution();
+
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -562,13 +570,20 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
 
-      if (!userData?.password) {
+      const isEnterpriseSignup =
+        userData?.mode === "enterprise" ||
+        String(userData?.tier || "").toLowerCase() === "enterprise";
+
+      if (!isEnterpriseSignup && !userData?.password) {
         const message = "Password is required";
         setError(message);
         return { success: false, error: message };
       }
 
-      if (userData.password.length < 8) {
+      if (
+        !isEnterpriseSignup &&
+        userData.password.length < 8
+      ) {
         const message = "Password must be at least 8 characters";
         setError(message);
         return { success: false, error: message };
@@ -590,6 +605,9 @@ export function AuthProvider({ children }) {
         : "starter";
 
       try {
+        const marketingAttribution =
+          getMarketingAttribution();
+
         const payload = {
           email: userData.email,
           password: userData.password,
@@ -607,6 +625,38 @@ export function AuthProvider({ children }) {
           profitSharePct: userData.profitSharePct ?? userData.profit_share_pct ?? null,
           tokenTier: userData.tokenTier || userData.token_tier || "none",
           newsletter_subscribed: userData.newsletter_subscribed === true,
+
+          utm_source:
+            userData.utm_source ||
+            marketingAttribution.utm_source ||
+            null,
+
+          utm_medium:
+            userData.utm_medium ||
+            marketingAttribution.utm_medium ||
+            null,
+
+          utm_campaign:
+            userData.utm_campaign ||
+            marketingAttribution.utm_campaign ||
+            null,
+
+          utm_content:
+            userData.utm_content ||
+            marketingAttribution.utm_content ||
+            null,
+
+          marketing_product:
+            userData.marketing_product ||
+            marketingAttribution.marketing_product ||
+            userData.product_type ||
+            userData.productType ||
+            null,
+
+          landing_page:
+            userData.landing_page ||
+            marketingAttribution.landing_page ||
+            null,
         };
 
         console.log("[Auth] Signup payload:", { email: payload.email, tier: payload.tier });
