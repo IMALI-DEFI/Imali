@@ -373,7 +373,7 @@ export default function ConnectRobinhood() {
           </h1>
 
           <p className="mt-2 text-sm sm:text-base text-white/60 max-w-2xl">
-            Connect Robinhood Stocks in one click, or connect Robinhood Crypto with API credentials.
+            Connect Robinhood Crypto now. Robinhood Stocks integration is currently in beta.
           </p>
         </div>
 
@@ -403,12 +403,11 @@ export default function ConnectRobinhood() {
                 <h2 className="text-xl sm:text-2xl font-black mt-1">
                   {stockStatus.connected
                     ? "Stocks Connected"
-                    : "Connect Stocks in One Click"}
+                    : "Robinhood Stocks — Beta"}
                 </h2>
 
                 <p className="text-sm text-white/55 mt-2 max-w-xl">
-                  Securely connect Robinhood Agentic Trading.
-                  No API keys or private keys to copy.
+                  Robinhood Stocks integration is ready, but production authorization is temporarily unavailable while the connection is finalized.
                 </p>
 
                 {stockStatus.connected &&
@@ -439,19 +438,12 @@ export default function ConnectRobinhood() {
               ) : (
                 <button
                   type="button"
-                  onClick={handleStockConnect}
-                  disabled={stockLoading}
-                  className="w-full sm:w-auto bg-cyan-400 hover:bg-cyan-300 text-slate-950 px-6 py-3 rounded-xl font-black disabled:opacity-50"
+                  disabled
+                  title="Robinhood Stocks production authorization is being finalized."
+                  className="w-full sm:w-auto bg-cyan-400/40 text-white/60 px-6 py-3 rounded-xl font-black cursor-not-allowed"
                 >
-                  {stockLoading ? (
-                    <FaSpinner className="animate-spin mr-2" />
-                  ) : (
-                    <FaPlug className="mr-2" />
-                  )}
-
-                  {stockLoading
-                    ? "Opening Robinhood..."
-                    : "Connect Robinhood Stocks"}
+                  <FaPlug className="mr-2" />
+                  Robinhood Stocks — Coming Soon
                 </button>
               )}
             </div>
