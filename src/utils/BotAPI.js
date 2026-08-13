@@ -275,6 +275,51 @@ const disconnectRobinhood = async () => {
   return r;
 };
 
+// ─── ROBINHOOD STOCKS / AGENTIC OAUTH ──────────────────
+
+const getRobinhoodStockStatus = async (skipCache = false) =>
+  cachedGet("robinhood_stock_status", 10000, async () => {
+    const d = getData(
+      await api.get("/api/integrations/robinhood-stock/status")
+    );
+
+    return {
+      connected: bool(d.connected),
+      account_masked: d.account_masked || null,
+      connected_at: d.connected_at || null,
+      _raw: d,
+    };
+  }, skipCache);
+
+const connectRobinhoodStocks = async () => {
+  const res = unwrap(
+    await api.post("/api/integrations/robinhood-stock/connect")
+  );
+
+  const data = res?.data || res;
+
+  if (!data?.authorization_url) {
+    throw new Error(
+      data?.error || "Robinhood authorization URL was not returned"
+    );
+  }
+
+  window.location.assign(data.authorization_url);
+
+  return res;
+};
+
+const disconnectRobinhoodStocks = async () => {
+  const r = unwrap(
+    await api.delete("/api/integrations/robinhood-stock")
+  );
+
+  cache.delete("robinhood_stock_status");
+  clearCache();
+
+  return r;
+};
+
 const switchExchangeMode = async (exchange, newMode) => {
   if (newMode === "live") {
     const r = unwrap(await api.post(`/api/integrations/${String(exchange).toLowerCase()}/live`));
@@ -592,9 +637,15 @@ const BotAPI = {
   disconnectOKX,
   connectAlpaca,
   disconnectAlpaca,
+  // Robinhood Crypto
   getRobinhoodStatus,
   connectRobinhood,
   disconnectRobinhood,
+
+  // Robinhood Stocks / Agentic OAuth
+  getRobinhoodStockStatus,
+  connectRobinhoodStocks,
+  disconnectRobinhoodStocks,
   switchExchangeMode,
   switchOKXToLive,
   switchAlpacaToLive,
