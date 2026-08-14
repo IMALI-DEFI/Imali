@@ -46,6 +46,10 @@ export default function Header() {
             How It Works
           </NavLink>
 
+          <NavLink to="/blog" className={active}>
+            Blog
+          </NavLink>
+
           <NavLink to="/pricing" className={active}>
             Pricing
           </NavLink>
@@ -111,6 +115,10 @@ export default function Header() {
               className={active}
             >
               How It Works
+            </NavLink>
+
+            <NavLink onClick={closeMenu} to="/blog" className={active}>
+              Blog
             </NavLink>
 
             <NavLink onClick={closeMenu} to="/pricing" className={active}>

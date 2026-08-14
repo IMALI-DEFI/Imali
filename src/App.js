@@ -46,6 +46,9 @@ const Pricing = lazy(() => import("./pages/Pricing"));
 
 // Connection pages
 const ConnectOKX = lazy(() => import("./pages/ConnectOKX"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/BlogPost"));
+
 const ConnectRobinhood = lazy(() => import("./pages/ConnectRobinhood"));
 const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpaca"));
 const ConnectWallet = lazy(() => import("./pages/ConnectWallet"));
@@ -221,6 +224,8 @@ function MainAppRoutes() {
           <Routes>
             {/* PUBLIC */}
             <Route path="/" element={<Home />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/pricing" element={<Pricing />} />
