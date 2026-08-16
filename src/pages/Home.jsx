@@ -470,8 +470,24 @@ const HeroSection = ({ activity, onClaimClick }) => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.25 }}
+              className="mt-5 flex flex-wrap items-center justify-center lg:justify-start gap-3"
+            >
+              <Link
+                to="/pricing"
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-5 py-2.5 backdrop-blur-sm transition hover:bg-emerald-500/20"
+              >
+                <span className="text-sm text-white/70">Automation plans starting at</span>
+                <span className="text-xl font-extrabold text-emerald-400">$29/month</span>
+                <FaArrowRight className="text-emerald-400 text-xs" />
+              </Link>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="mt-6 sm:mt-8 flex flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start"
+              className="mt-4 sm:mt-5 flex flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start"
             >
               <button
                 type="button"
