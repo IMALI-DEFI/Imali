@@ -106,7 +106,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     if (!token) return;
 
     try {
-      const response = await fetch("/data/ga4.json", {
+      const response = await fetch(`${apiBase}/api/admin/analytics/ga4?period=30d`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
