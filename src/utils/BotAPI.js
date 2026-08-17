@@ -622,7 +622,59 @@ const getSportsJediOverview = () =>
 const getSportsJediHealth = () =>
   api.get("/api/admin/sports-jedi/health");
 
+
+
+// ============================================================
+// ADMIN — WORK AGENT
+// ============================================================
+
+const getWorkAgentOverview = () =>
+  api.get(
+    "/api/admin/work-agent/overview"
+  );
+
+const getWorkAgentOpportunities = (params = {}) =>
+  api.get(
+    "/api/admin/work-agent/opportunities",
+    { params }
+  );
+
+const approveWorkAgentApplication = (id) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/approve-application`
+  );
+
+const markWorkAgentApplied = (id) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/applied`
+  );
+
+const approveWorkAgentOutreach = (id) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/approve-outreach`
+  );
+
+const markWorkAgentOutreachSent = (id) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/outreach-sent`
+  );
+
+const getWorkAgentFollowups = () =>
+  api.get(
+    "/api/admin/work-agent/followups"
+  );
+
 const BotAPI = {
+
+  // Admin — Work Agent
+  getWorkAgentOverview,
+  getWorkAgentOpportunities,
+  approveWorkAgentApplication,
+  markWorkAgentApplied,
+  approveWorkAgentOutreach,
+  markWorkAgentOutreachSent,
+  getWorkAgentFollowups,
+
 
   // Admin — Sports Jedi
   getSportsJediOverview,

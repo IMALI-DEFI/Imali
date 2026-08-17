@@ -35,10 +35,11 @@ export default function AdminWorkAgent() {
         overviewResponse,
         opportunitiesResponse,
       ] = await Promise.all([
-        BotAPI.get("/api/admin/work-agent/overview"),
-        BotAPI.get(
-          "/api/admin/work-agent/opportunities?execution=ready&limit=100"
-        ),
+        BotAPI.getWorkAgentOverview(),
+        BotAPI.getWorkAgentOpportunities({
+          execution: "ready",
+          limit: 100,
+        }),
       ]);
 
       const overviewData =
@@ -77,10 +78,30 @@ export default function AdminWorkAgent() {
     try {
       setBusyId(id);
 
-      await BotAPI.post(
-        `/api/admin/work-agent/opportunities/${id}/${endpoint}`,
-        body
-      );
+      const actionMap = {
+        "approve-application": () =>
+          BotAPI.approveWorkAgentApplication(id),
+
+        applied: () =>
+          BotAPI.markWorkAgentApplied(id),
+
+        "approve-outreach": () =>
+          BotAPI.approveWorkAgentOutreach(id),
+
+        "outreach-sent": () =>
+          BotAPI.markWorkAgentOutreachSent(id),
+      };
+
+      const actionFn =
+        actionMap[endpoint];
+
+      if (!actionFn) {
+        throw new Error(
+          `Unsupported Work Agent action: ${endpoint}`
+        );
+      }
+
+      await actionFn();
 
       await load();
     } catch (err) {
