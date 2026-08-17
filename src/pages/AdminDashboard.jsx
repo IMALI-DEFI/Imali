@@ -1,3 +1,4 @@
+import { FaBriefcase, FaFootballBall} from "react-icons/fa";
 // src/pages/AdminDashboard.jsx - NEW (Admin Platform Customer Dashboard)
 import React, { useState, useEffect } from 'react';
 import { Link, Routes, Route, Navigate } from 'react-router-dom';
@@ -20,6 +21,8 @@ import AdminPromoCodes from './admin/AdminPromoCodes';
 import AdminMarketing from './admin/AdminMarketing';
 import AdminSystemHealth from './admin/AdminSystemHealth';
 import AdminEnterpriseManagement from './admin/AdminEnterpriseManagement';
+import AdminWorkAgent from "./admin/AdminWorkAgent";
+import AdminSportsJedi from "./admin/AdminSportsJedi";
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -68,6 +71,23 @@ const AdminDashboard = () => {
               <i className="fas fa-chart-pie w-5"></i>
               <span>Dashboard</span>
             </Link>
+
+            <Link
+              to="/admin/work-agent"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-purple-500/10 hover:text-purple-400 transition"
+            >
+              <FaBriefcase />
+              <span>Work Agent</span>
+            </Link>
+
+            <Link
+              to="/admin/sports-jedi"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-purple-500/10 hover:text-purple-400 transition"
+            >
+              <FaFootballBall />
+              <span>Sports Jedi</span>
+            </Link>
+
             
             {/* Users */}
             <Link to="/admin/users" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white/60 hover:bg-white/5 hover:text-white transition">
@@ -180,6 +200,8 @@ const AdminDashboard = () => {
             <Route path="/social" element={<AdminSocial />} />
             <Route path="/promo-codes" element={<AdminPromoCodes />} />
             <Route path="/system-health" element={<AdminSystemHealth />} />
+            <Route path="/work-agent" element={<AdminWorkAgent />} />
+            <Route path="/sports-jedi" element={<AdminSportsJedi />} />
             <Route path="/enterprise" element={<AdminEnterpriseManagement />} />
             <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
           </Routes>

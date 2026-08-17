@@ -610,7 +610,24 @@ const getOrganizations = async (skipCache = false) =>
   cachedGet("organizations", 30000, async () => getData(await api.get("/api/organizations")), skipCache);
 
 // ─── EXPORT ─────────────────────────────────────────
+
+
+// ============================================================
+// ADMIN — SPORTS JEDI
+// ============================================================
+
+const getSportsJediOverview = () =>
+  api.get("/api/admin/sports-jedi/overview");
+
+const getSportsJediHealth = () =>
+  api.get("/api/admin/sports-jedi/health");
+
 const BotAPI = {
+
+  // Admin — Sports Jedi
+  getSportsJediOverview,
+  getSportsJediHealth,
+
   api,
   getToken,
   setToken,

@@ -1,0 +1,155 @@
+.sj-admin {
+  padding: 24px;
+}
+
+.sj-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.sj-header h1 {
+  margin: 0 0 6px;
+}
+
+.sj-header p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.sj-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sj-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sj-cards {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(200px,1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.sj-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+
+.sj-card-icon {
+  font-size: 22px;
+  opacity: 0.75;
+}
+
+.sj-card strong {
+  display: block;
+  font-size: 19px;
+}
+
+.sj-card span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.sj-status {
+  margin-left: auto;
+  font-size: 20px;
+}
+
+.sj-status.good,
+.sj-good-text {
+  color: #52d991;
+}
+
+.sj-status.bad,
+.sj-bad-text {
+  color: #ff7373;
+}
+
+.sj-panel {
+  padding: 18px;
+  margin-top: 15px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+}
+
+.sj-panel h2 {
+  margin-top: 0;
+}
+
+.sj-config-grid,
+.sj-info {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(190px,1fr));
+  gap: 12px;
+}
+
+.sj-config-row,
+.sj-info > div {
+  padding: 13px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.035);
+}
+
+.sj-config-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sj-info span {
+  display: block;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.sj-info strong {
+  display: block;
+  margin-top: 5px;
+}
+
+.sj-error {
+  padding: 12px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  background: rgba(220,60,60,0.15);
+}
+
+.sj-loading {
+  padding: 50px;
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .sj-admin {
+    padding: 14px;
+  }
+
+  .sj-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

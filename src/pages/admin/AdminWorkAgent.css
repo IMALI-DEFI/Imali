@@ -1,0 +1,178 @@
+.admin-work-agent {
+  padding: 24px;
+}
+
+.wa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.wa-header h1 {
+  margin: 0 0 6px;
+}
+
+.wa-header p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.wa-cards,
+.wa-money {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.wa-card,
+.wa-money-card,
+.wa-panel {
+  border: 1px solid
+    rgba(255,255,255,0.08);
+  background:
+    rgba(255,255,255,0.04);
+  border-radius: 14px;
+}
+
+.wa-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 17px;
+}
+
+.wa-card strong {
+  display: block;
+  font-size: 24px;
+}
+
+.wa-card span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.wa-icon {
+  font-size: 21px;
+  opacity: 0.8;
+}
+
+.wa-money-card {
+  padding: 15px 17px;
+}
+
+.wa-money-card span {
+  display: block;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.wa-money-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 20px;
+}
+
+.wa-panel {
+  padding: 18px;
+}
+
+.wa-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wa-table-wrap {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.wa-table {
+  width: 100%;
+  min-width: 1050px;
+  border-collapse: collapse;
+}
+
+.wa-table th,
+.wa-table td {
+  padding: 11px 9px;
+  border-bottom:
+    1px solid rgba(255,255,255,0.07);
+  text-align: left;
+  font-size: 13px;
+}
+
+.wa-table th {
+  font-size: 11px;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+.wa-table a {
+  color: inherit;
+}
+
+.wa-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wa-button,
+.wa-actions button {
+  border: 1px solid
+    rgba(255,255,255,0.12);
+  background:
+    rgba(255,255,255,0.07);
+  color: inherit;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.wa-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wa-error {
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  background:
+    rgba(220,60,60,0.15);
+}
+
+.wa-empty,
+.wa-loading {
+  text-align: center;
+  padding: 40px;
+  opacity: 0.7;
+}
+
+.spin {
+  animation: wa-spin 1s linear infinite;
+}
+
+@keyframes wa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-work-agent {
+    padding: 14px;
+  }
+
+  .wa-cards {
+    grid-template-columns:
+      repeat(2, minmax(0,1fr));
+  }
+}
