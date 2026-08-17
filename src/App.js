@@ -34,6 +34,8 @@ import AdminPlatformLanding from "./pages/AdminPlatformLanding";
 import AdminPlatformDemo from "./pages/AdminPlatformDemo";
 import AdminDashboard from "./pages/AdminDashboard";
 import Documentation from "./pages/Documentation";
+import AdminWorkAgent from "./pages/admin/AdminWorkAgent";
+import AdminSportsJedi from "./pages/admin/AdminSportsJedi";
 
 // Lazy auth / app pages
 const Signup = lazy(() => import("./pages/SignupForm"));
@@ -356,7 +358,18 @@ function MainAppRoutes() {
             <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
 
             {/* 404 */}
-            <Route path="*" element={<NotFound />} />
+            
+            <Route
+              path="/admin/work-agent"
+              element={<AdminWorkAgent />}
+            />
+
+            <Route
+              path="/admin/sports-jedi"
+              element={<AdminSportsJedi />}
+            />
+
+<Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>

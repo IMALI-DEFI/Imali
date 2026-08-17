@@ -496,6 +496,29 @@ const TAB_SECTIONS = [
       },
     ],
   },
+
+  {
+    id: "projects",
+    name: "Projects",
+    emoji: "🚀",
+    description: "Revenue products and operating systems",
+    tabs: [
+      {
+        key: "work-agent",
+        label: "Work Agent",
+        emoji: "💼",
+        description: "Developer work, contracts, applications and revenue",
+        href: "/admin/work-agent",
+      },
+      {
+        key: "sports-jedi",
+        label: "Sports Jedi",
+        emoji: "🏈",
+        description: "Sports intelligence, subscriptions and operations",
+        href: "/admin/sports-jedi",
+      },
+    ],
+  },
 ];
 
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
@@ -1016,7 +1039,14 @@ export default function AdminPanel({ forceOwner = false }) {
                         key={tab.key}
                         tab={tab}
                         isActive={active === tab.key}
-                        onClick={() => navigateToTab(tab.key)}
+                        onClick={() => {
+                          if (tab.href) {
+                            window.location.href = tab.href;
+                            return;
+                          }
+
+                          navigateToTab(tab.key);
+                        }}
                         busy={false}
                       />
                     ))}
@@ -1048,7 +1078,14 @@ export default function AdminPanel({ forceOwner = false }) {
                         key={tab.key}
                         tab={tab}
                         isActive={active === tab.key}
-                        onClick={() => navigateToTab(tab.key)}
+                        onClick={() => {
+                          if (tab.href) {
+                            window.location.href = tab.href;
+                            return;
+                          }
+
+                          navigateToTab(tab.key);
+                        }}
                         busy={false}
                       />
                     ))}
