@@ -234,7 +234,7 @@ const TAB_SECTIONS = [
             id: "refresh",
             label: "Refresh Analytics",
             icon: "🔄",
-            endpoint: "/api/admin/analytics/ga4",
+            endpoint: "/data/ga4.json",
             method: "GET",
           },
         ],
