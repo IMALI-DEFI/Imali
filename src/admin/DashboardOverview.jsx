@@ -100,43 +100,11 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     }
   }, [getAuthToken]);
 
-  // Fetch GA4 data
+  // GA4 reporting is provided by the dedicated Looker Studio tab.
   const fetchGa4Data = useCallback(async () => {
-    const token = getAuthToken();
-    if (!token) return;
+    return;
+  }, []);
 
-    try {
-      const response = await fetch(`${apiBase}/api/admin/analytics/ga4?period=30d`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.status === 401 || response.status === 403) {
-        setAuthError(true);
-        return;
-      }
-      
-      const data = await response.json();
-      if (data && data.success) {
-        const ga4 = data.data || data;
-        setGa4Data(ga4);
-        setMetrics(prev => ({
-          ...prev,
-          ga4: {
-            activeUsers: safeNumber(ga4.activeUsers || ga4.active_users || 0),
-            pageViews: safeNumber(ga4.pageViews || ga4.page_views || 0),
-            events: safeNumber(ga4.totalEvents || ga4.total_events || 0),
-            sessions: safeNumber(ga4.sessions || 0),
-            conversionRate: safeNumber(ga4.conversionRate || ga4.conversion_rate || 0),
-          }
-        }));
-      }
-    } catch (error) {
-      console.error('Failed to fetch GA4 data:', error);
-    }
-  }, [apiBase, getAuthToken]);
 
   // Fetch PNL details for selected period
   const fetchPnlDetails = useCallback(async (period) => {
