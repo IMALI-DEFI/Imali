@@ -613,6 +613,14 @@ const getOrganizations = async (skipCache = false) =>
 
 
 // ============================================================
+// ADMIN — AUTOMATION ANALYTICS
+// ============================================================
+
+const getAutomationAnalytics = () =>
+  api.get("/api/admin/automation/analytics");
+
+
+// ============================================================
 // ADMIN — SPORTS JEDI
 // ============================================================
 
@@ -665,6 +673,9 @@ const getWorkAgentFollowups = () =>
   );
 
 const BotAPI = {
+
+  // Admin — Automation Analytics
+  getAutomationAnalytics,
 
   // Admin — Work Agent
   getWorkAgentOverview,

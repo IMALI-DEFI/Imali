@@ -36,6 +36,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import Documentation from "./pages/Documentation";
 import AdminWorkAgent from "./pages/admin/AdminWorkAgent";
 import AdminSportsJedi from "./pages/admin/AdminSportsJedi";
+import AdminAutomationAnalytics from "./pages/admin/AdminAutomationAnalytics";
 
 // Lazy auth / app pages
 const Signup = lazy(() => import("./pages/SignupForm"));
@@ -363,6 +364,11 @@ function MainAppRoutes() {
               path="/admin/work-agent"
               element={<AdminWorkAgent />}
             />
+            <Route
+              path="/admin/automation-analytics"
+              element={<AdminAutomationAnalytics />}
+            />
+
 
             <Route
               path="/admin/sports-jedi"

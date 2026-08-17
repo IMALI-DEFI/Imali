@@ -517,6 +517,13 @@ const TAB_SECTIONS = [
         description: "Sports intelligence, subscriptions and operations",
         href: "/admin/sports-jedi",
       },
+      {
+        key: "automation-analytics",
+        label: "Automation Analytics",
+        emoji: "📊",
+        description: "Marketing, acquisition and automation performance",
+        href: "/admin/automation-analytics",
+      },
     ],
   },
 ];
