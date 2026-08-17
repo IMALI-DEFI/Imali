@@ -108,6 +108,9 @@ export default function AdminAutomationAnalytics() {
   const products = data.product_signups || [];
   const marketing = data.marketing || {};
   const latest = marketing.latest || {};
+  const funnel = data.marketing_funnel || {};
+  const marketingSources = data.marketing_sources || [];
+  const campaigns = data.campaign_performance || [];
 
   const totalRuns = useMemo(
     () =>
@@ -214,6 +217,43 @@ export default function AdminAutomationAnalytics() {
             value={fmt(marketing.campaign_packages)}
           />
         </div>
+
+        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+          <h2 className="text-lg font-semibold">
+            Marketing Funnel — 30 Days
+          </h2>
+
+          <p className="mt-1 text-sm text-white/45">
+            Visitor activity captured from attributed marketing sessions.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <MetricCard
+              label="Visits"
+              value={fmt(funnel.visits)}
+            />
+            <MetricCard
+              label="Visitors"
+              value={fmt(funnel.unique_visitors)}
+            />
+            <MetricCard
+              label="Clicks"
+              value={fmt(funnel.clicks)}
+            />
+            <MetricCard
+              label="Pricing Views"
+              value={fmt(funnel.pricing_views)}
+            />
+            <MetricCard
+              label="Signup Starts"
+              value={fmt(funnel.signup_starts)}
+            />
+            <MetricCard
+              label="Checkout Starts"
+              value={fmt(funnel.checkout_starts)}
+            />
+          </div>
+        </section>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
 
@@ -449,6 +489,125 @@ export default function AdminAutomationAnalytics() {
                   No product attribution yet.
                 </div>
               )}
+            </div>
+          </section>
+        </div>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <h2 className="text-lg font-semibold">
+              Marketing Sources — 30 Days
+            </h2>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="border-b border-white/10 text-xs uppercase text-white/40">
+                  <tr>
+                    <th className="px-3 py-3">Source</th>
+                    <th className="px-3 py-3">Visits</th>
+                    <th className="px-3 py-3">Visitors</th>
+                    <th className="px-3 py-3">Clicks</th>
+                    <th className="px-3 py-3">Signup Starts</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {marketingSources.map((row) => (
+                    <tr
+                      key={row.source}
+                      className="border-b border-white/5"
+                    >
+                      <td className="px-3 py-3 font-medium capitalize">
+                        {row.source}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.visits)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.visitors)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.clicks)}
+                      </td>
+                      <td className="px-3 py-3 text-emerald-300">
+                        {fmt(row.signup_starts)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {marketingSources.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="5"
+                        className="px-3 py-6 text-center text-white/40"
+                      >
+                        No marketing-source activity yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <h2 className="text-lg font-semibold">
+              Campaign Performance — 30 Days
+            </h2>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left text-sm">
+                <thead className="border-b border-white/10 text-xs uppercase text-white/40">
+                  <tr>
+                    <th className="px-3 py-3">Campaign</th>
+                    <th className="px-3 py-3">Product</th>
+                    <th className="px-3 py-3">Visits</th>
+                    <th className="px-3 py-3">Visitors</th>
+                    <th className="px-3 py-3">Clicks</th>
+                    <th className="px-3 py-3">Last Activity</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {campaigns.map((row, index) => (
+                    <tr
+                      key={`${row.campaign}-${row.product}-${index}`}
+                      className="border-b border-white/5"
+                    >
+                      <td className="px-3 py-3 font-medium">
+                        {row.campaign}
+                      </td>
+                      <td className="px-3 py-3 text-blue-300">
+                        {row.product}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.visits)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.visitors)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(row.clicks)}
+                      </td>
+                      <td className="px-3 py-3 text-white/55">
+                        {fmtDate(row.last_activity)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {campaigns.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="px-3 py-6 text-center text-white/40"
+                      >
+                        No campaign activity yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </section>
         </div>

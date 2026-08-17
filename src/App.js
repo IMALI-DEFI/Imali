@@ -8,6 +8,7 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/routing/ProtectedRoute";
+import MarketingTracker from "./components/MarketingTracker";
 
 // Enterprise
 import Enterprise from "./pages/Enterprise";
@@ -221,6 +222,7 @@ function MainAppRoutes() {
 
   return (
     <>
+      <MarketingTracker />
       <Header />
       <main className="min-h-screen pt-16 bg-[#050816] text-white">
         <Suspense fallback={<PageFallback />}>
