@@ -22,6 +22,7 @@ const money = (value) =>
 export default function AdminWorkAgent() {
   const [overview, setOverview] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
+  const [reviewOpportunities, setReviewOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
@@ -34,10 +35,15 @@ export default function AdminWorkAgent() {
       const [
         overviewResponse,
         opportunitiesResponse,
+        reviewResponse,
       ] = await Promise.all([
         BotAPI.getWorkAgentOverview(),
         BotAPI.getWorkAgentOpportunities({
           execution: "ready",
+          limit: 100,
+        }),
+        BotAPI.getWorkAgentOpportunities({
+          execution: "review",
           limit: 100,
         }),
       ]);
@@ -48,10 +54,17 @@ export default function AdminWorkAgent() {
       const opportunitiesData =
         opportunitiesResponse?.data || opportunitiesResponse;
 
+      const reviewData =
+        reviewResponse?.data || reviewResponse;
+
       setOverview(overviewData);
 
       setOpportunities(
         opportunitiesData?.opportunities || []
+      );
+
+      setReviewOpportunities(
+        reviewData?.opportunities || []
       );
     } catch (err) {
       console.error("Work Agent load error:", err);
@@ -90,6 +103,34 @@ export default function AdminWorkAgent() {
 
         "outreach-sent": () =>
           BotAPI.markWorkAgentOutreachSent(id),
+
+        reply: () =>
+          BotAPI.recordWorkAgentReply(
+            id,
+            body.notes || ""
+          ),
+
+        interview: () =>
+          BotAPI.markWorkAgentInterview(id),
+
+        proposal: () =>
+          BotAPI.markWorkAgentProposal(
+            id,
+            body.value || 0
+          ),
+
+        won: () =>
+          BotAPI.markWorkAgentWon(
+            id,
+            body.revenue || 0,
+            body.cost || 0
+          ),
+
+        lost: () =>
+          BotAPI.markWorkAgentLost(
+            id,
+            body.reason || ""
+          ),
       };
 
       const actionFn =
@@ -166,8 +207,8 @@ export default function AdminWorkAgent() {
 
         <Metric
           icon={<FaCheckCircle />}
-          label="Execution Verified"
-          value={counts.executionVerified}
+          label="Final Ready"
+          value={counts.finalReady}
         />
 
         <Metric
@@ -202,7 +243,7 @@ export default function AdminWorkAgent() {
 
         <Metric
           icon={<FaDollarSign />}
-          label="Estimated Pipeline"
+          label="Pipeline Value"
           value={money(
             financial.estimatedRevenue
           )}
@@ -231,9 +272,151 @@ export default function AdminWorkAgent() {
         />
       </div>
 
+      <div className="wa-review-summary">
+        <div className="wa-review-heading">
+          <div>
+            <strong>Needs Review</strong>
+            <p>
+              Opportunities held back from execution until
+              eligibility or application target is verified.
+            </p>
+          </div>
+
+          <span className="wa-review-total">
+            {reviewOpportunities.length}
+          </span>
+        </div>
+
+        <div className="wa-review-stats">
+          <div>
+            <b>{counts.eligibilityReview || 0}</b>
+            <span>Eligibility</span>
+          </div>
+
+          <div>
+            <b>{counts.targetReview || 0}</b>
+            <span>Target Review</span>
+          </div>
+
+          <div>
+            <b>{counts.finalReady || 0}</b>
+            <span>Final Ready</span>
+          </div>
+        </div>
+      </div>
+
+      {reviewOpportunities.length > 0 && (
+        <div className="wa-panel wa-review-panel">
+          <div className="wa-panel-title">
+            <div>
+              <h2>Needs Review</h2>
+              <span>
+                Opportunities blocked from execution until
+                eligibility and target verification pass.
+              </span>
+            </div>
+
+            <span>
+              {reviewOpportunities.length} opportunities
+            </span>
+          </div>
+
+          <div className="wa-review-list">
+            {reviewOpportunities.map((item) => {
+              const target =
+                item.application_url ||
+                item.application_email ||
+                item.outreach_contact_email ||
+                item.url;
+
+              return (
+                <div
+                  className="wa-review-item"
+                  key={`review-${item.id}`}
+                >
+                  <div className="wa-review-main">
+                    <div className="wa-review-priority">
+                      {item.pursuit_priority || 0}
+                    </div>
+
+                    <div>
+                      <strong>
+                        {item.company || "Unknown company"}
+                      </strong>
+
+                      <div className="wa-review-role">
+                        {item.title || "Untitled opportunity"}
+                      </div>
+
+                      <div className="wa-review-meta">
+                        <span>
+                          Path: {item.revenue_path || "—"}
+                        </span>
+
+                        <span>
+                          P/B/D: {item.personal_fit || 0}/
+                          {item.business_value || 0}/
+                          {item.demand_confidence || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="wa-review-checks">
+                    <div>
+                      <span>Eligibility</span>
+                      <strong>
+                        {item.eligibility_status || "unchecked"}
+                      </strong>
+                      {item.eligibility_reason && (
+                        <small>
+                          {item.eligibility_reason}
+                        </small>
+                      )}
+                    </div>
+
+                    <div>
+                      <span>Target</span>
+                      <strong>
+                        {item.target_quality_status || "unchecked"}
+                      </strong>
+                      {item.target_quality_reason && (
+                        <small>
+                          {item.target_quality_reason}
+                        </small>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="wa-review-action">
+                    {target ? (
+                      target.startsWith("http") ? (
+                        <a
+                          className="wa-action-link"
+                          href={target}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Inspect
+                          <FaExternalLinkAlt />
+                        </a>
+                      ) : (
+                        <span>{target}</span>
+                      )
+                    ) : (
+                      <span>No target</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="wa-panel">
         <div className="wa-panel-title">
-          <h2>Execution Queue</h2>
+          <h2>Ready to Execute</h2>
           <span>
             {opportunities.length} opportunities
           </span>
@@ -317,32 +500,45 @@ export default function AdminWorkAgent() {
                       <div className="wa-actions">
                         {employment ? (
                           <>
-                            {item.application_status !==
-                              "approved" &&
-                              item.application_status !==
-                                "applied" && (
-                                <button
-                                  disabled={
-                                    busyId ===
-                                    item.id
-                                  }
-                                  onClick={() =>
-                                    action(
-                                      item.id,
-                                      "approve-application"
-                                    )
-                                  }
-                                >
-                                  Approve
-                                </button>
-                              )}
+                            {[
+                              "applied",
+                              "submitted"
+                            ].includes(
+                              item.application_status
+                            ) ? (
+                              <span className="wa-done">
+                                ✓ Applied
+                              </span>
+                            ) : item.application_status ===
+                                "approved" ? (
+                              <>
+                                {target &&
+                                  target.startsWith(
+                                    "http"
+                                  ) && (
+                                    <a
+                                      className="wa-action-link"
+                                      href={target}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Apply
+                                      <FaExternalLinkAlt />
+                                    </a>
+                                  )}
 
-                            {item.application_status !==
-                              "applied" && (
+                                {target &&
+                                  !target.startsWith(
+                                    "http"
+                                  ) && (
+                                    <span className="wa-ready">
+                                      Ready to send
+                                    </span>
+                                  )}
+
                                 <button
                                   disabled={
-                                    busyId ===
-                                    item.id
+                                    busyId === item.id
                                   }
                                   onClick={() =>
                                     action(
@@ -351,38 +547,44 @@ export default function AdminWorkAgent() {
                                     )
                                   }
                                 >
-                                  Applied
+                                  Mark Applied
                                 </button>
-                              )}
+                              </>
+                            ) : (
+                              <button
+                                disabled={
+                                  busyId === item.id
+                                }
+                                onClick={() =>
+                                  action(
+                                    item.id,
+                                    "approve-application"
+                                  )
+                                }
+                              >
+                                Approve
+                              </button>
+                            )}
                           </>
                         ) : (
                           <>
-                            {item.outreach_status !==
-                              "approved_email" &&
-                              item.outreach_status !==
-                                "sent" && (
-                                <button
-                                  disabled={
-                                    busyId ===
-                                    item.id
-                                  }
-                                  onClick={() =>
-                                    action(
-                                      item.id,
-                                      "approve-outreach"
-                                    )
-                                  }
-                                >
-                                  Approve
-                                </button>
-                              )}
+                            {item.outreach_status ===
+                            "sent" ? (
+                              <span className="wa-done">
+                                ✓ Outreach Sent
+                              </span>
+                            ) : item.outreach_status ===
+                              "approved_email" ? (
+                              <>
+                                {target && (
+                                  <span className="wa-ready">
+                                    Ready to send
+                                  </span>
+                                )}
 
-                            {item.outreach_status !==
-                              "sent" && (
                                 <button
                                   disabled={
-                                    busyId ===
-                                    item.id
+                                    busyId === item.id
                                   }
                                   onClick={() =>
                                     action(
@@ -391,11 +593,177 @@ export default function AdminWorkAgent() {
                                     )
                                   }
                                 >
-                                  Sent
+                                  Mark Sent
                                 </button>
-                              )}
+                              </>
+                            ) : (
+                              <button
+                                disabled={
+                                  busyId === item.id
+                                }
+                                onClick={() =>
+                                  action(
+                                    item.id,
+                                    "approve-outreach"
+                                  )
+                                }
+                              >
+                                Approve
+                              </button>
+                            )}
                           </>
                         )}
+                        {(item.application_status === "applied" ||
+                          item.application_status === "submitted" ||
+                          item.outreach_status === "sent") &&
+                          item.pipeline_stage !== "won" &&
+                          item.pipeline_stage !== "lost" && (
+                            <>
+                              {item.response_status !== "replied" &&
+                                item.pipeline_stage !== "interview" &&
+                                item.pipeline_stage !== "proposal" && (
+                                  <button
+                                    disabled={busyId === item.id}
+                                    onClick={() => {
+                                      const notes =
+                                        window.prompt(
+                                          "Reply notes (optional):",
+                                          ""
+                                        );
+
+                                      if (notes !== null) {
+                                        action(
+                                          item.id,
+                                          "reply",
+                                          { notes }
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    Record Reply
+                                  </button>
+                                )}
+
+                              {(item.response_status === "replied" ||
+                                item.pipeline_stage === "replied") &&
+                                item.pipeline_stage !== "interview" &&
+                                item.pipeline_stage !== "proposal" && (
+                                  <button
+                                    disabled={busyId === item.id}
+                                    onClick={() =>
+                                      action(
+                                        item.id,
+                                        "interview"
+                                      )
+                                    }
+                                  >
+                                    Interview
+                                  </button>
+                                )}
+
+                              {item.pipeline_stage === "interview" && (
+                                <button
+                                  disabled={busyId === item.id}
+                                  onClick={() => {
+                                    const raw =
+                                      window.prompt(
+                                        "Proposal / expected value:",
+                                        String(
+                                          item.estimated_revenue || 0
+                                        )
+                                      );
+
+                                    if (raw !== null) {
+                                      action(
+                                        item.id,
+                                        "proposal",
+                                        {
+                                          value:
+                                            Number(raw) || 0
+                                        }
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Proposal
+                                </button>
+                              )}
+
+                              {item.pipeline_stage === "proposal" && (
+                                <button
+                                  disabled={busyId === item.id}
+                                  onClick={() => {
+                                    const revenue =
+                                      window.prompt(
+                                        "Actual revenue:",
+                                        String(
+                                          item.estimated_revenue || 0
+                                        )
+                                      );
+
+                                    if (revenue === null) return;
+
+                                    const cost =
+                                      window.prompt(
+                                        "Actual cost:",
+                                        String(
+                                          item.estimated_cost || 0
+                                        )
+                                      );
+
+                                    if (cost === null) return;
+
+                                    action(
+                                      item.id,
+                                      "won",
+                                      {
+                                        revenue:
+                                          Number(revenue) || 0,
+                                        cost:
+                                          Number(cost) || 0
+                                      }
+                                    );
+                                  }}
+                                >
+                                  Won
+                                </button>
+                              )}
+
+                              <button
+                                disabled={busyId === item.id}
+                                onClick={() => {
+                                  const reason =
+                                    window.prompt(
+                                      "Reason lost:",
+                                      ""
+                                    );
+
+                                  if (reason !== null) {
+                                    action(
+                                      item.id,
+                                      "lost",
+                                      { reason }
+                                    );
+                                  }
+                                }}
+                              >
+                                Lost
+                              </button>
+                            </>
+                          )}
+
+                        {item.pipeline_stage === "won" && (
+                          <span className="wa-done">
+                            ✓ Won
+                          </span>
+                        )}
+
+                        {item.pipeline_stage === "lost" && (
+                          <span className="wa-lost">
+                            Lost
+                          </span>
+                        )}
+
                       </div>
                     </td>
                   </tr>
