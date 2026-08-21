@@ -211,8 +211,8 @@ export default function AdminWorkAgent() {
 
         <Metric
           icon={<FaCheckCircle />}
-          label="Final Ready"
-          value={counts.finalReady}
+          label="Autonomous Ready"
+          value={execution.autonomousReady}
         />
 
         <Metric
@@ -251,6 +251,56 @@ export default function AdminWorkAgent() {
           value={money(
             financial.estimatedRevenue
           )}
+        />
+      </div>
+
+      <div className="wa-cards">
+        <Metric
+          icon={<FaBriefcase />}
+          label="Subcontractable"
+          value={delegation.subcontractable}
+        />
+
+        <Metric
+          icon={<FaBriefcase />}
+          label="Delegation Review"
+          value={delegation.needsVerification}
+        />
+
+        <Metric
+          icon={<FaUserTie />}
+          label="Referrals"
+          value={delegation.referrals}
+        />
+
+        <Metric
+          icon={<FaDollarSign />}
+          label="Managed Contracts"
+          value={managedDelivery.contracts}
+        />
+
+        <Metric
+          icon={<FaBriefcase />}
+          label="Security Findings"
+          value={security.findings}
+        />
+
+        <Metric
+          icon={<FaCheckCircle />}
+          label="Reports Ready"
+          value={security.reportsReady}
+        />
+
+        <Metric
+          icon={<FaEnvelope />}
+          label="Reports Submitted"
+          value={security.reportsSubmitted}
+        />
+
+        <Metric
+          icon={<FaDollarSign />}
+          label="Security Rewards"
+          value={money(security.actualRewards)}
         />
       </div>
 
