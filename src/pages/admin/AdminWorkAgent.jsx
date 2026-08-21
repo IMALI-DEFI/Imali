@@ -160,6 +160,10 @@ export default function AdminWorkAgent() {
 
   const counts = overview?.counts || {};
   const financial = overview?.financial || {};
+  const execution = overview?.execution || {};
+  const delegation = overview?.delegation || {};
+  const managedDelivery = overview?.managedDelivery || {};
+  const security = overview?.security || {};
 
   if (loading && !overview) {
     return (
@@ -299,8 +303,56 @@ export default function AdminWorkAgent() {
           </div>
 
           <div>
-            <b>{counts.finalReady || 0}</b>
-            <span>Final Ready</span>
+            <b>{execution.autonomousReady || 0}</b>
+            <span>Autonomous Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="wa-review-summary">
+        <div className="wa-review-heading">
+          <div>
+            <strong>Human Handoff</strong>
+            <p>
+              Applications requiring interaction before the
+              agent can continue safely.
+            </p>
+          </div>
+
+          <span className="wa-review-total">
+            {execution.humanHandoff || 0}
+          </span>
+        </div>
+
+        <div className="wa-review-stats">
+          <div>
+            <b>{execution.captchaRequired || 0}</b>
+            <span>CAPTCHA</span>
+          </div>
+
+          <div>
+            <b>{execution.authRequired || 0}</b>
+            <span>Login</span>
+          </div>
+
+          <div>
+            <b>{execution.referenceRequired || 0}</b>
+            <span>Reference</span>
+          </div>
+
+          <div>
+            <b>{execution.phoneRequired || 0}</b>
+            <span>Phone Required</span>
+          </div>
+
+          <div>
+            <b>{managedDelivery.payoutsReady || 0}</b>
+            <span>Payouts Ready</span>
+          </div>
+
+          <div>
+            <b>{security.reportsApproved || 0}</b>
+            <span>Reward Reports Approved</span>
           </div>
         </div>
       </div>
