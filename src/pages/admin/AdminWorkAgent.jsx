@@ -654,6 +654,118 @@ export default function AdminWorkAgent() {
         )}
       </div>
 
+      <div className="wa-panel">
+        <div className="wa-panel-title">
+          <div>
+            <h2>Federal Procurement</h2>
+            <span>
+              SAM.gov opportunities, qualification,
+              bid preparation and submission status.
+            </span>
+          </div>
+
+          <span>
+            {procurementOpportunities.length} opportunities
+          </span>
+        </div>
+
+        {procurementOpportunities.length === 0 ? (
+          <div className="wa-empty">
+            No SAM.gov opportunities stored yet.
+          </div>
+        ) : (
+          <div className="wa-table-wrap">
+            <table className="wa-table">
+              <thead>
+                <tr>
+                  <th>Priority</th>
+                  <th>Agency</th>
+                  <th>Opportunity</th>
+                  <th>P/B/D</th>
+                  <th>Status</th>
+                  <th>NAICS</th>
+                  <th>Set Aside</th>
+                  <th>Value</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {procurementOpportunities.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>
+                        {item.personal_fit || 0}
+                      </strong>
+                    </td>
+
+                    <td>
+                      {item.company || "U.S. Government"}
+                    </td>
+
+                    <td>
+                      <strong>
+                        {item.title || "Federal Opportunity"}
+                      </strong>
+
+                      {item.procurement_reason && (
+                        <div className="wa-subtext">
+                          {item.procurement_reason}
+                        </div>
+                      )}
+                    </td>
+
+                    <td>
+                      {item.personal_fit || 0}/
+                      {item.business_value || 0}/
+                      {item.demand_confidence || 0}
+                    </td>
+
+                    <td>
+                      {item.procurement_submission_status ===
+                      "submitted"
+                        ? "Submitted"
+                        : item.procurement_bid_ready
+                        ? "Bid Package Ready"
+                        : item.procurement_status ||
+                          "Discovered"}
+                    </td>
+
+                    <td>
+                      {item.procurement_naics || "—"}
+                    </td>
+
+                    <td>
+                      {item.procurement_set_aside || "Open / Unknown"}
+                    </td>
+
+                    <td>
+                      {money(item.estimated_revenue)}
+                    </td>
+
+                    <td>
+                      {item.url ? (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="wa-link"
+                        >
+                          Open
+                          <FaExternalLinkAlt />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="wa-panel-title">
           <h2>Ready to Execute</h2>
           <span>
