@@ -1,89 +1,101 @@
-// src/pages/BillingSuccess.jsx
-import React, { useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import {
+  FaCheckCircle,
+  FaArrowRight,
+  FaShieldAlt,
+} from "react-icons/fa";
+
+const providers = [
+  {
+    name: "Robinhood Crypto",
+    description: "Connect your Robinhood Crypto account.",
+    path: "/connect-robinhood",
+    icon: "🟢",
+  },
+  {
+    name: "OKX",
+    description: "Connect your OKX trading account.",
+    path: "/connect-okx",
+    icon: "🔷",
+  },
+  {
+    name: "Alpaca",
+    description: "Connect your Alpaca stock account.",
+    path: "/connect-alpaca",
+    icon: "📈",
+  },
+];
 
 export default function BillingSuccess() {
-  const navigate = useNavigate();
-  const redirectedRef = useRef(false);
   const { refreshActivation } = useAuth();
 
   useEffect(() => {
-    const updateBillingStatus = async () => {
-      try {
-        // Force refresh activation status
-        await refreshActivation();
-        console.log("✅ Billing status refreshed");
-      } catch (err) {
-        console.warn("[BillingSuccess] Failed to refresh activation:", err);
-      }
-    };
-    
-    updateBillingStatus();
-
-    const timer = setTimeout(() => {
-      if (redirectedRef.current) return;
-      redirectedRef.current = true;
-      navigate("/activation", { replace: true, state: { fromBilling: true } });
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [navigate, refreshActivation]);
-
-  const handleContinue = () => {
-    if (redirectedRef.current) return;
-    redirectedRef.current = true;
-    navigate("/activation", { replace: true, state: { fromBilling: true } });
-  };
+    refreshActivation().catch((err) => {
+      console.warn("[BillingSuccess] Failed to refresh activation:", err);
+    });
+  }, [refreshActivation]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white/5 border border-white/10 p-8 text-center backdrop-blur-sm">
-        <div className="mb-6">
-          <div className="w-20 h-20 mx-auto bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center animate-bounce">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-4xl px-5 py-14 sm:py-20">
+
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15">
+            <FaCheckCircle className="text-3xl text-emerald-400" />
           </div>
+
+          <h1 className="mt-5 text-3xl font-black sm:text-4xl">
+            You're In
+          </h1>
+
+          <p className="mx-auto mt-3 max-w-xl text-white/55">
+            Choose the trading account you want IMALI to connect to.
+          </p>
         </div>
 
-        <h1 className="text-2xl font-bold text-white mb-3">
-          Payment Method Saved!
-        </h1>
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          {providers.map((provider) => (
+            <Link
+              key={provider.name}
+              to={provider.path}
+              state={{ fromOnboarding: true }}
+              className="group rounded-2xl border border-white/10 bg-white/[0.04] p-6 transition hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-white/[0.07]"
+            >
+              <div className="text-4xl">{provider.icon}</div>
 
-        <p className="text-gray-400 mb-6">
-          Your billing setup is complete. Redirecting you to complete activation...
-        </p>
+              <h2 className="mt-4 text-xl font-black">
+                {provider.name}
+              </h2>
 
-        <div className="flex justify-center gap-2 mb-6">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse delay-150" />
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse delay-300" />
+              <p className="mt-2 min-h-[40px] text-sm text-white/50">
+                {provider.description}
+              </p>
+
+              <div className="mt-5 flex items-center gap-2 font-bold text-emerald-400">
+                Connect
+                <FaArrowRight className="transition group-hover:translate-x-1" />
+              </div>
+            </Link>
+          ))}
         </div>
 
-        <button
-          onClick={handleContinue}
-          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white py-3 font-semibold transition"
-        >
-          Continue to Activation →
-        </button>
+        <div className="mt-8 flex items-center justify-center gap-2 text-center text-xs text-white/40">
+          <FaShieldAlt className="text-emerald-400" />
+          Your funds remain in your trading account.
+        </div>
 
-        <p className="mt-4 text-xs text-gray-500">
-          You'll be redirected automatically
-        </p>
+        <div className="mt-8 text-center">
+          <Link
+            to="/dashboard"
+            className="text-sm text-white/40 underline transition hover:text-white/70"
+          >
+            I'll connect an account later
+          </Link>
+        </div>
 
-        <Link to="/activation" className="hidden">Activation</Link>
       </div>
-
-      <style>{`
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
-        }
-        .animate-bounce { animation: bounce 0.5s ease-in-out infinite; }
-        .delay-150 { animation-delay: 150ms; }
-        .delay-300 { animation-delay: 300ms; }
-      `}</style>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/routing/ProtectedRoute";
+import "./styles/admin-mobile.css";
 import MarketingTracker from "./components/MarketingTracker";
 
 // Enterprise
@@ -218,13 +219,20 @@ function NotFound() {
 // ==================== MAIN APP ROUTES ====================
 function MainAppRoutes() {
   const { loading, user } = useAuth();
+  const location = useLocation();
+  const isAdminPath = location.pathname.startsWith("/admin");
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <>
       <MarketingTracker />
       <Header />
-      <main className="min-h-screen pt-16 bg-[#050816] text-white">
+      <main
+        className={`min-h-screen pt-16 bg-[#050816] text-white ${
+          isAdminPath ? "imali-admin-mobile" : ""
+        }`}
+      >
         <Suspense fallback={<PageFallback />}>
           <Routes>
             {/* PUBLIC */}
@@ -297,18 +305,18 @@ function MainAppRoutes() {
 
             {/* CONNECTION PAGES */}
             <Route path="/connect-robinhood" element={
-              <ProtectedRoute requirePaid={true} requireActivation={true}>
+              <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectRobinhood />
               </ProtectedRoute>
             } />
 
             <Route path="/connect-okx" element={
-              <ProtectedRoute requirePaid={true} requireActivation={true}>
+              <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectOKX />
               </ProtectedRoute>
             } />
             <Route path="/connect-alpaca" element={
-              <ProtectedRoute requirePaid={true} requireActivation={true}>
+              <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectAlpaca />
               </ProtectedRoute>
             } />
