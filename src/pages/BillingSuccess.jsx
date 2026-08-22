@@ -10,21 +10,21 @@ import {
 const providers = [
   {
     name: "Robinhood Crypto",
-    description: "Connect your Robinhood Crypto account.",
-    path: "/connect-robinhood",
     icon: "🟢",
+    path: "/connect-robinhood",
+    text: "Connect your Robinhood Crypto account.",
   },
   {
     name: "OKX",
-    description: "Connect your OKX trading account.",
-    path: "/connect-okx",
     icon: "🔷",
+    path: "/connect-okx",
+    text: "Connect your OKX account.",
   },
   {
     name: "Alpaca",
-    description: "Connect your Alpaca stock account.",
-    path: "/connect-alpaca",
     icon: "📈",
+    path: "/connect-alpaca",
+    text: "Connect your Alpaca stock account.",
   },
 ];
 
@@ -33,13 +33,13 @@ export default function BillingSuccess() {
 
   useEffect(() => {
     refreshActivation().catch((err) => {
-      console.warn("[BillingSuccess] Failed to refresh activation:", err);
+      console.warn("[BillingSuccess] refresh failed:", err);
     });
   }, [refreshActivation]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-4xl px-5 py-14 sm:py-20">
+      <main className="mx-auto max-w-4xl px-5 py-16 sm:py-20">
 
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15">
@@ -47,11 +47,11 @@ export default function BillingSuccess() {
           </div>
 
           <h1 className="mt-5 text-3xl font-black sm:text-4xl">
-            You're In
+            Payment Complete
           </h1>
 
-          <p className="mx-auto mt-3 max-w-xl text-white/55">
-            Choose the trading account you want IMALI to connect to.
+          <p className="mx-auto mt-3 max-w-lg text-white/55">
+            One last step: choose the account you want IMALI to trade through.
           </p>
         </div>
 
@@ -69,8 +69,8 @@ export default function BillingSuccess() {
                 {provider.name}
               </h2>
 
-              <p className="mt-2 min-h-[40px] text-sm text-white/50">
-                {provider.description}
+              <p className="mt-2 text-sm text-white/50">
+                {provider.text}
               </p>
 
               <div className="mt-5 flex items-center gap-2 font-bold text-emerald-400">
@@ -81,7 +81,7 @@ export default function BillingSuccess() {
           ))}
         </div>
 
-        <div className="mt-8 flex items-center justify-center gap-2 text-center text-xs text-white/40">
+        <div className="mt-8 flex justify-center gap-2 text-xs text-white/40">
           <FaShieldAlt className="text-emerald-400" />
           Your funds remain in your trading account.
         </div>
@@ -89,13 +89,13 @@ export default function BillingSuccess() {
         <div className="mt-8 text-center">
           <Link
             to="/dashboard"
-            className="text-sm text-white/40 underline transition hover:text-white/70"
+            className="text-sm text-white/40 underline hover:text-white/70"
           >
-            I'll connect an account later
+            Connect an account later
           </Link>
         </div>
 
-      </div>
+      </main>
     </div>
   );
 }

@@ -321,7 +321,7 @@ function MainAppRoutes() {
               </ProtectedRoute>
             } />
             <Route path="/connect-wallet" element={
-              <ProtectedRoute requirePaid={true} requireActivation={true}>
+              <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectWallet />
               </ProtectedRoute>
             } />

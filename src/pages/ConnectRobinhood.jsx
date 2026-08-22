@@ -1,6 +1,7 @@
 // src/pages/ConnectRobinhood.jsx
 import React, { useCallback, useEffect, useState } from "react";
 import BotAPI from "../utils/BotAPI";
+import { useNavigate } from "react-router-dom";
 import {
   FaCheckCircle,
   FaCopy,
@@ -24,6 +25,7 @@ function bytesToBase64(bytes) {
 }
 
 export default function ConnectRobinhood() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState({
     connected: false,
     key: "",

@@ -1,41 +1,34 @@
-// src/pages/ConnectOKX.jsx
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 import {
+  FaArrowRight,
   FaCheckCircle,
-  FaPlug,
-  FaExchangeAlt,
-  FaSyncAlt,
-  FaTrash,
+  FaExternalLinkAlt,
+  FaShieldAlt,
   FaSpinner,
 } from "react-icons/fa";
 
+const OKX_API_URL = "https://www.okx.com/account/my-api";
+
 export default function ConnectOKX() {
-  const [status, setStatus] = useState(null);
+  const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Form state
   const [apiKey, setApiKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [passphrase, setPassphrase] = useState("");
-  const [mode, setMode] = useState("live");
 
   const loadStatus = useCallback(async () => {
     try {
       const integration = await BotAPI.getIntegrationStatus(true);
-      const balance = await BotAPI.getExchangeBalance(true);
-
-      setStatus({
-        connected: integration.okx_connected,
-        mode: integration.okx_mode,
-        key: integration.okx_api_key_masked,
-        balance: balance.okx_total,
-        available: balance.okx_available_usdt,
-      });
+      setConnected(Boolean(integration?.okx_connected));
     } catch (err) {
-      setMessage("Failed to load OKX status");
+      setMessage(err.message || "Could not check OKX connection.");
     } finally {
       setLoading(false);
     }
@@ -46,226 +39,160 @@ export default function ConnectOKX() {
   }, [loadStatus]);
 
   const handleConnect = async () => {
-    if (!apiKey || !secretKey || !passphrase) {
-      setMessage("All fields are required");
+    if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) {
+      setMessage("Enter all three OKX credentials.");
       return;
     }
-    setActionLoading(true);
+
+    setSaving(true);
     setMessage("");
+
     try {
       const res = await BotAPI.connectOKX({
-        api_key: apiKey,
-        secret_key: secretKey,
-        passphrase,
-        mode,
+        api_key: apiKey.trim(),
+        secret_key: secretKey.trim(),
+        passphrase: passphrase.trim(),
+        mode: "live",
       });
-      if (res.success) {
-        setMessage("OKX connected successfully!");
-        setApiKey("");
-        setSecretKey("");
-        setPassphrase("");
-        await loadStatus();
-      } else {
-        setMessage(res.error || "Connection failed");
-      }
-    } catch (err) {
-      setMessage(err.message || "Connection failed");
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
-  const handleDisconnect = async () => {
-    if (!window.confirm("Are you sure you want to disconnect OKX?")) return;
-    setActionLoading(true);
-    setMessage("");
-    try {
-      const res = await BotAPI.disconnectOKX();
-      if (res.success) {
-        setMessage("OKX disconnected");
-        await loadStatus();
-      } else {
-        setMessage(res.error || "Disconnect failed");
+      if (res?.success === false) {
+        setMessage(res.error || res.message || "OKX connection failed.");
+        return;
       }
-    } catch (err) {
-      setMessage(err.message || "Disconnect failed");
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
-  const handleToggleMode = async () => {
-    const newMode = status.mode === "live" ? "paper" : "live";
-    setActionLoading(true);
-    setMessage("");
-    try {
-      const res = await BotAPI.switchExchangeMode("okx", newMode);
-      if (res.success) {
-        setMessage(`Switched to ${newMode.toUpperCase()} mode`);
-        await loadStatus();
-      } else {
-        setMessage(res.error || "Mode switch failed");
-      }
+      setApiKey("");
+      setSecretKey("");
+      setPassphrase("");
+      setConnected(true);
+      setMessage("");
     } catch (err) {
-      setMessage(err.message || "Mode switch failed");
+      setMessage(err.message || "OKX connection failed.");
     } finally {
-      setActionLoading(false);
+      setSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 grid place-items-center text-white">
         <FaSpinner className="animate-spin text-4xl text-cyan-400" />
       </div>
     );
   }
 
+  if (connected) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white grid place-items-center px-5">
+        <div className="w-full max-w-md rounded-3xl border border-emerald-400/20 bg-emerald-400/[0.06] p-8 text-center">
+          <FaCheckCircle className="mx-auto text-5xl text-emerald-400" />
+
+          <h1 className="mt-5 text-3xl font-black">
+            OKX Connected
+          </h1>
+
+          <p className="mt-3 text-white/55">
+            IMALI is ready to use your OKX trading connection.
+          </p>
+
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="mt-7 w-full rounded-xl bg-emerald-500 py-4 font-black text-slate-950 hover:bg-emerald-400"
+          >
+            Go to Dashboard <FaArrowRight className="inline ml-2" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <h1 className="text-4xl font-black">Connect OKX</h1>
+    <div className="min-h-screen bg-slate-950 text-white px-5 py-12">
+      <main className="mx-auto max-w-xl">
 
-        {/* Status Card */}
-        <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-          <div className="flex items-center gap-3 mb-6">
-            {status.connected ? (
-              <FaCheckCircle className="text-emerald-400 text-2xl" />
-            ) : (
-              <FaPlug className="text-yellow-400 text-2xl" />
-            )}
-            <span className="text-xl font-bold">
-              {status.connected ? "Connected" : "Not Connected"}
-            </span>
-          </div>
+        <div className="text-center">
+          <div className="text-5xl">🔷</div>
+          <h1 className="mt-4 text-3xl font-black">Connect OKX</h1>
 
-          <div className="space-y-2 text-sm">
-            <p>API Key: {status.key || "—"}</p>
-            <p>Mode: {status.mode?.toUpperCase()}</p>
-            <p>Total Balance: ${status.balance?.toFixed(2) || "0.00"}</p>
-            <p>Available USDT: ${status.available?.toFixed(2) || "0.00"}</p>
-          </div>
+          <p className="mt-3 text-white/55">
+            Create an OKX trading API key, then paste the three credentials below.
+          </p>
 
-          <div className="flex flex-wrap gap-3 mt-6">
-            <button
-              onClick={loadStatus}
-              disabled={actionLoading}
-              className="bg-white/10 hover:bg-white/20 px-5 py-3 rounded-xl font-bold transition"
-            >
-              <FaSyncAlt className="inline mr-2" />
-              Refresh
-            </button>
+          <a
+            href={OKX_API_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-2 font-bold text-cyan-400 hover:text-cyan-300"
+          >
+            Open OKX API Settings
+            <FaExternalLinkAlt />
+          </a>
+        </div>
 
-            {status.connected && (
-              <>
-                <button
-                  onClick={handleToggleMode}
-                  disabled={actionLoading}
-                  className="bg-cyan-600 hover:bg-cyan-700 px-5 py-3 rounded-xl font-bold transition"
-                >
-                  <FaExchangeAlt className="inline mr-2" />
-                  Switch to {status.mode === "live" ? "Paper" : "Live"}
-                </button>
+        <div className="mt-8 space-y-4 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
+          <Input
+            label="API Key"
+            value={apiKey}
+            onChange={setApiKey}
+            placeholder="Paste API key"
+          />
 
-                <button
-                  onClick={handleDisconnect}
-                  disabled={actionLoading}
-                  className="bg-red-600 hover:bg-red-700 px-5 py-3 rounded-xl font-bold transition"
-                >
-                  <FaTrash className="inline mr-2" />
-                  Disconnect
-                </button>
-              </>
-            )}
-          </div>
+          <Input
+            label="Secret Key"
+            value={secretKey}
+            onChange={setSecretKey}
+            placeholder="Paste secret key"
+            secret
+          />
+
+          <Input
+            label="Passphrase"
+            value={passphrase}
+            onChange={setPassphrase}
+            placeholder="Enter API passphrase"
+            secret
+          />
 
           {message && (
-            <div className={`mt-4 p-3 rounded-xl text-sm font-medium ${
-              message.includes("success") || message.includes("Success")
-                ? "bg-emerald-500/20 text-emerald-300"
-                : "bg-red-500/20 text-red-300"
-            }`}>
+            <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">
               {message}
             </div>
           )}
-        </div>
 
-        {/* Connection Form */}
-        <div className="rounded-3xl bg-white/5 p-6 border border-white/10">
-          <h2 className="text-2xl font-bold mb-4">
-            {status.connected ? "Update API Keys" : "Connect New API Key"}
-          </h2>
-          <p className="text-white/50 mb-6 text-sm">
-            Get your API key from{" "}
-            <a
-              href="https://www.okx.com/account/my-api"
-              target="_blank"
-              rel="noreferrer"
-              className="text-cyan-400 underline"
-            >
-              OKX API Management
-            </a>
-            . Required permissions: <strong>Read</strong> and <strong>Trade</strong>.
-          </p>
+          <button
+            onClick={handleConnect}
+            disabled={saving}
+            className="w-full rounded-xl bg-emerald-500 py-4 font-black text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
+          >
+            {saving ? "Connecting..." : "Connect & Continue"}
+          </button>
 
-          <div className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium mb-1">API Key</label>
-              <input
-                type="text"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter your OKX API key"
-                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Secret Key</label>
-              <input
-                type="password"
-                value={secretKey}
-                onChange={(e) => setSecretKey(e.target.value)}
-                placeholder="Enter your OKX secret key"
-                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Passphrase</label>
-              <input
-                type="password"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Enter your OKX passphrase"
-                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Trading Mode</label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="live">Live Trading</option>
-                <option value="paper">Paper Trading</option>
-              </select>
-            </div>
-
-            <button
-              onClick={handleConnect}
-              disabled={actionLoading}
-              className="w-full bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 px-6 py-3 rounded-xl font-bold transition flex items-center justify-center gap-2"
-            >
-              {actionLoading ? (
-                <FaSpinner className="animate-spin" />
-              ) : (
-                <FaPlug />
-              )}
-              {status.connected ? "Update Keys" : "Connect OKX"}
-            </button>
+          <div className="flex items-center justify-center gap-2 text-xs text-white/35">
+            <FaShieldAlt className="text-emerald-400" />
+            Use trading permissions only. Do not enable withdrawals.
           </div>
         </div>
-      </div>
+
+      </main>
     </div>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, secret = false }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-bold text-white/70">
+        {label}
+      </span>
+
+      <input
+        type={secret ? "password" : "text"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck="false"
+        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-white/25 outline-none focus:border-emerald-400"
+      />
+    </label>
   );
 }
