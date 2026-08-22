@@ -677,6 +677,11 @@ const getWorkAgentSecurityRewards = () =>
     "/api/admin/work-agent/security-rewards"
   );
 
+const getWorkAgentProcurement = () =>
+  api.get(
+    "/api/admin/work-agent/procurement"
+  );
+
 
 const recordWorkAgentReply = (id, notes = "") =>
   api.post(
@@ -721,6 +726,7 @@ const BotAPI = {
   markWorkAgentOutreachSent,
   getWorkAgentFollowups,
   getWorkAgentSecurityRewards,
+  getWorkAgentProcurement,
   recordWorkAgentReply,
   markWorkAgentInterview,
   markWorkAgentProposal,

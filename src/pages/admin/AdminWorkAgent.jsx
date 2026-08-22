@@ -24,6 +24,7 @@ export default function AdminWorkAgent() {
   const [opportunities, setOpportunities] = useState([]);
   const [reviewOpportunities, setReviewOpportunities] = useState([]);
   const [securityRewards, setSecurityRewards] = useState([]);
+  const [procurementOpportunities, setProcurementOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
@@ -38,6 +39,7 @@ export default function AdminWorkAgent() {
         opportunitiesResponse,
         reviewResponse,
         securityRewardsResponse,
+        procurementResponse,
       ] = await Promise.all([
         BotAPI.getWorkAgentOverview(),
         BotAPI.getWorkAgentOpportunities({
@@ -49,6 +51,7 @@ export default function AdminWorkAgent() {
           limit: 100,
         }),
         BotAPI.getWorkAgentSecurityRewards(),
+        BotAPI.getWorkAgentProcurement(),
       ]);
 
       const overviewData =
@@ -64,6 +67,10 @@ export default function AdminWorkAgent() {
         securityRewardsResponse?.data ||
         securityRewardsResponse;
 
+      const procurementData =
+        procurementResponse?.data ||
+        procurementResponse;
+
       setOverview(overviewData);
 
       setOpportunities(
@@ -76,6 +83,10 @@ export default function AdminWorkAgent() {
 
       setSecurityRewards(
         securityRewardsData?.findings || []
+      );
+
+      setProcurementOpportunities(
+        procurementData?.opportunities || []
       );
     } catch (err) {
       console.error("Work Agent load error:", err);
