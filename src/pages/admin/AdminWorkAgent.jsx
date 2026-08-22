@@ -23,6 +23,7 @@ export default function AdminWorkAgent() {
   const [overview, setOverview] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
   const [reviewOpportunities, setReviewOpportunities] = useState([]);
+  const [securityRewards, setSecurityRewards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
@@ -36,6 +37,7 @@ export default function AdminWorkAgent() {
         overviewResponse,
         opportunitiesResponse,
         reviewResponse,
+        securityRewardsResponse,
       ] = await Promise.all([
         BotAPI.getWorkAgentOverview(),
         BotAPI.getWorkAgentOpportunities({
@@ -46,6 +48,7 @@ export default function AdminWorkAgent() {
           execution: "review",
           limit: 100,
         }),
+        BotAPI.getWorkAgentSecurityRewards(),
       ]);
 
       const overviewData =
@@ -57,6 +60,10 @@ export default function AdminWorkAgent() {
       const reviewData =
         reviewResponse?.data || reviewResponse;
 
+      const securityRewardsData =
+        securityRewardsResponse?.data ||
+        securityRewardsResponse;
+
       setOverview(overviewData);
 
       setOpportunities(
@@ -65,6 +72,10 @@ export default function AdminWorkAgent() {
 
       setReviewOpportunities(
         reviewData?.opportunities || []
+      );
+
+      setSecurityRewards(
+        securityRewardsData?.findings || []
       );
     } catch (err) {
       console.error("Work Agent load error:", err);
@@ -517,7 +528,122 @@ export default function AdminWorkAgent() {
       )}
 
       <div className="wa-panel">
+        <div className="wa-panel">
         <div className="wa-panel-title">
+          <div>
+            <h2>Security Rewards</h2>
+            <span>
+              Authorized security findings, AI-prepared reports,
+              submissions and bounty results.
+            </span>
+          </div>
+
+          <span>
+            {securityRewards.length} findings
+          </span>
+        </div>
+
+        {securityRewards.length === 0 ? (
+          <div className="wa-empty">
+            No security findings recorded yet.
+          </div>
+        ) : (
+          <div className="wa-table-wrap">
+            <table className="wa-table">
+              <thead>
+                <tr>
+                  <th>Finding</th>
+                  <th>Severity</th>
+                  <th>Confidence</th>
+                  <th>Quality</th>
+                  <th>Estimated Reward</th>
+                  <th>Status</th>
+                  <th>Actual Reward</th>
+                  <th>Report</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {securityRewards.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>
+                        {item.report_title ||
+                          item.title ||
+                          `Finding ${item.id}`}
+                      </strong>
+
+                      {item.report_summary && (
+                        <div className="wa-subtext">
+                          {item.report_summary}
+                        </div>
+                      )}
+                    </td>
+
+                    <td>
+                      {item.severity || "—"}
+                    </td>
+
+                    <td>
+                      {item.confidence != null
+                        ? `${item.confidence}%`
+                        : "—"}
+                    </td>
+
+                    <td>
+                      {item.report_quality_score != null
+                        ? `${item.report_quality_score}%`
+                        : "—"}
+                    </td>
+
+                    <td>
+                      {money(item.estimated_reward)}
+                    </td>
+
+                    <td>
+                      {item.paid_at
+                        ? "Paid"
+                        : item.accepted_at
+                        ? "Accepted"
+                        : item.submitted_at
+                        ? "Submitted"
+                        : item.approved_for_submission
+                        ? "Approved"
+                        : item.submission_ready
+                        ? "Ready for Review"
+                        : item.report_status ||
+                          item.status ||
+                          "Draft"}
+                    </td>
+
+                    <td>
+                      {money(item.actual_reward)}
+                    </td>
+
+                    <td>
+                      {item.report_url ? (
+                        <a
+                          href={item.report_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="wa-link"
+                        >
+                          Open
+                          <FaExternalLinkAlt />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="wa-panel-title">
           <h2>Ready to Execute</h2>
           <span>
             {opportunities.length} opportunities

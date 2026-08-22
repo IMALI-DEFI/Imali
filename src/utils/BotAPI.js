@@ -672,6 +672,41 @@ const getWorkAgentFollowups = () =>
     "/api/admin/work-agent/followups"
   );
 
+const getWorkAgentSecurityRewards = () =>
+  api.get(
+    "/api/admin/work-agent/security-rewards"
+  );
+
+
+const recordWorkAgentReply = (id, notes = "") =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/reply`,
+    { notes }
+  );
+
+const markWorkAgentInterview = (id) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/interview`
+  );
+
+const markWorkAgentProposal = (id, value = 0) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/proposal`,
+    { value }
+  );
+
+const markWorkAgentWon = (id, revenue = 0, cost = 0) =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/won`,
+    { revenue, cost }
+  );
+
+const markWorkAgentLost = (id, reason = "") =>
+  api.post(
+    `/api/admin/work-agent/opportunities/${id}/lost`,
+    { reason }
+  );
+
 const BotAPI = {
 
   // Admin — Automation Analytics
@@ -685,6 +720,12 @@ const BotAPI = {
   approveWorkAgentOutreach,
   markWorkAgentOutreachSent,
   getWorkAgentFollowups,
+  getWorkAgentSecurityRewards,
+  recordWorkAgentReply,
+  markWorkAgentInterview,
+  markWorkAgentProposal,
+  markWorkAgentWon,
+  markWorkAgentLost,
 
 
   // Admin — Sports Jedi
