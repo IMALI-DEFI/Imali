@@ -87,13 +87,13 @@ export default function Home() {
           >
             <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
               <FaRobot />
-              AI-Powered Automated Trading
+              AI That Helps You Trade
             </div>
 
             <h1 className="mx-auto max-w-4xl text-4xl font-black tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-              Put Your Trading
+              Let IMALI Help
               <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                On Autopilot
+                Do the Trading
               </span>
             </h1>
 
@@ -158,13 +158,13 @@ export default function Home() {
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
               <FaBrain />
-              Live AI Signal Demo
+              See IMALI Working
             </div>
 
             <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
-              See IMALI
+              See What IMALI
               <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                {" "}Analyzing Markets
+                {" "}Finds
               </span>
             </h2>
 
@@ -283,7 +283,7 @@ export default function Home() {
 
                       <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
                         <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-cyan-300">
-                          AI Paper Signal
+                          Practice Signal
                         </span>
 
                         <span className="text-[10px] text-white/25">
@@ -327,11 +327,11 @@ export default function Home() {
         <div className="mx-auto max-w-5xl px-5 sm:px-6">
           <div className="mb-10 text-center">
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-400">
-              Simple setup
+              Getting started
             </p>
 
             <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
-              Start in three steps
+              Here's How It Works
             </h2>
           </div>
 
@@ -383,7 +383,7 @@ export default function Home() {
       <section className="py-14 sm:py-16">
         <div className="mx-auto max-w-4xl px-5 text-center sm:px-6">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-white/35">
-            Connect the account you already use
+            Use an Account You Already Have
           </p>
 
           <div className="mt-7 flex flex-wrap justify-center gap-3">
