@@ -158,7 +158,7 @@ export default function Home() {
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
               <FaBrain />
-              See IMALI Working
+              See What IMALI Working
             </div>
 
             <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
