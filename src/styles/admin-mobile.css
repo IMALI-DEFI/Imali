@@ -1,0 +1,241 @@
+/* ============================================================
+   IMALI ADMIN — RESPONSIVE / MOBILE
+   Applies only beneath .imali-admin-mobile
+============================================================ */
+
+/* Never allow one long value to widen the page */
+.imali-admin-mobile {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.imali-admin-mobile * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.imali-admin-mobile img,
+.imali-admin-mobile video,
+.imali-admin-mobile iframe {
+  max-width: 100%;
+}
+
+/* Long emails, URLs, IDs and campaign names */
+.imali-admin-mobile td,
+.imali-admin-mobile th,
+.imali-admin-mobile p,
+.imali-admin-mobile span,
+.imali-admin-mobile a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Tables never destroy the viewport */
+.imali-admin-mobile table {
+  width: 100%;
+}
+
+.imali-admin-mobile .wa-table-wrap,
+.imali-admin-mobile [class*="table-wrap"],
+.imali-admin-mobile [class*="table-container"],
+.imali-admin-mobile .overflow-x-auto {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Buttons should remain tappable */
+.imali-admin-mobile button,
+.imali-admin-mobile [role="button"] {
+  min-height: 40px;
+}
+
+/* Action groups should wrap instead of stretching */
+.imali-admin-mobile .wa-actions,
+.imali-admin-mobile [class*="actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (max-width: 1024px) {
+  .imali-admin-mobile {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .imali-admin-mobile main,
+  .imali-admin-mobile [class*="content"] {
+    max-width: 100%;
+  }
+
+  /* Let large metric grids naturally collapse */
+  .imali-admin-mobile .wa-cards,
+  .imali-admin-mobile .wa-money {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ============================================================
+   PHONE
+============================================================ */
+
+@media (max-width: 700px) {
+  /* Main admin spacing */
+  .imali-admin-mobile {
+    font-size: 14px;
+  }
+
+  .imali-admin-mobile > div,
+  .imali-admin-mobile main > div {
+    max-width: 100%;
+  }
+
+  /* Headers stack */
+  .imali-admin-mobile .wa-header,
+  .imali-admin-mobile [class*="header"] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .imali-admin-mobile .wa-header button,
+  .imali-admin-mobile [class*="header"] button {
+    width: 100%;
+  }
+
+  /* Metric cards become two per row */
+  .imali-admin-mobile .wa-cards,
+  .imali-admin-mobile .wa-money,
+  .imali-admin-mobile [class*="metrics-grid"],
+  .imali-admin-mobile [class*="stats-grid"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  /* Cards stay compact but readable */
+  .imali-admin-mobile .wa-cards > *,
+  .imali-admin-mobile .wa-money > *,
+  .imali-admin-mobile [class*="card"] {
+    max-width: 100%;
+  }
+
+  /* Panels use phone-size padding */
+  .imali-admin-mobile .wa-panel,
+  .imali-admin-mobile .wa-attention,
+  .imali-admin-mobile [class*="panel"] {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  /* Panel titles stack if necessary */
+  .imali-admin-mobile .wa-panel-title {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  /* Work Agent attention cards */
+  .imali-admin-mobile .wa-attention-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .imali-admin-mobile .wa-attention-stats span {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Tables: keep data complete and scroll horizontally */
+  .imali-admin-mobile table {
+    min-width: 720px;
+    font-size: 12px;
+  }
+
+  .imali-admin-mobile th,
+  .imali-admin-mobile td {
+    padding: 8px 9px;
+    vertical-align: top;
+  }
+
+  /* Action buttons easier to hit */
+  .imali-admin-mobile .wa-actions button,
+  .imali-admin-mobile .wa-actions a {
+    min-height: 38px;
+    padding: 8px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Forms stack on phone */
+  .imali-admin-mobile form {
+    max-width: 100%;
+  }
+
+  .imali-admin-mobile input,
+  .imali-admin-mobile select,
+  .imali-admin-mobile textarea {
+    width: 100%;
+    max-width: 100%;
+    font-size: 16px; /* prevents iOS zoom */
+  }
+
+  /* Looker Studio / iframe dashboards */
+  .imali-admin-mobile iframe {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Prevent fixed widths from breaking mobile */
+  .imali-admin-mobile [style*="width"] {
+    max-width: 100%;
+  }
+
+  /* Mobile page titles */
+  .imali-admin-mobile h1 {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .imali-admin-mobile h2 {
+    font-size: 18px;
+  }
+
+  .imali-admin-mobile h3 {
+    font-size: 16px;
+  }
+}
+
+/* ============================================================
+   SMALL PHONE
+============================================================ */
+
+@media (max-width: 430px) {
+  .imali-admin-mobile .wa-cards,
+  .imali-admin-mobile .wa-money,
+  .imali-admin-mobile .wa-attention-stats,
+  .imali-admin-mobile [class*="metrics-grid"],
+  .imali-admin-mobile [class*="stats-grid"] {
+    grid-template-columns: 1fr;
+  }
+
+  .imali-admin-mobile .wa-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .imali-admin-mobile .wa-actions button,
+  .imali-admin-mobile .wa-actions a {
+    width: 100%;
+  }
+}
