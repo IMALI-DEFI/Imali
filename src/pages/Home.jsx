@@ -340,20 +340,20 @@ export default function Home() {
               {
                 number: "1",
                 icon: <FaCheckCircle />,
-                title: "Subscribe",
-                text: "Create your IMALI account and activate your plan.",
+                title: "Create Your Account",
+                text: "Sign up for IMALI and choose the plan you want to use.",
               },
               {
                 number: "2",
                 icon: <FaPlug />,
-                title: "Connect",
-                text: "Connect Robinhood Crypto, OKX, or Alpaca.",
+                title: "Connect Your Trading Account",
+                text: "Connect Robinhood Crypto, OKX, or Alpaca. Your money stays in that account.",
               },
               {
                 number: "3",
                 icon: <FaChartLine />,
-                title: "Start Trading",
-                text: "Confirm your setup and continue to your dashboard.",
+                title: "Let IMALI Help Trade",
+                text: "IMALI watches the market, checks opportunities, and can place eligible trades based on your settings.",
               },
             ].map((step) => (
               <div
@@ -415,11 +415,11 @@ export default function Home() {
       <section className="border-t border-white/5 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 py-16">
         <div className="mx-auto max-w-3xl px-5 text-center">
           <h2 className="text-3xl font-black sm:text-4xl">
-            Ready to automate your trading?
+            Ready to let IMALI watch the market for you?
           </h2>
 
           <p className="mt-3 text-white/55">
-            Create your account, connect your trading provider, and get started.
+            Connect your trading account and let IMALI help find, check, and automate trading opportunities.
           </p>
 
           <Link
