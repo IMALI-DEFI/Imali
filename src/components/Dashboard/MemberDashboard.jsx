@@ -72,6 +72,7 @@ const POLL_INTERVALS = {
   PROFILE: 0,
   BILLING: 0,
   CANDLES: 30000,
+  SIGNALS: 15000,
 };
 
 const API_RETRY_COUNT = 2;
@@ -1176,6 +1177,12 @@ export default function MemberDashboard() {
   const intervalsRef = useRef({});
   const [isVisible, setIsVisible] = useState(true);
 
+  const [signalFeed, setSignalFeed] = useState([]);
+  const [signalFeedLoading, setSignalFeedLoading] = useState(true);
+  const [signalFeedError, setSignalFeedError] = useState("");
+  const [signalFeedUpdatedAt, setSignalFeedUpdatedAt] = useState(null);
+
+
   const candleTicksRef = useRef(0);
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
@@ -1242,6 +1249,52 @@ export default function MemberDashboard() {
     }
     return TRADING_TYPES.filter((item) => item.id === "crypto");
   }, [effectiveTier]);
+
+
+  const loadSignalFeed = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setSignalFeedLoading(true);
+    }
+
+    try {
+      const response = await BotAPI.getSignalFeed(50);
+      const payload = unwrapData(response);
+
+      if (payload?.success === false) {
+        throw new Error(payload?.error || "Signal feed unavailable");
+      }
+
+      const signals = Array.isArray(payload?.signals)
+        ? payload.signals
+        : [];
+
+      setSignalFeed(signals);
+      setSignalFeedError("");
+      setSignalFeedUpdatedAt(new Date());
+    } catch (error) {
+      console.error("Signal feed load error:", error);
+
+      setSignalFeedError(
+        error?.response?.status === 401
+          ? "Sign in again to load AI signals."
+          : "Signal feed temporarily unavailable."
+      );
+    } finally {
+      setSignalFeedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSignalFeed(true);
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadSignalFeed(false);
+      }
+    }, POLL_INTERVALS.SIGNALS);
+
+    return () => window.clearInterval(interval);
+  }, [loadSignalFeed]);
 
   useEffect(() => {
     const activeStillVisible = visibleTradingTypes.some(
@@ -3157,6 +3210,193 @@ export default function MemberDashboard() {
                   )}
                   Stop Bot
                 </button>
+              )}
+            </div>
+          </GlassCard>
+
+
+          {/* Canonical AI Signal Feed */}
+          <GlassCard
+            className="border-cyan-400/20"
+            gradient="from-cyan-500/10 to-blue-500/5"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FaBrain className="text-cyan-300" />
+
+                  <h3 className="text-xl sm:text-2xl font-black">
+                    AI Signal Feed
+                  </h3>
+
+                  <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black tracking-wide text-cyan-200">
+                    PAPER SIGNALS
+                  </span>
+                </div>
+
+                <p className="mt-1 text-xs sm:text-sm text-white/45">
+                  Same AI signal stream published to IMALI Telegram.
+                  Signals are analysis alerts, not confirmed live executions.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <FaClock />
+
+                <span>
+                  {signalFeedUpdatedAt
+                    ? `Updated ${signalFeedUpdatedAt.toLocaleTimeString()}`
+                    : "Waiting for feed"}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => loadSignalFeed(true)}
+                  disabled={signalFeedLoading}
+                  className="ml-1 rounded-xl border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 disabled:opacity-50"
+                  title="Refresh signals"
+                >
+                  <FaSyncAlt
+                    className={signalFeedLoading ? "animate-spin" : ""}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {signalFeedLoading && signalFeed.length === 0 ? (
+                <div className="grid min-h-[150px] place-items-center text-white/50">
+                  <div className="text-center">
+                    <FaSpinner className="mx-auto mb-3 animate-spin text-2xl text-cyan-300" />
+                    Loading AI signals...
+                  </div>
+                </div>
+              ) : signalFeedError && signalFeed.length === 0 ? (
+                <div className="rounded-2xl border border-yellow-400/20 bg-yellow-400/10 p-4 text-sm text-yellow-100">
+                  <FaExclamationTriangle className="mr-2 inline" />
+                  {signalFeedError}
+                </div>
+              ) : signalFeed.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center text-sm text-white/45">
+                  No AI signals are available yet.
+                </div>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {signalFeed.slice(0, 12).map((signal) => {
+                    const side = String(signal.side || "").toUpperCase();
+                    const isBuy = side === "BUY";
+
+                    const baseSymbol = String(signal.symbol || "")
+                      .replace("-USDT", "")
+                      .replace("/USDT", "");
+
+                    const sentAt = signal.sent_at
+                      ? new Date(signal.sent_at)
+                      : null;
+
+                    const validDate =
+                      sentAt && !Number.isNaN(sentAt.getTime());
+
+                    return (
+                      <div
+                        key={signal.id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:bg-white/[0.04]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-cyan-400/10 font-black text-cyan-200">
+                              {getAssetIcon(baseSymbol)}
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate font-black">
+                                {signal.symbol || "Unknown"}
+                              </p>
+
+                              <p className="truncate text-xs text-white/40">
+                                {signal.market || "Market"} ·{" "}
+                                {signal.source_bot || "IMALI AI"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span
+                            className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
+                              isBuy
+                                ? "bg-emerald-500/15 text-emerald-300"
+                                : "bg-red-500/15 text-red-300"
+                            }`}
+                          >
+                            {side || "SIGNAL"}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <MiniBox
+                            label="Score"
+                            value={num(signal.score).toFixed(1)}
+                          />
+
+                          <MiniBox
+                            label="Confidence"
+                            value={formatPercent(signal.confidence)}
+                          />
+
+                          <MiniBox
+                            label="Price"
+                            value={
+                              num(signal.price) > 0
+                                ? `$${num(signal.price).toLocaleString(
+                                    undefined,
+                                    {
+                                      maximumFractionDigits: 8,
+                                    }
+                                  )}`
+                                : "-"
+                            }
+                          />
+
+                          <MiniBox
+                            label="Risk"
+                            value={
+                              String(signal.risk || "N/A")
+                                .charAt(0)
+                                .toUpperCase() +
+                              String(signal.risk || "N/A")
+                                .slice(1)
+                                .toLowerCase()
+                            }
+                          />
+                        </div>
+
+                        {signal.reasoning && (
+                          <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-white/45">
+                            {signal.reasoning}
+                          </p>
+                        )}
+
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+                          <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black text-cyan-200">
+                            AI PAPER SIGNAL
+                          </span>
+
+                          <span className="text-[10px] text-white/30">
+                            {validDate
+                              ? sentAt.toLocaleString()
+                              : "Recent signal"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {signalFeedError && signalFeed.length > 0 && (
+                <p className="mt-3 text-xs text-yellow-300/70">
+                  <FaExclamationTriangle className="mr-1 inline" />
+                  Latest refresh failed. Showing the most recently loaded signals.
+                </p>
               )}
             </div>
           </GlassCard>

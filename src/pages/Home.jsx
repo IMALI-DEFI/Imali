@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -8,9 +8,68 @@ import {
   FaRobot,
   FaPlug,
   FaChartLine,
+  FaBrain,
+  FaClock,
+  FaSpinner,
 } from "react-icons/fa";
 
+
+const DEMO_SIGNAL_URL =
+  `${process.env.REACT_APP_API_URL || "https://api.imali-defi.com"}/api/public/signals/demo`;
+
 export default function Home() {
+  const [demoSignals, setDemoSignals] = useState([]);
+  const [demoLoading, setDemoLoading] = useState(true);
+  const [demoUpdatedAt, setDemoUpdatedAt] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDemoSignals = async () => {
+      try {
+        const response = await fetch(DEMO_SIGNAL_URL, {
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Signal demo HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!mounted) return;
+
+        setDemoSignals(
+          Array.isArray(data?.signals)
+            ? data.signals
+            : []
+        );
+
+        setDemoUpdatedAt(new Date());
+      } catch (error) {
+        console.error("Homepage signal demo error:", error);
+      } finally {
+        if (mounted) {
+          setDemoLoading(false);
+        }
+      }
+    };
+
+    loadDemoSignals();
+
+    const interval = window.setInterval(
+      loadDemoSignals,
+      30000
+    );
+
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
       {/* HERO */}
@@ -88,6 +147,178 @@ export default function Home() {
               </span>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+
+      {/* LIVE AI SIGNAL DEMO */}
+      <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl px-5 sm:px-6 lg:px-8">
+
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
+              <FaBrain />
+              Live AI Signal Demo
+            </div>
+
+            <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
+              See IMALI
+              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                {" "}Analyzing Markets
+              </span>
+            </h2>
+
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
+              Watch recent AI-generated market signals from IMALI's analysis engine.
+              These demonstrate the signal process and are not confirmed live executions.
+            </p>
+
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/30">
+              <FaClock />
+
+              {demoUpdatedAt
+                ? `Updated ${demoUpdatedAt.toLocaleTimeString()}`
+                : "Loading latest signals"}
+            </div>
+          </div>
+
+          <div className="mt-9">
+            {demoLoading && demoSignals.length === 0 ? (
+              <div className="grid min-h-[220px] place-items-center">
+                <div className="text-center text-white/45">
+                  <FaSpinner className="mx-auto mb-3 animate-spin text-2xl text-cyan-300" />
+                  Loading IMALI AI signals...
+                </div>
+              </div>
+            ) : demoSignals.length === 0 ? (
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center text-white/40">
+                New AI signals will appear here automatically.
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {demoSignals.map((signal, index) => {
+                  const score = Number(signal.score || 0);
+                  const confidence = Number(signal.confidence || 0);
+                  const price = Number(signal.price || 0);
+
+                  const side = String(signal.side || "").toUpperCase();
+
+                  const sideClasses =
+                    side === "BUY"
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/20"
+                      : "bg-red-500/15 text-red-300 border-red-400/20";
+
+                  return (
+                    <motion.div
+                      key={signal.id || `${signal.symbol}-${index}`}
+                      initial={{ opacity: 0, y: 12 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.35, delay: index * 0.04 }}
+                      className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-5 shadow-xl backdrop-blur"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black text-lg">
+                            {signal.symbol}
+                          </div>
+
+                          <div className="mt-1 text-xs text-white/35">
+                            {signal.market || "Market"}
+                          </div>
+                        </div>
+
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-black ${sideClasses}`}
+                        >
+                          {side || "SIGNAL"}
+                        </span>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-3">
+                        <div className="rounded-2xl bg-black/20 p-3">
+                          <div className="text-[11px] uppercase tracking-wide text-white/30">
+                            AI Score
+                          </div>
+
+                          <div className="mt-1 text-lg font-black">
+                            {score.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl bg-black/20 p-3">
+                          <div className="text-[11px] uppercase tracking-wide text-white/30">
+                            Confidence
+                          </div>
+
+                          <div className="mt-1 text-lg font-black">
+                            {confidence.toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl bg-black/20 p-3">
+                          <div className="text-[11px] uppercase tracking-wide text-white/30">
+                            Price
+                          </div>
+
+                          <div className="mt-1 truncate font-black">
+                            {price > 0
+                              ? `$${price.toLocaleString(undefined, {
+                                  maximumFractionDigits: 8,
+                                })}`
+                              : "-"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl bg-black/20 p-3">
+                          <div className="text-[11px] uppercase tracking-wide text-white/30">
+                            Risk
+                          </div>
+
+                          <div className="mt-1 font-black capitalize">
+                            {signal.risk || "N/A"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
+                        <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-cyan-300">
+                          AI Paper Signal
+                        </span>
+
+                        <span className="text-[10px] text-white/25">
+                          {signal.sent_at
+                            ? new Date(signal.sent_at).toLocaleString()
+                            : "Recent"}
+                        </span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-9 text-center">
+            <p className="mx-auto max-w-xl text-xs leading-relaxed text-white/35">
+              Demo signals are generated from IMALI's paper signal environment.
+              Actual trading depends on account connection, user settings,
+              strategy, risk controls, market conditions, and execution.
+            </p>
+
+            <Link
+              to="/signup?plan=pro&tier=pro&product_type=trading"
+              state={{
+                tier: "pro",
+                product_type: "trading",
+                from: "home-demo",
+              }}
+              className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-7 py-3.5 font-extrabold text-slate-950 transition hover:bg-emerald-400"
+            >
+              Start Live Trading
+              <FaArrowRight />
+            </Link>
+          </div>
         </div>
       </section>
 

@@ -712,6 +712,17 @@ const markWorkAgentLost = (id, reason = "") =>
     { reason }
   );
 
+
+// Canonical AI signal feed used by the member dashboard.
+// Display-only feed; this does not execute trades.
+const getSignalFeed = async (limit = 50) => {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+  return api.get(
+    `/api/signals/feed?limit=${safeLimit}`
+  );
+};
+
 const BotAPI = {
 
   // Admin — Automation Analytics
@@ -811,6 +822,7 @@ const BotAPI = {
   getAuditLogs,
   getOrganizations,
   captureMarketingLead,
+  getSignalFeed,
   getMarketAnalysis,
   getMarketCandles,
 };
