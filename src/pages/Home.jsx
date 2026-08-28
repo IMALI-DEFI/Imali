@@ -91,9 +91,9 @@ export default function Home() {
             </div>
 
             <h1 className="mx-auto max-w-4xl text-4xl font-black tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-              Let IMALI Help
+              Let IMALI
               <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                Do the Trading
+                Trade for You
               </span>
             </h1>
 
@@ -158,7 +158,7 @@ export default function Home() {
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
               <FaBrain />
-              See What IMALI Working
+              See IMALI Working
             </div>
 
             <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
@@ -169,8 +169,8 @@ export default function Home() {
             </h2>
 
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-              Watch recent AI-generated market signals from IMALI's analysis engine.
-              These demonstrate the signal process and are not confirmed live executions.
+              IMALI watches the market all day. When it finds a possible trade,
+               it gives that trade a score. Here are some things IMALI recently found.
             </p>
 
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/30">
@@ -236,55 +236,76 @@ export default function Home() {
                       </div>
 
                       <div className="mt-5 grid grid-cols-2 gap-3">
+
                         <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-[11px] uppercase tracking-wide text-white/30">
-                            AI Score
+                          <div className="text-sm font-black text-emerald-300">
+                            ★ TRADE SCORE
                           </div>
 
-                          <div className="mt-1 text-lg font-black">
+                          <div className="mt-1 text-xl font-black text-white">
                             {score.toFixed(1)}
+                            <span className="ml-1 text-xs font-normal text-white/40">
+                              / 100
+                            </span>
+                          </div>
+
+                          <div className="mt-1 text-xs leading-snug text-white/50">
+                            How good this trade looks
                           </div>
                         </div>
 
                         <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-[11px] uppercase tracking-wide text-white/30">
-                            Confidence
+                          <div className="text-sm font-black text-cyan-300">
+                            🧠 AI CONFIDENCE
                           </div>
 
-                          <div className="mt-1 text-lg font-black">
+                          <div className="mt-1 text-xl font-black text-white">
                             {confidence.toFixed(1)}%
                           </div>
+
+                          <div className="mt-1 text-xs leading-snug text-white/50">
+                            How sure the AI is
+                          </div>
                         </div>
 
                         <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-[11px] uppercase tracking-wide text-white/30">
-                            Price
+                          <div className="text-sm font-black text-emerald-300">
+                            💵 PRICE FOUND
                           </div>
 
-                          <div className="mt-1 truncate font-black">
+                          <div className="mt-1 truncate text-lg font-black text-white">
                             {price > 0
                               ? `$${price.toLocaleString(undefined, {
                                   maximumFractionDigits: 8,
                                 })}`
                               : "-"}
                           </div>
+
+                          <div className="mt-1 text-xs leading-snug text-white/50">
+                            Price when IMALI found it
+                          </div>
                         </div>
 
                         <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-[11px] uppercase tracking-wide text-white/30">
-                            Risk
+                          <div className="text-sm font-black text-amber-300">
+                            ⚠ RISK LEVEL
                           </div>
 
-                          <div className="mt-1 font-black capitalize">
+                          <div className="mt-1 text-lg font-black capitalize text-white">
                             {signal.risk || "N/A"}
                           </div>
+
+                          <div className="mt-1 text-xs leading-snug text-white/50">
+                            How risky this trade looks
+                          </div>
                         </div>
+
                       </div>
 
+                      
+
                       <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
-                        <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-cyan-300">
-                          Practice Signal
-                        </span>
+                        
 
                         <span className="text-[10px] text-white/25">
                           {signal.sent_at
@@ -301,9 +322,9 @@ export default function Home() {
 
           <div className="mt-9 text-center">
             <p className="mx-auto max-w-xl text-xs leading-relaxed text-white/35">
-              Demo signals are generated from IMALI's paper signal environment.
-              Actual trading depends on account connection, user settings,
-              strategy, risk controls, market conditions, and execution.
+              These examples show what IMALI is finding in the market.
+               They do not mean a real-money trade happened.
+               Real trading can make or lose money.
             </p>
 
             <Link
@@ -352,7 +373,7 @@ export default function Home() {
               {
                 number: "3",
                 icon: <FaChartLine />,
-                title: "Let IMALI Help Trade",
+                title: "Let IMALI Trade",
                 text: "IMALI watches the market, checks opportunities, and can place eligible trades based on your settings.",
               },
             ].map((step) => (
