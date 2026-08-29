@@ -15,6 +15,7 @@ import nftElite from "../assets/images/nfts/nft-elite.png";
 import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
 
 import STRIPE_CONFIG from "../config/stripe";
+import BotAPI from "../utils/BotAPI";
 
 const ENTERPRISE_IMAGE = "/enterprise.PNG";
 
@@ -77,7 +78,7 @@ const plans = [
     stripePriceId: STRIPE_CONFIG.PRO_PRICE_ID,
     features: [
       "Live stock trading (Alpaca)",
-      "Live crypto spot (OKX)",
+      "Live crypto trading (Robinhood Crypto & OKX)",
       "AI‑assisted strategies",
       "Take‑profit / stop‑loss",
       "Performance dashboard",
@@ -284,7 +285,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       ? Math.max(5, plan.profitShare - profitBoost)
       : plan.profitShare;
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (onSelectPlan) {
       onSelectPlan(plan.id);
     }
@@ -314,7 +315,41 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
         state: { ...navState, from: "pricing" }
       });
     } else {
-      const billingPath = isAdmin ? `/billing?tier=${plan.id}&product_type=admin` : `/billing?tier=${plan.id}`;
+      // Logged-in paid trading plans must go through Stripe Checkout.
+      // Never grant Pro/Elite entitlement from frontend navigation alone.
+      if (
+        !isAdmin &&
+        (plan.id === "pro" || plan.id === "elite")
+      ) {
+        if (!plan.stripePriceId) {
+          window.alert("This plan is not configured for checkout.");
+          return;
+        }
+
+        try {
+          const checkout = await BotAPI.createCheckoutSession({
+            priceId: plan.stripePriceId,
+            successUrl: `${window.location.origin}/dashboard?upgrade=success`,
+            cancelUrl: `${window.location.origin}/pricing?tier=${plan.id}`,
+          });
+
+          window.location.assign(checkout.session_url);
+        } catch (error) {
+          console.error("Stripe checkout error:", error);
+          window.alert(
+            error?.response?.data?.error ||
+            error?.message ||
+            "Unable to start secure checkout."
+          );
+        }
+
+        return;
+      }
+
+      const billingPath = isAdmin
+        ? `/billing?tier=${plan.id}&product_type=admin`
+        : `/billing?tier=${plan.id}`;
+
       navigate(billingPath, {
         state: { ...navState, from: "pricing", updateCard: true }
       });

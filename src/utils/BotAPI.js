@@ -189,6 +189,38 @@ const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) =
   return r;
 };
 
+const createCheckoutSession = async ({
+  priceId,
+  successUrl,
+  cancelUrl,
+}) => {
+  const r = unwrap(
+    await api.post("/api/billing/create-checkout-session", {
+      price_id: priceId,
+      success_url:
+        successUrl ||
+        `${window.location.origin}/dashboard?upgrade=success`,
+      cancel_url:
+        cancelUrl ||
+        `${window.location.origin}/pricing`,
+    })
+  );
+
+  const data = r?.data || r || {};
+  const sessionUrl =
+    data.session_url ||
+    r?.session_url;
+
+  if (!sessionUrl) {
+    throw new Error("Stripe checkout session URL was not returned.");
+  }
+
+  return {
+    ...data,
+    session_url: sessionUrl,
+  };
+};
+
 const syncBilling = async () => {
   const r = unwrap(await api.post("/api/billing/sync"));
   clearCache();
@@ -739,6 +771,7 @@ const BotAPI = {
   hasValidCard,
   createSetupIntent,
   confirmCard,
+  createCheckoutSession,
   changePlan,
   cancelSubscription,
   removeCard,
