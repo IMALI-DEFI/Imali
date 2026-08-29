@@ -1226,16 +1226,26 @@ export default function MemberDashboard() {
       activation?.billing_complete
   );
 
+  const normalizedUserTier = normalizeTier(state.userTier);
+
+  const stripeSubscriptionId =
+    user?.stripe_subscription_id ||
+    user?.billing?.stripe_subscription_id ||
+    activation?.stripe_subscription_id ||
+    activation?.billing?.stripe_subscription_id ||
+    null;
+
   const hasPaidAccess = Boolean(
-    normalizedSubscriptionStatus === "active" ||
-      normalizedSubscriptionStatus === "trialing"
+    ["pro", "elite"].includes(normalizedUserTier) &&
+    ["active", "trialing"].includes(normalizedSubscriptionStatus) &&
+    stripeSubscriptionId
   );
 
   const effectiveTier =
-    normalizeTier(state.userTier) === "starter"
-      ? "starter"
+    normalizedUserTier === "enterprise"
+      ? "enterprise"
       : hasPaidAccess
-        ? normalizeTier(state.userTier)
+        ? normalizedUserTier
         : "starter";
 
   const visibleTradingTypes = useMemo(() => {
@@ -1511,7 +1521,14 @@ export default function MemberDashboard() {
 
       dispatch({
         type: ACTIONS.SET_USER_TIER,
-        payload: nextUser?.tier || user?.tier || activation?.tier || "starter",
+        payload:
+          nextUser?.tier_active ||
+          nextUser?.tier ||
+          user?.tier_active ||
+          user?.tier ||
+          activation?.tier_active ||
+          activation?.tier ||
+          "starter",
       });
 
       dispatch({
