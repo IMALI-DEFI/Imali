@@ -2376,16 +2376,48 @@ export default function MemberDashboard() {
 
       let res = null;
 
-      if (BotAPI.startTradingBotByCategory) {
-        res = await BotAPI.startTradingBotByCategory(
-          activeTab.categoryId,
-          state.currentStrategy.id,
-          launchMode,
-          config
+      // Robinhood LIVE must explicitly enable backend live trading first.
+      // The backend then sets:
+      //   trading_enabled=true
+      //   paper_trading_enabled=false
+      //   integrations.robinhood_mode="live"
+      if (
+        activeTab.exchange === "robinhood" &&
+        launchMode === "live"
+      ) {
+        if (!BotAPI.toggleTrading) {
+          throw new Error(
+            "Live trading enable API is unavailable."
+          );
+        }
+
+        const enableResult = await BotAPI.toggleTrading(
+          true,
+          true
         );
+
+        if (
+          !enableResult ||
+          enableResult?.success === false
+        ) {
+          throw new Error(
+            enableResult?.error ||
+            enableResult?.message ||
+            "Failed to enable Robinhood live trading."
+          );
+        }
+
+        // Pull the newly persisted robinhood_mode from backend.
+        await fetchIntegrationStatus();
       }
 
-      if ((!res || res?.success === false) && BotAPI.startTradingBot) {
+      // Robinhood must preserve exchange identity.
+      // Do not send Robinhood through generic "spot" first,
+      // because "spot" normally resolves to the OKX path.
+      if (
+        activeTab.exchange === "robinhood" &&
+        BotAPI.startTradingBot
+      ) {
         res = await BotAPI.startTradingBot(
           activeTab.exchange,
           state.currentStrategy.id,
@@ -2393,6 +2425,28 @@ export default function MemberDashboard() {
           activeTab.categoryId,
           config
         );
+      } else {
+        if (BotAPI.startTradingBotByCategory) {
+          res = await BotAPI.startTradingBotByCategory(
+            activeTab.categoryId,
+            state.currentStrategy.id,
+            launchMode,
+            config
+          );
+        }
+
+        if (
+          (!res || res?.success === false) &&
+          BotAPI.startTradingBot
+        ) {
+          res = await BotAPI.startTradingBot(
+            activeTab.exchange,
+            state.currentStrategy.id,
+            launchMode,
+            activeTab.categoryId,
+            config
+          );
+        }
       }
 
       if (!res) {
@@ -2441,6 +2495,7 @@ export default function MemberDashboard() {
     state.currentStrategy,
     saveStrategyPreference,
     refreshDashboard,
+    fetchIntegrationStatus,
     showNotice,
     showError,
   ]);
@@ -2541,6 +2596,75 @@ export default function MemberDashboard() {
         fetchBotStatus(),
         fetchCandles(), // Load candles early
       ]);
+
+      const [integrationResult, balanceResult] = await Promise.allSettled([
+        BotAPI.getIntegrationStatus?.(true),
+        BotAPI.getExchangeBalance?.(true),
+      ]);
+
+      const integrations =
+        integrationResult.status === "fulfilled"
+          ? unwrapData(integrationResult.value)
+          : {};
+
+      const balances =
+        balanceResult.status === "fulfilled"
+          ? unwrapData(balanceResult.value)
+          : {};
+
+      const robinhoodConnected = Boolean(
+        integrations.robinhood_connected ??
+        integrations.robinhoodConnected ??
+        integrations.robinhood?.connected
+      );
+
+      const okxConnected = Boolean(
+        integrations.okx_connected ??
+        integrations.okxConnected ??
+        integrations.okx?.connected
+      );
+
+      const alpacaConnected = Boolean(
+        integrations.alpaca_connected ??
+        integrations.alpacaConnected ??
+        integrations.alpaca?.connected
+      );
+
+      const robinhoodValue = num(
+        balances.robinhood ??
+        balances.robinhood_total
+      );
+
+      const okxValue = num(
+        balances.okx ??
+        balances.okx_total
+      );
+
+      const alpacaValue = num(
+        balances.alpaca ??
+        balances.alpaca_total
+      );
+
+      let preferredType = "crypto";
+
+      if (robinhoodConnected && robinhoodValue > 0) {
+        preferredType = "robinhood";
+      } else if (okxConnected && okxValue > 0) {
+        preferredType = "crypto";
+      } else if (alpacaConnected && alpacaValue > 0) {
+        preferredType = "stocks";
+      } else if (robinhoodConnected) {
+        preferredType = "robinhood";
+      } else if (alpacaConnected) {
+        preferredType = "stocks";
+      } else if (okxConnected) {
+        preferredType = "crypto";
+      }
+
+      dispatch({
+        type: ACTIONS.SET_ACTIVE_TYPE,
+        payload: preferredType,
+      });
 
       await Promise.allSettled([
         fetchIntegrationStatus(),
