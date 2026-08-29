@@ -162,6 +162,9 @@ export default function BillingDashboard({
   const canUseLiveTrading =
     billingReady && (isPro || isElite);
 
+  const canUseRobinhood =
+    canUseLiveTrading;
+
   const canUseOKX =
     canUseLiveTrading;
 
@@ -173,6 +176,14 @@ export default function BillingDashboard({
 
   const canUseDEX =
     billingReady && isElite;
+
+  const isRobinhoodConnected = Boolean(
+    activationStatus?.robinhood_connected
+  );
+
+  const robinhoodMode = String(
+    activationStatus?.robinhood_mode || "live"
+  ).toLowerCase();
 
   const isOKXConnected = Boolean(
     activationStatus?.okx_connected
@@ -359,6 +370,10 @@ export default function BillingDashboard({
               activationStatus
             }
             isBotRunning={isBotRunning}
+            isRobinhoodConnected={
+              isRobinhoodConnected
+            }
+            robinhoodMode={robinhoodMode}
             isOKXConnected={
               isOKXConnected
             }
@@ -368,9 +383,14 @@ export default function BillingDashboard({
           />
 
           <TradingConnections
+            showRobinhood={canUseRobinhood}
             showOKX={canUseOKX}
             showAlpaca={canUseAlpaca}
             showWallet={canUseWallet}
+            isRobinhoodConnected={
+              isRobinhoodConnected
+            }
+            robinhoodMode={robinhoodMode}
             isOKXConnected={
               isOKXConnected
             }
@@ -416,6 +436,7 @@ export default function BillingDashboard({
             tier={currentTier}
             billingReady={billingReady}
             accountConnected={
+              isRobinhoodConnected ||
               isOKXConnected ||
               isAlpacaConnected ||
               (isElite &&
@@ -645,6 +666,8 @@ function SubscriptionSection({
 function BotStatus({
   activationStatus,
   isBotRunning,
+  isRobinhoodConnected,
+  robinhoodMode,
   isOKXConnected,
   isAlpacaConnected,
 }) {
@@ -671,8 +694,10 @@ function BotStatus({
         <StatusItem
           label="Mode"
           value={String(
-            activationStatus?.trading_mode ||
-              "paper"
+            isRobinhoodConnected
+              ? robinhoodMode
+              : activationStatus?.trading_mode ||
+                "paper"
           ).toUpperCase()}
         />
 
@@ -687,11 +712,13 @@ function BotStatus({
         <StatusItem
           label="Exchange"
           value={
-            isOKXConnected
-              ? "OKX"
-              : isAlpacaConnected
-                ? "Alpaca"
-                : "Not Connected"
+            isRobinhoodConnected
+              ? "Robinhood Crypto"
+              : isOKXConnected
+                ? "OKX"
+                : isAlpacaConnected
+                  ? "Alpaca"
+                  : "Not Connected"
           }
         />
       </div>
@@ -700,15 +727,31 @@ function BotStatus({
 }
 
 function TradingConnections({
+  showRobinhood,
   showOKX,
   showAlpaca,
   showWallet,
+  isRobinhoodConnected,
+  robinhoodMode,
   isOKXConnected,
   isAlpacaConnected,
   isWalletConnected,
   navigate,
 }) {
   const connections = [];
+
+  if (showRobinhood) {
+    connections.push({
+      id: "robinhood",
+      label: "Robinhood Crypto",
+      description: isRobinhoodConnected
+        ? `Connected • ${String(robinhoodMode || "live").toUpperCase()}`
+        : "Connect Robinhood Crypto for live crypto trading.",
+      icon: <FaBitcoin />,
+      connected: isRobinhoodConnected,
+      route: "/connect-robinhood",
+    });
+  }
 
   if (showOKX) {
     connections.push({
