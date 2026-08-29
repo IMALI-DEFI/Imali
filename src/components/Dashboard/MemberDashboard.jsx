@@ -908,6 +908,7 @@ const initialState = {
   processing: false,
   userTier: "starter",
   subscriptionStatus: "",
+  stripeSubscriptionId: null,
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
@@ -964,6 +965,7 @@ const ACTIONS = {
   SET_PROCESSING: "SET_PROCESSING",
   SET_USER_TIER: "SET_USER_TIER",
   SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS",
+  SET_STRIPE_SUBSCRIPTION_ID: "SET_STRIPE_SUBSCRIPTION_ID",
   SET_ACTIVE_TYPE: "SET_ACTIVE_TYPE",
   SET_STRATEGIES: "SET_STRATEGIES",
   SET_CURRENT_STRATEGY: "SET_CURRENT_STRATEGY",
@@ -1001,6 +1003,11 @@ function dashboardReducer(state, action) {
       return {
         ...state,
         subscriptionStatus: String(action.payload || "").toLowerCase(),
+      };
+    case ACTIONS.SET_STRIPE_SUBSCRIPTION_ID:
+      return {
+        ...state,
+        stripeSubscriptionId: action.payload || null,
       };
     case ACTIONS.SET_ACTIVE_TYPE:
       return { ...state, activeType: action.payload };
@@ -1234,6 +1241,8 @@ export default function MemberDashboard() {
     activation?.stripe_subscription_id ||
     activation?.billing?.stripe_subscription_id ||
     null;
+
+
 
   const hasPaidAccess = Boolean(
     ["pro", "elite"].includes(normalizedUserTier) &&
@@ -1539,6 +1548,14 @@ export default function MemberDashboard() {
           user?.subscription_status ||
           activation?.subscription_status ||
           "",
+      });
+
+      dispatch({
+        type: ACTIONS.SET_STRIPE_SUBSCRIPTION_ID,
+        payload:
+          nextUser?.stripe_subscription_id ||
+          nextUser?.billing?.stripe_subscription_id ||
+          null,
       });
 
       dispatch({
