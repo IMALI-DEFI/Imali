@@ -827,4 +827,12 @@ const BotAPI = {
   getMarketCandles,
 };
 
+
+export async function getProcurementQueue() {
+  return request("/api/admin/work-agent/procurement", {
+    method: "GET",
+    auth: true,
+  });
+}
+
 export default BotAPI;

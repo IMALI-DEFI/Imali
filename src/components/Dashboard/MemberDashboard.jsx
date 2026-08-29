@@ -1750,6 +1750,13 @@ export default function MemberDashboard() {
         data.alpaca_mode ?? data.alpacaMode ?? data.alpaca?.mode ?? "paper"
       );
 
+      const robinhoodMode = normalizeMode(
+        data.robinhood_mode ??
+          data.robinhoodMode ??
+          data.robinhood?.mode ??
+          "paper"
+      );
+
       dispatch({
         type: ACTIONS.SET_CONNECTIONS,
         payload: {
@@ -1765,7 +1772,7 @@ export default function MemberDashboard() {
           },
           robinhood: {
             connected: robinhoodConnected,
-            mode: "live",
+            mode: robinhoodMode,
             keyMasked:
               data.robinhood_api_key_masked ??
               data.robinhood_key_masked ??
@@ -1804,7 +1811,7 @@ export default function MemberDashboard() {
       }
 
       if (activeTab.connectionKey === "robinhood") {
-        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: "live" });
+        dispatch({ type: ACTIONS.SET_BOT_MODE, payload: robinhoodMode });
       }
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -2603,6 +2610,60 @@ export default function MemberDashboard() {
       abortControllersRef.current = [];
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Start dashboard polling after the authenticated user has loaded.
+  useEffect(() => {
+    if (!user) return undefined;
+
+    // Clear any stale intervals before creating new ones.
+    Object.values(intervalsRef.current).forEach((interval) => {
+      if (interval) window.clearInterval(interval);
+    });
+
+    intervalsRef.current.bot = window.setInterval(() => {
+      if (mountedRef.current && isVisible) {
+        refreshDashboard(false, {
+          refreshBot: true,
+          refreshBalance: false,
+          refreshTrades: false,
+        });
+      }
+    }, POLL_INTERVALS.BOT_STATUS);
+
+    intervalsRef.current.balance = window.setInterval(() => {
+      if (mountedRef.current && isVisible) {
+        refreshDashboard(false, {
+          refreshBot: false,
+          refreshBalance: true,
+          refreshTrades: false,
+        });
+      }
+    }, POLL_INTERVALS.BALANCES);
+
+    intervalsRef.current.trades = window.setInterval(() => {
+      if (mountedRef.current && isVisible) {
+        refreshDashboard(false, {
+          refreshBot: false,
+          refreshBalance: false,
+          refreshTrades: true,
+        });
+      }
+    }, POLL_INTERVALS.TRADES);
+
+    intervalsRef.current.candles = window.setInterval(() => {
+      if (mountedRef.current && isVisible) {
+        fetchCandles();
+      }
+    }, POLL_INTERVALS.CANDLES);
+
+    return () => {
+      Object.values(intervalsRef.current).forEach((interval) => {
+        if (interval) window.clearInterval(interval);
+      });
+
+      intervalsRef.current = {};
+    };
+  }, [user, isVisible, refreshDashboard, fetchCandles]);
 
   useEffect(() => {
     if (previousActiveType === undefined) return;
