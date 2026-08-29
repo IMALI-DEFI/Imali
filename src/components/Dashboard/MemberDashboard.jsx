@@ -1876,7 +1876,8 @@ export default function MemberDashboard() {
           .filter((asset) => asset.symbol);
 
         const cash = num(
-          data.robinhood_available_usd ??
+          data.robinhood_buying_power ??
+            data.robinhood_available_usd ??
             data.buying_power ??
             data.cash ??
             0
@@ -1886,7 +1887,11 @@ export default function MemberDashboard() {
           0
         );
         const total =
-          num(data.robinhood_total ?? data.portfolio_value ?? data.total) ||
+          num(
+            data.robinhood ??
+              data.robinhood_total ??
+              data.portfolio_value
+          ) ||
           cash + holdingsValue;
 
         dispatch({
