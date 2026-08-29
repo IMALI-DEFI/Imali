@@ -1,7 +1,6 @@
 // src/pages/ConnectRobinhood.jsx
 import React, { useCallback, useEffect, useState } from "react";
 import BotAPI from "../utils/BotAPI";
-import { useNavigate } from "react-router-dom";
 import {
   FaCheckCircle,
   FaCopy,
@@ -25,22 +24,12 @@ function bytesToBase64(bytes) {
 }
 
 export default function ConnectRobinhood() {
-  const navigate = useNavigate();
   const [status, setStatus] = useState({
     connected: false,
     key: "",
     connectedAt: null,
   });
-
-  const [stockStatus, setStockStatus] = useState({
-    connected: false,
-    accountMasked: "",
-    connectedAt: null,
-  });
-
-  const [stockLoading, setStockLoading] = useState(false);
-
-  const [loading, setLoading] = useState(true);
+const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -53,33 +42,19 @@ export default function ConnectRobinhood() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const [cryptoResult, stockResult] = await Promise.allSettled([
-        BotAPI.getRobinhoodStatus(true),
-        BotAPI.getRobinhoodStockStatus(true),
-      ]);
+      const robinhood = await BotAPI.getRobinhoodStatus(true);
 
-      if (cryptoResult.status === "fulfilled") {
-        const robinhood = cryptoResult.value || {};
-
-        setStatus({
-          connected: !!robinhood.connected,
-          key: robinhood.api_key_masked || "",
-          connectedAt: robinhood.connected_at || null,
-        });
-      }
-
-      if (stockResult.status === "fulfilled") {
-        const stocks = stockResult.value || {};
-
-        setStockStatus({
-          connected: !!stocks.connected,
-          accountMasked: stocks.account_masked || "",
-          connectedAt: stocks.connected_at || null,
-        });
-      }
+      setStatus({
+        connected: !!robinhood?.connected,
+        key: robinhood?.api_key_masked || "",
+        connectedAt: robinhood?.connected_at || null,
+      });
     } catch (err) {
       setMessageType("error");
-      setMessage(err.message || "Failed to load Robinhood status.");
+      setMessage(
+        err.message ||
+          "Failed to load Robinhood Crypto status."
+      );
     } finally {
       setLoading(false);
     }
@@ -87,36 +62,6 @@ export default function ConnectRobinhood() {
 
   useEffect(() => {
     loadStatus();
-
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
-    const stockResult = params.get("stocks");
-
-    if (stockResult === "connected") {
-      setMessageType("success");
-      setMessage(
-        "Robinhood Stocks connected successfully."
-      );
-
-      window.history.replaceState(
-        {},
-        document.title,
-        window.location.pathname
-      );
-    } else if (stockResult === "error") {
-      setMessageType("error");
-      setMessage(
-        "Robinhood Stocks connection was not completed."
-      );
-
-      window.history.replaceState(
-        {},
-        document.title,
-        window.location.pathname
-      );
-    }
   }, [loadStatus]);
 
   const copyText = async (value, label) => {
@@ -188,76 +133,6 @@ export default function ConnectRobinhood() {
       setGenerating(false);
     }
   };
-
-  const handleStockConnect = async () => {
-    setStockLoading(true);
-    setMessage("");
-
-    try {
-      const res = await BotAPI.connectRobinhoodStocks();
-
-      const authorizationUrl =
-        res?.authorization_url ||
-        res?.data?.authorization_url;
-
-      if (!authorizationUrl) {
-        throw new Error(
-          res?.error ||
-            res?.message ||
-            "Robinhood authorization URL was not returned."
-        );
-      }
-
-      window.location.assign(authorizationUrl);
-    } catch (err) {
-      setMessageType("error");
-      setMessage(
-        err.message ||
-          "Could not start Robinhood Stocks connection."
-      );
-      setStockLoading(false);
-    }
-  };
-
-
-  const handleStockDisconnect = async () => {
-    if (
-      !window.confirm(
-        "Are you sure you want to disconnect Robinhood Stocks?"
-      )
-    ) {
-      return;
-    }
-
-    setStockLoading(true);
-    setMessage("");
-
-    try {
-      const res = await BotAPI.disconnectRobinhoodStocks();
-
-      if (res?.success === false) {
-        throw new Error(
-          res?.error ||
-            res?.message ||
-            "Could not disconnect Robinhood Stocks."
-        );
-      }
-
-      setMessageType("success");
-      setMessage("Robinhood Stocks disconnected.");
-
-      await loadStatus();
-    } catch (err) {
-      setMessageType("error");
-      setMessage(
-        err.message ||
-          "Could not disconnect Robinhood Stocks."
-      );
-    } finally {
-      setStockLoading(false);
-    }
-  };
-
 
   const handleConnect = async () => {
     const cleanApiKey = apiKey.trim();
@@ -371,107 +246,12 @@ export default function ConnectRobinhood() {
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black">
-            Connect Robinhood
+            Connect Robinhood Crypto
           </h1>
 
           <p className="mt-2 text-sm sm:text-base text-white/60 max-w-2xl">
-            Connect Robinhood Stocks in one click, or connect Robinhood Crypto with API credentials.
+            Connect your Robinhood Crypto account using supported Robinhood Crypto Trading API credentials.
           </p>
-        </div>
-
-        {/* Robinhood Stocks */}
-        <div
-          className={`rounded-3xl border p-5 sm:p-6 ${
-            stockStatus.connected
-              ? "border-emerald-400/30 bg-emerald-500/10"
-              : "border-cyan-400/20 bg-cyan-500/5"
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-1">
-                {stockStatus.connected ? (
-                  <FaCheckCircle className="text-emerald-400 text-2xl" />
-                ) : (
-                  <FaPlug className="text-cyan-300 text-2xl" />
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs uppercase tracking-wider font-bold text-cyan-300">
-                  Robinhood Stocks
-                </p>
-
-                <h2 className="text-xl sm:text-2xl font-black mt-1">
-                  {stockStatus.connected
-                    ? "Stocks Connected"
-                    : "Connect Stocks in One Click"}
-                </h2>
-
-                <p className="text-sm text-white/55 mt-2 max-w-xl">
-                  Securely connect Robinhood Agentic Trading.
-                  No API keys or private keys to copy.
-                </p>
-
-                {stockStatus.connected &&
-                  stockStatus.accountMasked && (
-                    <p className="text-xs text-emerald-300 mt-3">
-                      Agentic account:{" "}
-                      {stockStatus.accountMasked}
-                    </p>
-                  )}
-              </div>
-            </div>
-
-            <div className="shrink-0">
-              {stockStatus.connected ? (
-                <button
-                  type="button"
-                  onClick={handleStockDisconnect}
-                  disabled={stockLoading}
-                  className="w-full sm:w-auto bg-red-600 hover:bg-red-700 px-5 py-3 rounded-xl font-bold disabled:opacity-50"
-                >
-                  {stockLoading ? (
-                    <FaSpinner className="animate-spin mr-2" />
-                  ) : (
-                    <FaTrash className="mr-2" />
-                  )}
-                  Disconnect Stocks
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStockConnect}
-                  disabled={stockLoading}
-                  className="w-full sm:w-auto bg-cyan-400 hover:bg-cyan-300 text-slate-950 px-6 py-3 rounded-xl font-black disabled:opacity-50"
-                >
-                  {stockLoading ? (
-                    <FaSpinner className="animate-spin mr-2" />
-                  ) : (
-                    <FaPlug className="mr-2" />
-                  )}
-
-                  {stockLoading
-                    ? "Opening Robinhood..."
-                    : "Connect Robinhood Stocks"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 grid sm:grid-cols-3 gap-2 text-xs text-white/55">
-            <div className="rounded-xl bg-black/20 border border-white/5 p-3">
-              ✓ Secure Robinhood authorization
-            </div>
-
-            <div className="rounded-xl bg-black/20 border border-white/5 p-3">
-              ✓ No API keys to copy
-            </div>
-
-            <div className="rounded-xl bg-black/20 border border-white/5 p-3">
-              ✓ Funds stay at Robinhood
-            </div>
-          </div>
         </div>
 
         {/* Crypto connection status */}
@@ -704,8 +484,8 @@ export default function ConnectRobinhood() {
             )}
 
             {status.connected
-              ? "Update Robinhood Connection"
-              : "Connect Robinhood"}
+              ? "Update Robinhood Crypto Connection"
+              : "Connect Robinhood Crypto"}
           </button>
         </div>
 

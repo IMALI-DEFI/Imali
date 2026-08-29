@@ -2122,13 +2122,28 @@ getStrategy, state.debug.failedRequests]);
         return;
       }
 
-      // Real candles from exchange
-      const symbol =
-        activeTab.exchange === "alpaca"
-          ? "AAPL"
-          : activeTab.exchange === "robinhood"
-            ? "BTC-USD"
-            : "BTC-USDT";
+      // Real candles from the selected exchange.
+      // This default will be overridden by the active bot symbol
+      // once that field is available from bot status.
+      const symbol = (() => {
+        const exchange = String(activeTab.exchange || "").toLowerCase();
+
+        switch (exchange) {
+          case "robinhood":
+            return "BTC-USD";
+
+          case "alpaca":
+            return "AAPL";
+
+          case "wallet":
+          case "dex":
+            return "ETH-USDT";
+
+          case "okx":
+          default:
+            return "BTC-USDT";
+        }
+      })();
       const res = await BotAPI.getMarketCandles?.({
         exchange: activeTab.exchange,
         symbol,
@@ -2156,12 +2171,9 @@ getStrategy, state.debug.failedRequests]);
       dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
     } catch (error) {
       console.warn("Could not load market candles:", error);
-      const fallbackCandles = candleGenerator.createInitialCandles({
-        count: 40,
-        startPrice: 67420,
-        intervalSeconds: 60,
-      });
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: fallbackCandles });
+
+      // Never display generated candles as live market data.
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: [] });
       dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
     } finally {
       dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
