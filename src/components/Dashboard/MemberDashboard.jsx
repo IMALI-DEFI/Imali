@@ -1203,6 +1203,14 @@ export default function MemberDashboard() {
     [state.connections, activeTab.connectionKey]
   );
 
+  // Reset exchange-specific bot display immediately when changing markets.
+  // The real status will be populated by the next bot-status refresh.
+  useEffect(() => {
+    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: false });
+    dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: 0 });
+  }, [activeTab.exchange]);
+
+
   // Subscription status from state (updated by fetchUser)
   const normalizedSubscriptionStatus = String(
     state.subscriptionStatus ||
@@ -1774,7 +1782,7 @@ getStrategy, state.debug.failedRequests]);
         data.robinhood_mode ??
           data.robinhoodMode ??
           data.robinhood?.mode ??
-          "paper"
+          (data.trading_enabled === true ? "live" : "paper")
       );
 
       dispatch({
@@ -2438,6 +2446,11 @@ getStrategy, state.debug.failedRequests]);
         }
 
         // Pull the newly persisted robinhood_mode from backend.
+        dispatch({
+          type: ACTIONS.SET_BOT_MODE,
+          payload: "live",
+        });
+
         await fetchIntegrationStatus();
       }
 
