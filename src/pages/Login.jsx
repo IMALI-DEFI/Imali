@@ -222,7 +222,14 @@ export default function Login() {
     }
     
     // Priority 6: Pro/Elite users check activation
-    const hasValidPayment = userData?.has_card_on_file === true || userData?.billing_complete === true;
+    const subscriptionStatus = String(
+      userData?.subscription_status || ""
+    ).toLowerCase();
+
+    const hasValidPayment =
+      subscriptionStatus === "active" ||
+      subscriptionStatus === "trialing";
+
     const needsActivation = !hasValidPayment;
     
     if (needsActivation && (userData?.tier === "pro" || userData?.tier === "elite")) {

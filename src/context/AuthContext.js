@@ -1126,13 +1126,20 @@ export function AuthProvider({ children }) {
       return activation?.enterprise_approved === true && activation?.trading_enabled === true;
     }
     
-    // Check if billing is complete from user or activation
-    const userBillingComplete = user?.has_card_on_file === true || user?.billing_complete === true;
-    const activationBillingComplete = activation?.has_card_on_file === true || activation?.billing_complete === true;
-    const billingComplete = userBillingComplete || activationBillingComplete;
-    
-    // Activation is complete if billing is complete AND trading is enabled
-    return billingComplete && (activation?.trading_enabled === true || user?.trading_enabled === true);
+    // A saved card is not a paid entitlement.
+    const subscriptionStatus = String(
+      user?.subscription_status ||
+      activation?.subscription_status ||
+      ""
+    ).toLowerCase();
+
+    const hasPaidEntitlement =
+      subscriptionStatus === "active" ||
+      subscriptionStatus === "trialing";
+
+    // Paid activation requires verified subscription entitlement.
+    // Trading enablement remains a separate user-controlled state.
+    return hasPaidEntitlement;
   }, [activation, user, isEnterpriseUser]);
 
   const hasRequiredIntegrations = useMemo(() => {

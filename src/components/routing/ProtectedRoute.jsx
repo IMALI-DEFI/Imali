@@ -66,10 +66,15 @@ export default function ProtectedRoute({
   if (isPaidUser) {
     // ✅ FIX: ONLY check has_card_on_file - NOT billing_complete
     if (requirePaid) {
-      const hasValidPaymentMethod = 
-        user?.subscription_status === "active" ||
-        activation?.has_card_on_file === true ||
-        hasCardOnFile;
+      const subscriptionStatus = String(
+        user?.subscription_status ||
+        activation?.subscription_status ||
+        ""
+      ).toLowerCase();
+
+      const hasValidPaymentMethod =
+        subscriptionStatus === "active" ||
+        subscriptionStatus === "trialing";
 
       if (!hasValidPaymentMethod) {
         return (

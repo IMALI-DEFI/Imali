@@ -1227,9 +1227,7 @@ export default function MemberDashboard() {
   );
 
   const hasPaidAccess = Boolean(
-    hasCardOnFile ||
-      normalizedSubscriptionStatus === "active" ||
-      normalizedSubscriptionStatus === "trial" ||
+    normalizedSubscriptionStatus === "active" ||
       normalizedSubscriptionStatus === "trialing"
   );
 
