@@ -1634,7 +1634,22 @@ export default function MemberDashboard() {
         ? [responseData]
         : [];
 
-      const runningBots = bots.filter(
+      // Bot status must belong to the currently selected exchange.
+      // Without this filter, an OKX paper bot can make the
+      // Robinhood tab incorrectly appear to be running.
+      const selectedExchange = String(
+        activeTab.exchange || ""
+      ).toLowerCase();
+
+      const matchingBots = bots.filter((bot) => {
+        const botExchange = String(
+          bot?.exchange || ""
+        ).toLowerCase();
+
+        return botExchange === selectedExchange;
+      });
+
+      const runningBots = matchingBots.filter(
         (bot) =>
           bot?.isRunning === true ||
           bot?.status === "running" ||
@@ -1642,7 +1657,10 @@ export default function MemberDashboard() {
       );
 
       const isRunning = runningBots.length > 0;
-      const runningBot = runningBots[0] || bots[0];
+      const runningBot =
+        runningBots[0] ||
+        matchingBots[0] ||
+        null;
 
       dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: isRunning });
 
@@ -1699,7 +1717,9 @@ export default function MemberDashboard() {
         payload: { latency: Math.round(latency), lastPoll: new Date() },
       });
     }
-  }, [getStrategy, state.debug.failedRequests]);
+  }, [
+    activeTab.exchange,
+getStrategy, state.debug.failedRequests]);
 
   const fetchIntegrationStatus = useCallback(async () => {
     try {
