@@ -2426,15 +2426,19 @@ getStrategy, state.debug.failedRequests]);
         await fetchIntegrationStatus();
       }
 
-      // Robinhood must preserve exchange identity.
-      // Do not send Robinhood through generic "spot" first,
-      // because "spot" normally resolves to the OKX path.
+      // Preserve Robinhood exchange identity.
+      // Robinhood crypto is "spot", but must never route through
+      // the generic spot -> OKX category mapping.
+      const selectedExchange = String(
+        activeTab?.exchange || activeTab?.id || ""
+      ).toLowerCase();
+
       if (
-        activeTab.exchange === "robinhood" &&
+        selectedExchange.includes("robinhood") &&
         BotAPI.startTradingBot
       ) {
         res = await BotAPI.startTradingBot(
-          activeTab.exchange,
+          "robinhood",
           state.currentStrategy.id,
           launchMode,
           activeTab.categoryId,
@@ -2521,12 +2525,30 @@ getStrategy, state.debug.failedRequests]);
     try {
       let res = null;
 
-      if (BotAPI.stopTradingBotByCategory) {
-        res = await BotAPI.stopTradingBotByCategory(activeTab.categoryId);
+      const selectedExchange = String(
+        activeTab?.exchange || activeTab?.id || ""
+      ).toLowerCase();
+
+      // Robinhood must bypass category mapping because
+      // category "spot" maps to OKX in BotAPI.
+      if (
+        selectedExchange.includes("robinhood") &&
+        BotAPI.stopTradingBot
+      ) {
+        res = await BotAPI.stopTradingBot("robinhood");
+      } else if (BotAPI.stopTradingBotByCategory) {
+        res = await BotAPI.stopTradingBotByCategory(
+          activeTab.categoryId
+        );
       }
 
-      if ((!res || res?.success === false) && BotAPI.stopTradingBot) {
-        res = await BotAPI.stopTradingBot(activeTab.exchange);
+      if (
+        (!res || res?.success === false) &&
+        BotAPI.stopTradingBot
+      ) {
+        res = await BotAPI.stopTradingBot(
+          selectedExchange || activeTab.exchange
+        );
       }
 
       if (res?.success === false) {
@@ -2966,7 +2988,6 @@ getStrategy, state.debug.failedRequests]);
 
           {/* Floating Market Prices */}
           <div className="border-b border-white/5 bg-black/20 backdrop-blur-sm py-2 -mx-4 px-4">
-            <FloatingPrices />
           </div>
 
           {/* Settings Tabs */}
@@ -3108,7 +3129,7 @@ getStrategy, state.debug.failedRequests]);
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
                   <span className={`h-1.5 w-1.5 rounded-full ${state.botRunning ? "bg-emerald-400 animate-pulse" : "bg-white/30"}`} />
-                  {state.botRunning ? "SIMULATION RUNNING" : "SIMULATION PAUSED"}
+                  {state.botRunning ? "" : "SIMULATION PAUSED"}
                 </div>
                 <div className="text-xs text-white/30">
                   <FaClock className="inline mr-1" />
@@ -3280,8 +3301,6 @@ getStrategy, state.debug.failedRequests]);
           {/* AI & Bot Status + Performance */}
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-5">
-              <AIThinkingPanel strategy={state.currentStrategy} stats={state.stats} />
-              <AnimatedBotStatus running={state.botRunning} strategy={state.currentStrategy} />
             </div>
 
             <GlassCard>
@@ -3435,7 +3454,7 @@ getStrategy, state.debug.failedRequests]);
                   </h3>
 
                   <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black tracking-wide text-cyan-200">
-                    PAPER SIGNALS
+                    
                   </span>
                 </div>
 
@@ -3582,7 +3601,7 @@ getStrategy, state.debug.failedRequests]);
 
                         <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3">
                           <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black text-cyan-200">
-                            AI PAPER SIGNAL
+                            
                           </span>
 
                           <span className="text-[10px] text-white/30">
