@@ -338,14 +338,31 @@ const getExchangeBalance = async (skipCache = false) =>
     const d = getData(await api.get("/api/exchanges/balance"));
     return {
       success: true,
+
       okx: money(d.okx ?? d.okx_total),
       okx_total: money(d.okx ?? d.okx_total),
       okx_available_usdt: money(d.okx_available_usdt),
       okx_assets: Array.isArray(d.okx_assets) ? d.okx_assets : [],
+
+      robinhood: money(d.robinhood ?? d.robinhood_total),
+      robinhood_total: money(d.robinhood ?? d.robinhood_total),
+      robinhood_buying_power: money(
+        d.robinhood_buying_power ??
+        d.robinhood_available_usd ??
+        d.buying_power
+      ),
+      robinhood_assets: Array.isArray(d.robinhood_assets)
+        ? d.robinhood_assets
+        : [],
+
       alpaca: money(d.alpaca ?? d.alpaca_total),
       alpaca_total: money(d.alpaca ?? d.alpaca_total),
-      alpaca_available_usd: money(d.alpaca_available_usd ?? d.alpaca_available_usdt),
+      alpaca_available_usd: money(
+        d.alpaca_available_usd ??
+        d.alpaca_available_usdt
+      ),
       alpaca_assets: Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [],
+
       total: money(d.total),
     };
   }, skipCache);
