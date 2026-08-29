@@ -184,7 +184,7 @@ const getSubscriptionDetails = async (skipCache = false) =>
   cachedGet("subscription", 15000, async () => getData(await api.get("/api/billing/subscription")), skipCache);
 
 const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) => {
-  const r = unwrap(await api.post("/api/change-plan", { tier, billing_model: billingModel, profit_share_pct: profitSharePct }));
+  const r = unwrap(await api.post("/api/billing/change-plan", { tier, billing_model: billingModel, profit_share_pct: profitSharePct }));
   clearCache();
   return r;
 };
