@@ -2102,14 +2102,9 @@ getStrategy, state.debug.failedRequests]);
 
     try {
       if (effectiveTier === "starter") {
-        // Simulated candles
-        const simulatedCandles = candleGenerator.createInitialCandles({
-          count: 40,
-          startPrice: 67420,
-          intervalSeconds: 60,
-        });
-        dispatch({ type: ACTIONS.SET_CANDLES, payload: simulatedCandles });
-        dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "simulated" });
+        // Never fabricate market data.
+        dispatch({ type: ACTIONS.SET_CANDLES, payload: [] });
+        dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
         dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
         return;
       }
