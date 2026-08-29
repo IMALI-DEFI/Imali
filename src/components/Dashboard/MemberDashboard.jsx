@@ -908,7 +908,6 @@ const initialState = {
   processing: false,
   userTier: "starter",
   subscriptionStatus: "",
-  stripeSubscriptionId: null,
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
@@ -965,7 +964,6 @@ const ACTIONS = {
   SET_PROCESSING: "SET_PROCESSING",
   SET_USER_TIER: "SET_USER_TIER",
   SET_SUBSCRIPTION_STATUS: "SET_SUBSCRIPTION_STATUS",
-  SET_STRIPE_SUBSCRIPTION_ID: "SET_STRIPE_SUBSCRIPTION_ID",
   SET_ACTIVE_TYPE: "SET_ACTIVE_TYPE",
   SET_STRATEGIES: "SET_STRATEGIES",
   SET_CURRENT_STRATEGY: "SET_CURRENT_STRATEGY",
@@ -1003,11 +1001,6 @@ function dashboardReducer(state, action) {
       return {
         ...state,
         subscriptionStatus: String(action.payload || "").toLowerCase(),
-      };
-    case ACTIONS.SET_STRIPE_SUBSCRIPTION_ID:
-      return {
-        ...state,
-        stripeSubscriptionId: action.payload || null,
       };
     case ACTIONS.SET_ACTIVE_TYPE:
       return { ...state, activeType: action.payload };
@@ -1210,14 +1203,6 @@ export default function MemberDashboard() {
     [state.connections, activeTab.connectionKey]
   );
 
-  // Reset exchange-specific bot display immediately when changing markets.
-  // The real status will be populated by the next bot-status refresh.
-  useEffect(() => {
-    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: false });
-    dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: 0 });
-  }, [activeTab.exchange]);
-
-
   // Subscription status from state (updated by fetchUser)
   const normalizedSubscriptionStatus = String(
     state.subscriptionStatus ||
@@ -1233,28 +1218,18 @@ export default function MemberDashboard() {
       activation?.billing_complete
   );
 
-  const normalizedUserTier = normalizeTier(state.userTier);
-
-  const stripeSubscriptionId =
-    user?.stripe_subscription_id ||
-    user?.billing?.stripe_subscription_id ||
-    activation?.stripe_subscription_id ||
-    activation?.billing?.stripe_subscription_id ||
-    null;
-
-
-
   const hasPaidAccess = Boolean(
-    ["pro", "elite"].includes(normalizedUserTier) &&
-    ["active", "trialing"].includes(normalizedSubscriptionStatus) &&
-    stripeSubscriptionId
+    hasCardOnFile ||
+      normalizedSubscriptionStatus === "active" ||
+      normalizedSubscriptionStatus === "trial" ||
+      normalizedSubscriptionStatus === "trialing"
   );
 
   const effectiveTier =
-    normalizedUserTier === "enterprise"
-      ? "enterprise"
+    normalizeTier(state.userTier) === "starter"
+      ? "starter"
       : hasPaidAccess
-        ? normalizedUserTier
+        ? normalizeTier(state.userTier)
         : "starter";
 
   const visibleTradingTypes = useMemo(() => {
@@ -1530,14 +1505,7 @@ export default function MemberDashboard() {
 
       dispatch({
         type: ACTIONS.SET_USER_TIER,
-        payload:
-          nextUser?.tier_active ||
-          nextUser?.tier ||
-          user?.tier_active ||
-          user?.tier ||
-          activation?.tier_active ||
-          activation?.tier ||
-          "starter",
+        payload: nextUser?.tier || user?.tier || activation?.tier || "starter",
       });
 
       dispatch({
@@ -1548,14 +1516,6 @@ export default function MemberDashboard() {
           user?.subscription_status ||
           activation?.subscription_status ||
           "",
-      });
-
-      dispatch({
-        type: ACTIONS.SET_STRIPE_SUBSCRIPTION_ID,
-        payload:
-          nextUser?.stripe_subscription_id ||
-          nextUser?.billing?.stripe_subscription_id ||
-          null,
       });
 
       dispatch({
@@ -1814,7 +1774,7 @@ getStrategy, state.debug.failedRequests]);
         data.robinhood_mode ??
           data.robinhoodMode ??
           data.robinhood?.mode ??
-          (data.trading_enabled === true ? "live" : "paper")
+          "paper"
       );
 
       dispatch({
@@ -2154,28 +2114,8 @@ getStrategy, state.debug.failedRequests]);
         return;
       }
 
-      // Real candles from the selected exchange.
-      // This default will be overridden by the active bot symbol
-      // once that field is available from bot status.
-      const symbol = (() => {
-        const exchange = String(activeTab.exchange || "").toLowerCase();
-
-        switch (exchange) {
-          case "robinhood":
-            return "BTC-USD";
-
-          case "alpaca":
-            return "AAPL";
-
-          case "wallet":
-          case "dex":
-            return "ETH-USDT";
-
-          case "okx":
-          default:
-            return "BTC-USDT";
-        }
-      })();
+      // Real candles from exchange
+      const symbol = activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
       const res = await BotAPI.getMarketCandles?.({
         exchange: activeTab.exchange,
         symbol,
@@ -2203,9 +2143,12 @@ getStrategy, state.debug.failedRequests]);
       dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
     } catch (error) {
       console.warn("Could not load market candles:", error);
-
-      // Never display generated candles as live market data.
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: [] });
+      const fallbackCandles = candleGenerator.createInitialCandles({
+        count: 40,
+        startPrice: 67420,
+        intervalSeconds: 60,
+      });
+      dispatch({ type: ACTIONS.SET_CANDLES, payload: fallbackCandles });
       dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
     } finally {
       dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
@@ -2430,12 +2373,7 @@ getStrategy, state.debug.failedRequests]);
       return;
     }
 
-    const launchMode =
-      activeTab.exchange === "robinhood"
-        ? "live"
-        : starterPaperOnly
-          ? "paper"
-          : state.botMode;
+    const launchMode = starterPaperOnly ? "paper" : state.botMode;
 
     if (starterPaperOnly && state.botMode !== "paper") {
       dispatch({
@@ -2490,11 +2428,6 @@ getStrategy, state.debug.failedRequests]);
         }
 
         // Pull the newly persisted robinhood_mode from backend.
-        dispatch({
-          type: ACTIONS.SET_BOT_MODE,
-          payload: "live",
-        });
-
         await fetchIntegrationStatus();
       }
 
@@ -3180,11 +3113,7 @@ getStrategy, state.debug.failedRequests]);
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
                   <span className={`h-1.5 w-1.5 rounded-full ${state.botRunning ? "bg-emerald-400 animate-pulse" : "bg-white/30"}`} />
-                  {state.candlesSource === "live"
-                    ? "LIVE MARKET"
-                    : state.candlesLoading
-                      ? "LOADING MARKET"
-                      : "MARKET DATA OFFLINE"}
+                  {state.botRunning ? "SIMULATION RUNNING" : "SIMULATION PAUSED"}
                 </div>
                 <div className="text-xs text-white/30">
                   <FaClock className="inline mr-1" />
@@ -3496,7 +3425,191 @@ getStrategy, state.debug.failedRequests]);
           </GlassCard>
 
 
+          {/* Canonical AI Signal Feed */}
+          <GlassCard
+            className="border-cyan-400/20"
+            gradient="from-cyan-500/10 to-blue-500/5"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FaBrain className="text-cyan-300" />
 
+                  <h3 className="text-xl sm:text-2xl font-black">
+                    AI Signal Feed
+                  </h3>
+
+                  <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black tracking-wide text-cyan-200">
+                    PAPER SIGNALS
+                  </span>
+                </div>
+
+                <p className="mt-1 text-xs sm:text-sm text-white/45">
+                  Same AI signal stream published to IMALI Telegram.
+                  Signals are analysis alerts, not confirmed live executions.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <FaClock />
+
+                <span>
+                  {signalFeedUpdatedAt
+                    ? `Updated ${signalFeedUpdatedAt.toLocaleTimeString()}`
+                    : "Waiting for feed"}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => loadSignalFeed(true)}
+                  disabled={signalFeedLoading}
+                  className="ml-1 rounded-xl border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 disabled:opacity-50"
+                  title="Refresh signals"
+                >
+                  <FaSyncAlt
+                    className={signalFeedLoading ? "animate-spin" : ""}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {signalFeedLoading && signalFeed.length === 0 ? (
+                <div className="grid min-h-[150px] place-items-center text-white/50">
+                  <div className="text-center">
+                    <FaSpinner className="mx-auto mb-3 animate-spin text-2xl text-cyan-300" />
+                    Loading AI signals...
+                  </div>
+                </div>
+              ) : signalFeedError && signalFeed.length === 0 ? (
+                <div className="rounded-2xl border border-yellow-400/20 bg-yellow-400/10 p-4 text-sm text-yellow-100">
+                  <FaExclamationTriangle className="mr-2 inline" />
+                  {signalFeedError}
+                </div>
+              ) : signalFeed.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center text-sm text-white/45">
+                  No AI signals are available yet.
+                </div>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {signalFeed.slice(0, 12).map((signal) => {
+                    const side = String(signal.side || "").toUpperCase();
+                    const isBuy = side === "BUY";
+
+                    const baseSymbol = String(signal.symbol || "")
+                      .replace("-USDT", "")
+                      .replace("/USDT", "");
+
+                    const sentAt = signal.sent_at
+                      ? new Date(signal.sent_at)
+                      : null;
+
+                    const validDate =
+                      sentAt && !Number.isNaN(sentAt.getTime());
+
+                    return (
+                      <div
+                        key={signal.id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:bg-white/[0.04]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-cyan-400/10 font-black text-cyan-200">
+                              {getAssetIcon(baseSymbol)}
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate font-black">
+                                {signal.symbol || "Unknown"}
+                              </p>
+
+                              <p className="truncate text-xs text-white/40">
+                                {signal.market || "Market"} ·{" "}
+                                {signal.source_bot || "IMALI AI"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span
+                            className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
+                              isBuy
+                                ? "bg-emerald-500/15 text-emerald-300"
+                                : "bg-red-500/15 text-red-300"
+                            }`}
+                          >
+                            {side || "SIGNAL"}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <MiniBox
+                            label="Score"
+                            value={num(signal.score).toFixed(1)}
+                          />
+
+                          <MiniBox
+                            label="Confidence"
+                            value={formatPercent(signal.confidence)}
+                          />
+
+                          <MiniBox
+                            label="Price"
+                            value={
+                              num(signal.price) > 0
+                                ? `$${num(signal.price).toLocaleString(
+                                    undefined,
+                                    {
+                                      maximumFractionDigits: 8,
+                                    }
+                                  )}`
+                                : "-"
+                            }
+                          />
+
+                          <MiniBox
+                            label="Risk"
+                            value={
+                              String(signal.risk || "N/A")
+                                .charAt(0)
+                                .toUpperCase() +
+                              String(signal.risk || "N/A")
+                                .slice(1)
+                                .toLowerCase()
+                            }
+                          />
+                        </div>
+
+                        {signal.reasoning && (
+                          <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-white/45">
+                            {signal.reasoning}
+                          </p>
+                        )}
+
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+                          <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-[10px] font-black text-cyan-200">
+                            AI PAPER SIGNAL
+                          </span>
+
+                          <span className="text-[10px] text-white/30">
+                            {validDate
+                              ? sentAt.toLocaleString()
+                              : "Recent signal"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {signalFeedError && signalFeed.length > 0 && (
+                <p className="mt-3 text-xs text-yellow-300/70">
+                  <FaExclamationTriangle className="mr-1 inline" />
+                  Latest refresh failed. Showing the most recently loaded signals.
+                </p>
+              )}
+            </div>
+          </GlassCard>
 
           {/* Bot Strategies */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
