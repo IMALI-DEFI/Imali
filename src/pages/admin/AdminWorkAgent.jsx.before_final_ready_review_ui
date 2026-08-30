@@ -11,7 +11,6 @@ import {
 
 import BotAPI from "../../utils/BotAPI";
 import "./AdminWorkAgent.css";
-import HumanAttentionPanel from "./HumanAttentionPanel";
 
 const money = (value) =>
   new Intl.NumberFormat("en-US", {
@@ -21,13 +20,8 @@ const money = (value) =>
   }).format(Number(value || 0));
 
 export default function AdminWorkAgent() {
-  
-  const [procurementQueue, setProcurementQueue] = useState([]);
-const [overview, setOverview] = useState(null);
+  const [overview, setOverview] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
-  const [reviewOpportunities, setReviewOpportunities] = useState([]);
-  const [securityRewards, setSecurityRewards] = useState([]);
-  const [procurementOpportunities, setProcurementOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
@@ -40,21 +34,12 @@ const [overview, setOverview] = useState(null);
       const [
         overviewResponse,
         opportunitiesResponse,
-        reviewResponse,
-        securityRewardsResponse,
-        procurementResponse,
       ] = await Promise.all([
         BotAPI.getWorkAgentOverview(),
         BotAPI.getWorkAgentOpportunities({
           execution: "ready",
           limit: 100,
         }),
-        BotAPI.getWorkAgentOpportunities({
-          execution: "review",
-          limit: 100,
-        }),
-        BotAPI.getWorkAgentSecurityRewards(),
-        BotAPI.getWorkAgentProcurement(),
       ]);
 
       const overviewData =
@@ -63,33 +48,10 @@ const [overview, setOverview] = useState(null);
       const opportunitiesData =
         opportunitiesResponse?.data || opportunitiesResponse;
 
-      const reviewData =
-        reviewResponse?.data || reviewResponse;
-
-      const securityRewardsData =
-        securityRewardsResponse?.data ||
-        securityRewardsResponse;
-
-      const procurementData =
-        procurementResponse?.data ||
-        procurementResponse;
-
       setOverview(overviewData);
 
       setOpportunities(
         opportunitiesData?.opportunities || []
-      );
-
-      setReviewOpportunities(
-        reviewData?.opportunities || []
-      );
-
-      setSecurityRewards(
-        securityRewardsData?.findings || []
-      );
-
-      setProcurementOpportunities(
-        procurementData?.opportunities || []
       );
     } catch (err) {
       console.error("Work Agent load error:", err);
@@ -104,34 +66,7 @@ const [overview, setOverview] = useState(null);
     }
   }, []);
 
-  
-  const loadProcurementQueue = async () => {
-    try {
-      const res = await fetch(
-        `${process.env.REACT_APP_API_URL || "https://api.imali-defi.com"}/api/admin/work-agent/procurement`,
-        {
-          credentials: "include",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-
-      const data = await res.json();
-
-      setProcurementQueue(
-        data?.data ||
-        data?.opportunities ||
-        data?.rows ||
-        []
-      );
-    } catch (err) {
-      console.error("Procurement queue load failed:", err);
-    }
-  };
-
-useEffect(() => {
-    loadProcurementQueue();
+  useEffect(() => {
     load();
   }, [load]);
 
@@ -212,10 +147,6 @@ useEffect(() => {
 
   const counts = overview?.counts || {};
   const financial = overview?.financial || {};
-  const execution = overview?.execution || {};
-  const delegation = overview?.delegation || {};
-  const managedDelivery = overview?.managedDelivery || {};
-  const security = overview?.security || {};
 
   if (loading && !overview) {
     return (
@@ -263,8 +194,8 @@ useEffect(() => {
 
         <Metric
           icon={<FaCheckCircle />}
-          label="Autonomous Ready"
-          value={execution.autonomousReady}
+          label="Execution Ready"
+          value={counts.executionVerified}
         />
 
         <Metric
@@ -306,56 +237,6 @@ useEffect(() => {
         />
       </div>
 
-      <div className="wa-cards">
-        <Metric
-          icon={<FaBriefcase />}
-          label="Subcontractable"
-          value={delegation.subcontractable}
-        />
-
-        <Metric
-          icon={<FaBriefcase />}
-          label="Delegation Review"
-          value={delegation.needsVerification}
-        />
-
-        <Metric
-          icon={<FaUserTie />}
-          label="Referrals"
-          value={delegation.referrals}
-        />
-
-        <Metric
-          icon={<FaDollarSign />}
-          label="Managed Contracts"
-          value={managedDelivery.contracts}
-        />
-
-        <Metric
-          icon={<FaBriefcase />}
-          label="Security Findings"
-          value={security.findings}
-        />
-
-        <Metric
-          icon={<FaCheckCircle />}
-          label="Reports Ready"
-          value={security.reportsReady}
-        />
-
-        <Metric
-          icon={<FaEnvelope />}
-          label="Reports Submitted"
-          value={security.reportsSubmitted}
-        />
-
-        <Metric
-          icon={<FaDollarSign />}
-          label="Security Rewards"
-          value={money(security.actualRewards)}
-        />
-      </div>
-
       <div className="wa-money">
         <Money
           label="Estimated Revenue"
@@ -378,428 +259,9 @@ useEffect(() => {
         />
       </div>
 
-      <div className="wa-review-summary">
-        <div className="wa-review-heading">
-          <div>
-            <strong>Needs Review</strong>
-            <p>
-              Opportunities held back from execution until
-              eligibility or application target is verified.
-            </p>
-          </div>
-
-          <span className="wa-review-total">
-            {reviewOpportunities.length}
-          </span>
-        </div>
-
-        <div className="wa-review-stats">
-          <div>
-            <b>{counts.eligibilityReview || 0}</b>
-            <span>Eligibility</span>
-          </div>
-
-          <div>
-            <b>{counts.targetReview || 0}</b>
-            <span>Target Review</span>
-          </div>
-
-          <div>
-            <b>{execution.autonomousReady || 0}</b>
-            <span>Autonomous Ready</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="wa-review-summary">
-        <div className="wa-review-heading">
-          <div>
-            <strong>Human Handoff</strong>
-            <p>
-              Applications requiring interaction before the
-              agent can continue safely.
-            </p>
-          </div>
-
-          <span className="wa-review-total">
-            {execution.humanHandoff || 0}
-          </span>
-        </div>
-
-        <div className="wa-review-stats">
-          <div>
-            <b>{execution.captchaRequired || 0}</b>
-            <span>CAPTCHA</span>
-          </div>
-
-          <div>
-            <b>{execution.authRequired || 0}</b>
-            <span>Login</span>
-          </div>
-
-          <div>
-            <b>{execution.referenceRequired || 0}</b>
-            <span>Reference</span>
-          </div>
-
-          <div>
-            <b>{execution.phoneRequired || 0}</b>
-            <span>Phone Required</span>
-          </div>
-
-          <div>
-            <b>{managedDelivery.payoutsReady || 0}</b>
-            <span>Payouts Ready</span>
-          </div>
-
-          <div>
-            <b>{security.reportsApproved || 0}</b>
-            <span>Reward Reports Approved</span>
-          </div>
-        </div>
-      </div>
-
-      {reviewOpportunities.length > 0 && (
-        <div className="wa-panel wa-review-panel">
-          <div className="wa-panel-title">
-            <div>
-              <h2>Needs Review</h2>
-              <span>
-                Opportunities blocked from execution until
-                eligibility and target verification pass.
-              </span>
-            </div>
-
-            <span>
-              {reviewOpportunities.length} opportunities
-            </span>
-          </div>
-
-          <div className="wa-review-list">
-            {reviewOpportunities.map((item) => {
-              const target =
-                item.application_url ||
-                item.application_email ||
-                item.outreach_contact_email ||
-                item.url;
-
-              return (
-                <div
-                  className="wa-review-item"
-                  key={`review-${item.id}`}
-                >
-                  <div className="wa-review-main">
-                    <div className="wa-review-priority">
-                      {item.pursuit_priority || 0}
-                    </div>
-
-                    <div>
-                      <strong>
-                        {item.company || "Unknown company"}
-                      </strong>
-
-                      <div className="wa-review-role">
-                        {item.title || "Untitled opportunity"}
-                      </div>
-
-                      <div className="wa-review-meta">
-                        <span>
-                          Path: {item.revenue_path || "—"}
-                        </span>
-
-                        <span>
-                          P/B/D: {item.personal_fit || 0}/
-                          {item.business_value || 0}/
-                          {item.demand_confidence || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="wa-review-checks">
-                    <div>
-                      <span>Eligibility</span>
-                      <strong>
-                        {item.eligibility_status || "unchecked"}
-                      </strong>
-                      {item.eligibility_reason && (
-                        <small>
-                          {item.eligibility_reason}
-                        </small>
-                      )}
-                    </div>
-
-                    <div>
-                      <span>Target</span>
-                      <strong>
-                        {item.target_quality_status || "unchecked"}
-                      </strong>
-                      {item.target_quality_reason && (
-                        <small>
-                          {item.target_quality_reason}
-                        </small>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="wa-review-action">
-                    {target ? (
-                      target.startsWith("http") ? (
-                        <a
-                          className="wa-action-link"
-                          href={target}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Inspect
-                          <FaExternalLinkAlt />
-                        </a>
-                      ) : (
-                        <span>{target}</span>
-                      )
-                    ) : (
-                      <span>No target</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="wa-panel">
-        <div className="wa-panel">
-        <div className="wa-panel-title">
-          <div>
-            <h2>Security Rewards</h2>
-            <span>
-              Authorized security findings, AI-prepared reports,
-              submissions and bounty results.
-            </span>
-          </div>
-
-          <span>
-            {securityRewards.length} findings
-          </span>
-        </div>
-
-        {securityRewards.length === 0 ? (
-          <div className="wa-empty">
-            No security findings recorded yet.
-          </div>
-        ) : (
-          <div className="wa-table-wrap">
-            <table className="wa-table">
-              <thead>
-                <tr>
-                  <th>Finding</th>
-                  <th>Severity</th>
-                  <th>Confidence</th>
-                  <th>Quality</th>
-                  <th>Estimated Reward</th>
-                  <th>Status</th>
-                  <th>Actual Reward</th>
-                  <th>Report</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {securityRewards.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <strong>
-                        {item.report_title ||
-                          item.title ||
-                          `Finding ${item.id}`}
-                      </strong>
-
-                      {item.report_summary && (
-                        <div className="wa-subtext">
-                          {item.report_summary}
-                        </div>
-                      )}
-                    </td>
-
-                    <td>
-                      {item.severity || "—"}
-                    </td>
-
-                    <td>
-                      {item.confidence != null
-                        ? `${item.confidence}%`
-                        : "—"}
-                    </td>
-
-                    <td>
-                      {item.report_quality_score != null
-                        ? `${item.report_quality_score}%`
-                        : "—"}
-                    </td>
-
-                    <td>
-                      {money(item.estimated_reward)}
-                    </td>
-
-                    <td>
-                      {item.paid_at
-                        ? "Paid"
-                        : item.accepted_at
-                        ? "Accepted"
-                        : item.submitted_at
-                        ? "Submitted"
-                        : item.approved_for_submission
-                        ? "Approved"
-                        : item.submission_ready
-                        ? "Ready for Review"
-                        : item.report_status ||
-                          item.status ||
-                          "Draft"}
-                    </td>
-
-                    <td>
-                      {money(item.actual_reward)}
-                    </td>
-
-                    <td>
-                      {item.report_url ? (
-                        <a
-                          href={item.report_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="wa-link"
-                        >
-                          Open
-                          <FaExternalLinkAlt />
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       <div className="wa-panel">
         <div className="wa-panel-title">
-          <div>
-            <h2>Federal Procurement</h2>
-            <span>
-              SAM.gov opportunities, qualification,
-              bid preparation and submission status.
-            </span>
-          </div>
-
-          <span>
-            {procurementOpportunities.length} opportunities
-          </span>
-        </div>
-
-        {procurementOpportunities.length === 0 ? (
-          <div className="wa-empty">
-            No SAM.gov opportunities stored yet.
-          </div>
-        ) : (
-          <div className="wa-table-wrap">
-            <table className="wa-table">
-              <thead>
-                <tr>
-                  <th>Priority</th>
-                  <th>Agency</th>
-                  <th>Opportunity</th>
-                  <th>P/B/D</th>
-                  <th>Status</th>
-                  <th>NAICS</th>
-                  <th>Set Aside</th>
-                  <th>Value</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {procurementOpportunities.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <strong>
-                        {item.personal_fit || 0}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {item.company || "U.S. Government"}
-                    </td>
-
-                    <td>
-                      <strong>
-                        {item.title || "Federal Opportunity"}
-                      </strong>
-
-                      {item.procurement_reason && (
-                        <div className="wa-subtext">
-                          {item.procurement_reason}
-                        </div>
-                      )}
-                    </td>
-
-                    <td>
-                      {item.personal_fit || 0}/
-                      {item.business_value || 0}/
-                      {item.demand_confidence || 0}
-                    </td>
-
-                    <td>
-                      {item.procurement_submission_status ===
-                      "submitted"
-                        ? "Submitted"
-                        : item.procurement_bid_ready
-                        ? "Bid Package Ready"
-                        : item.procurement_status ||
-                          "Discovered"}
-                    </td>
-
-                    <td>
-                      {item.procurement_naics || "—"}
-                    </td>
-
-                    <td>
-                      {item.procurement_set_aside || "Open / Unknown"}
-                    </td>
-
-                    <td>
-                      {money(item.estimated_revenue)}
-                    </td>
-
-                    <td>
-                      {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="wa-link"
-                        >
-                          Open
-                          <FaExternalLinkAlt />
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="wa-panel-title">
-          <HumanAttentionPanel />
-
-          <h2>Ready to Execute</h2>
+          <h2>Execution Queue</h2>
           <span>
             {opportunities.length} opportunities
           </span>
