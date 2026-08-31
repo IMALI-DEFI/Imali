@@ -3418,25 +3418,6 @@ getStrategy, state.debug.failedRequests]);
           </GlassCard>
 
 
-          {/* Bot Strategies */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <h3 className="mb-5 text-xl sm:text-2xl font-black">
-              Available Bot Strategies
-            </h3>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {state.strategies.map((strategy) => (
-                <StrategyCard
-                  key={strategy.id}
-                  strategy={strategy}
-                  selected={state.currentStrategy.id === strategy.id}
-                  onClick={() => handleSelectStrategy(strategy)}
-                  disabled={state.botRunning}
-                />
-              ))}
-            </div>
-          </section>
-
           {/* Canonical AI Signal Feed */}
           <GlassCard
             className="border-cyan-400/20"
@@ -3623,6 +3604,24 @@ getStrategy, state.debug.failedRequests]);
             </div>
           </GlassCard>
 
+          {/* Bot Strategies */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+            <h3 className="mb-5 text-xl sm:text-2xl font-black">
+              Available Bot Strategies
+            </h3>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {state.strategies.map((strategy) => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  selected={state.currentStrategy.id === strategy.id}
+                  onClick={() => handleSelectStrategy(strategy)}
+                  disabled={state.botRunning}
+                />
+              ))}
+            </div>
+          </section>
 
           {/* IMALI Utility & Upgrade */}
           <div className="grid gap-5 lg:grid-cols-2">
