@@ -14,7 +14,7 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
-import TradeRiskControl from "./TradeRiskControl";
+import LiveDashboardOverview from "./LiveDashboardOverview";
 import { motion, AnimatePresence } from "framer-motion";
 import CountUp from "react-countup";
 import { Doughnut } from "react-chartjs-2";
@@ -1137,8 +1137,7 @@ function DebugPanel({ state }) {
           
         {/* USER TRADE LIMIT + LIVE PERFORMANCE */}
         <div className="mb-6">
-          <TradeRiskControl />
-        </div>
+</div>
 
 <div className="space-y-2 text-xs font-mono">
             <p><span className="text-white/50">Bot Running:</span> {state.botRunning ? "✅ Yes" : "❌ No"}</p>
@@ -3117,58 +3116,12 @@ getStrategy, state.debug.failedRequests]);
             onUpgrade={() => navigate("/billing")}
           />
 
-          {/* CANDLESTICK CHART SECTION */}
-          <GlassCard className="border-cyan-500/20" gradient="from-cyan-500/10 to-blue-500/10">
-            <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FaChartLine className="text-emerald-400" />
-                  <h2 className="text-lg font-bold text-white">
-                    {activeTab.exchange === "alpaca" ? "AAPL" : activeTab.exchange === "robinhood" ? "BTC/USD" : "BTC/USD"} Market
-                  </h2>
-                </div>
-                <p className="mt-0.5 text-xs text-white/40">
-                  {state.candlesSource === "simulated" ? "📊 Simulated data" :
-                   state.candlesSource === "live" ? "🔴 Live data" :
-                   "⚠️ Data unavailable"}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
-                  <span className={`h-1.5 w-1.5 rounded-full ${state.botRunning ? "bg-emerald-400 animate-pulse" : "bg-white/30"}`} />
-                  {state.botRunning ? "" : "SIMULATION PAUSED"}
-                </div>
-                <div className="text-xs text-white/30">
-                  <FaClock className="inline mr-1" />
-                  {new Date().toLocaleTimeString()}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/30 p-2">
-              {state.candlesLoading ? (
-                <div className="grid h-[280px] sm:h-[320px] md:h-[380px] place-items-center">
-                  <FaSpinner className="animate-spin text-3xl text-cyan-300" />
-                </div>
-              ) : state.candles.length > 0 ? (
-                <CandlestickChart
-                  data={state.candles}
-                  liveCandle={state.candles[state.candles.length - 1]}
-                  height={360}
-                />
-              ) : (
-                <div className="grid h-[280px] sm:h-[320px] md:h-[380px] place-items-center text-center text-white/40">
-                  No candle data available
-                </div>
-              )}
-            </div>
-
-            <p className="mt-3 text-[10px] text-white/25 text-center">
-              {state.candlesSource === "simulated" ? "Candles are generated for demonstration purposes." :
-               state.candlesSource === "live" ? "Real market data from your connected exchange." :
-               "Market data currently unavailable."}
-            </p>
-          </GlassCard>
+          {/* LIVE ACCOUNT STATS + HELD COIN MARKET */}
+          <LiveDashboardOverview
+            exchange={activeTab.exchange}
+            exchangeLabel={activeTab.label}
+            botRunning={state.botRunning}
+          />
 
           {/* Account Overview */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
