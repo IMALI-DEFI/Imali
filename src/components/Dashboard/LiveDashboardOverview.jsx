@@ -72,9 +72,16 @@ const cleanBaseSymbol = (symbol) =>
     .split("-")[0];
 
 const isCashSymbol = (symbol) =>
-  ["USD", "USDT", "USDC", "FDUSD", "DAI"].includes(
-    cleanBaseSymbol(symbol)
-  );
+  [
+    "USD",
+    "USDT",
+    "USDC",
+    "USDG",
+    "FDUSD",
+    "DAI",
+    "TUSD",
+    "PYUSD",
+  ].includes(cleanBaseSymbol(symbol));
 
 const candleSymbol = (base, exchange) => {
   const coin = cleanBaseSymbol(base);
@@ -569,19 +576,47 @@ export default function LiveDashboardOverview({
     return () => window.clearInterval(timer);
   }, [loadOverview]);
 
+  const chartableHeldCoins = useMemo(
+    () =>
+      heldCoins.filter((coin) => {
+        const value =
+          coin?.symbol ||
+          coin?.asset ||
+          coin?.currency ||
+          coin;
+
+        if (!value) return false;
+
+        if (exchange === "okx") {
+          return (
+            !isCashSymbol(value) &&
+            isChartableOkxAsset(value)
+          );
+        }
+
+        return !isCashSymbol(value);
+      }),
+    [heldCoins, exchange]
+  );
+
   useEffect(() => {
     if (
-      heldCoins.length &&
-      (!selectedCoin || !heldCoins.includes(selectedCoin))
+      chartableHeldCoins.length &&
+      (
+        !selectedCoin ||
+        !chartableHeldCoins.includes(selectedCoin)
+      )
     ) {
-      setSelectedCoin(heldCoins[0]);
+      setSelectedCoin(chartableHeldCoins[0]);
+      setCandles([]);
+      return;
     }
 
-    if (!heldCoins.length) {
+    if (!chartableHeldCoins.length) {
       setSelectedCoin("");
       setCandles([]);
     }
-  }, [heldCoins, selectedCoin]);
+  }, [chartableHeldCoins, selectedCoin]);
 
   useEffect(() => {
     if (!selectedCoin) return undefined;
@@ -883,13 +918,16 @@ export default function LiveDashboardOverview({
             </p>
           </div>
 
-          {heldCoins.length > 0 && (
+          {chartableHeldCoins.length > 0 && (
             <select
               value={selectedCoin}
-              onChange={(e) => setSelectedCoin(e.target.value)}
+              onChange={(e) => {
+                setSelectedCoin(e.target.value);
+                setCandles([]);
+              }}
               className="rounded-xl border border-white/10 bg-black/60 px-4 py-2 text-sm font-black text-white"
             >
-              {heldCoins.filter((coin) => exchange !== "okx" || isChartableOkxAsset(coin?.symbol || coin?.asset || coin?.currency || coin)).map((coin) => (
+              {chartableHeldCoins.map((coin) => (
                 <option key={coin} value={coin}>
                   {coin}
                 </option>
@@ -898,7 +936,7 @@ export default function LiveDashboardOverview({
           )}
         </div>
 
-        {!heldCoins.length ? (
+        {!chartableHeldCoins.length ? (
           <div className="grid h-[260px] place-items-center rounded-2xl border border-white/10 bg-black/25 text-center">
             <div>
               <FaCoins className="mx-auto mb-3 text-3xl text-white/20" />
