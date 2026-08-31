@@ -194,55 +194,6 @@ const ScanCard = ({ scan }) => {
   );
 };
 
-
-const NON_CHARTABLE_ASSETS = new Set([
-  "USD",
-  "USDT",
-  "USDC",
-  "USDG",
-  "DAI",
-  "FDUSD",
-  "TUSD",
-  "PYUSD"
-]);
-
-const normalizeOkxChartSymbol = (value = "") => {
-  let symbol = String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace("/", "-");
-
-  if (!symbol) return "";
-
-  if (symbol.endsWith("-USD")) {
-    symbol = symbol.replace(/-USD$/, "-USDT");
-  }
-
-  if (!symbol.includes("-")) {
-    if (NON_CHARTABLE_ASSETS.has(symbol)) return "";
-    symbol = `${symbol}-USDT`;
-  }
-
-  const [base, quote] = symbol.split("-");
-
-  if (!base || NON_CHARTABLE_ASSETS.has(base)) {
-    return "";
-  }
-
-  if (quote === "USD") {
-    return `${base}-USDT`;
-  }
-
-  if (quote !== "USDT") {
-    return "";
-  }
-
-  return `${base}-USDT`;
-};
-
-const isChartableOkxAsset = (value = "") =>
-  Boolean(normalizeOkxChartSymbol(value));
-
 export default function LiveDashboardOverview({
   exchange = "okx",
   exchangeLabel = "Trading Account",
@@ -889,7 +840,7 @@ export default function LiveDashboardOverview({
               onChange={(e) => setSelectedCoin(e.target.value)}
               className="rounded-xl border border-white/10 bg-black/60 px-4 py-2 text-sm font-black text-white"
             >
-              {heldCoins.filter((coin) => exchange !== "okx" || isChartableOkxAsset(coin?.symbol || coin?.asset || coin?.currency || coin)).map((coin) => (
+              {heldCoins.map((coin) => (
                 <option key={coin} value={coin}>
                   {coin}
                 </option>
