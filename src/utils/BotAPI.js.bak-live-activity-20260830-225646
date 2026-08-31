@@ -522,32 +522,6 @@ const getTradingStrategies = async (skipCache = false) =>
 
 const updateUserStrategy = async (strategy) => unwrap(await api.put("/api/user/strategy", { strategy }));
 
-
-const getTradingActivity = async (
-  exchange = "",
-  limit = 100
-) => {
-  const params = new URLSearchParams();
-
-  if (exchange) {
-    params.set(
-      "exchange",
-      String(exchange).toLowerCase()
-    );
-  }
-
-  params.set(
-    "limit",
-    String(limit)
-  );
-
-  return getData(
-    await api.get(
-      `/api/trading/activity?${params.toString()}`
-    )
-  );
-};
-
 // ─── STATS / TRADES ─────────────────────────────────
 const getLiveTradingStats = async (exchange = "okx", skipCache = false) =>
   cachedGet(`live_stats_${exchange}`, 7000, async () => {
@@ -863,7 +837,6 @@ const BotAPI = {
   getLiveTradeHistory,
   getUserTradingStats,
   getRealTradingStats,
-  getTradingActivity,
   getTradingRiskSettings,
   updateTradingRiskSettings,
   executePaperTrade,
