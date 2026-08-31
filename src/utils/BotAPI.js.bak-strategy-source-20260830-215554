@@ -819,18 +819,7 @@ const BotAPI = {
   getStrategyConfigs,
   getTradingStrategies,
   updateUserStrategy,
-  getUserStrategyPreference: async () => {
-    const result = getData(await api.get("/api/trading/strategies"));
-    return {
-      success: true,
-      data: {
-        strategyId:
-          result?.current_strategy ||
-          result?.strategy ||
-          "ai_weighted",
-      },
-    };
-  },
+  getUserStrategyPreference: async () => ({ data: { strategyId: localStorage.getItem("imali_selected_strategy") } }),
   updateUserStrategyPreference: async ({ strategyId }) => updateUserStrategy(strategyId),
   getLiveTradingStats,
   getOpenPositions,
