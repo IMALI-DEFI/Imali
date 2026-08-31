@@ -1670,7 +1670,7 @@ export default function MemberDashboard() {
         dispatch({ type: ACTIONS.SET_BOT_MODE, payload: runningBot.mode });
       }
 
-      if (isRunning && runningBot?.strategy) {
+      if (runningBot?.strategy) {
         const strategy = getStrategy(runningBot.strategy);
         if (strategy) {
           dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
