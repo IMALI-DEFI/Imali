@@ -15,7 +15,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import LiveDashboardOverview from "./LiveDashboardOverview";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import CountUp from "react-countup";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 import {
@@ -47,12 +48,15 @@ import {
   FaShieldAlt,
   FaBell,
   FaBrain,
+  FaTrophy,
   FaClock,
+  FaFire,
 } from "react-icons/fa";
 
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
 import nftElite from "../../assets/images/nfts/nft-elite.png";
+import CandlestickChart from "../charts/CandlestickChart";
 import * as candleGenerator from "../../utils/demoCandleGenerator";
 
 ChartJS.register(ArcElement, Tooltip);
@@ -2994,38 +2998,15 @@ getStrategy, state.debug.failedRequests]);
 
           {/* Settings Tabs */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-3 sm:p-4">
-            <div className="mb-3">
-              <h3 className="text-base sm:text-lg font-black text-white">
-                Account Controls
-              </h3>
-              <p className="text-xs text-white/40">
-                Manage trading accounts, wallets, billing and activation.
-              </p>
-            </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {SETTINGS_TABS.slice(0, 4).map((tab) => (
-                <div
+                <SettingsTab
                   key={tab.id}
-                  title={
-                    tab.id === "billing"
-                      ? "View your membership, billing and subscription."
-                      : tab.id === "trading"
-                      ? "Connect and manage your trading accounts."
-                      : tab.id === "wallets"
-                      ? "Connect and manage blockchain wallets."
-                      : tab.id === "activation"
-                      ? "Review trading activation and account readiness."
-                      : tab.label
-                  }
-                >
-                  <SettingsTab
-                    icon={tab.icon}
-                    label={tab.label}
-                    onClick={() => goToSettings(tab.route)}
-                    active={tab.id === activeSettingsTab}
-                  />
-                </div>
+                  icon={tab.icon}
+                  label={tab.label}
+                  onClick={() => goToSettings(tab.route)}
+                  active={tab.id === activeSettingsTab}
+                />
               ))}
             </div>
           </section>

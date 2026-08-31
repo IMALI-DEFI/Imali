@@ -26,28 +26,6 @@ const money = (value) =>
     maximumFractionDigits: 2,
   });
 
-const priceMoney = (value) => {
-  const n = num(value);
-
-  if (n === 0) return "$0.00";
-
-  // High-price assets: standard cents.
-  if (Math.abs(n) >= 1) {
-    return n.toLocaleString(undefined, {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
-  // Small crypto prices need more precision, but not 10+ decimals.
-  return `$${n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  })}`;
-};
-
 const unwrap = (response) => {
   let value = response;
   for (let i = 0; i < 4; i += 1) {
@@ -87,18 +65,8 @@ const candleSymbol = (base, exchange) => {
   return `${coin}-USDT`;
 };
 
-const StatCard = ({
-  icon,
-  label,
-  value,
-  detail,
-  tone = "",
-  help = "",
-}) => (
-  <div
-    title={help || `${label}: ${detail || value}`}
-    className="rounded-2xl border border-white/10 bg-black/25 p-4 min-w-0 overflow-hidden cursor-help"
-  >
+const StatCard = ({ icon, label, value, detail, tone = "" }) => (
+  <div className="rounded-2xl border border-white/10 bg-black/25 p-4 min-w-0">
     <div className="flex items-center justify-between gap-3">
       <p className="text-xs sm:text-sm font-semibold text-white/45">
         {label}
@@ -106,10 +74,7 @@ const StatCard = ({
       <span className="text-cyan-300">{icon}</span>
     </div>
 
-    <p
-      className={`mt-2 text-lg sm:text-2xl font-black truncate tabular-nums ${tone}`}
-      title={String(value)}
-    >
+    <p className={`mt-2 text-xl sm:text-2xl font-black truncate ${tone}`}>
       {value}
     </p>
 
@@ -155,10 +120,7 @@ const ScanCard = ({ scan }) => {
   const risk = scan?.risk || scan?.risk_level || scan?.riskLevel;
 
   return (
-    <div
-      title="Live market candidate currently being evaluated by IMALI."
-      className="rounded-2xl border border-cyan-400/15 bg-black/25 p-4 overflow-hidden"
-    >
+    <div className="rounded-2xl border border-cyan-400/15 bg-black/25 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-black text-white">{symbol}</p>
@@ -672,7 +634,6 @@ export default function LiveDashboardOverview({
             label="Wallet Value"
             value={money(walletValue)}
             detail={exchangeLabel}
-            help="Total estimated value of cash and assets in this connected trading account."
           />
 
           <StatCard
@@ -680,14 +641,12 @@ export default function LiveDashboardOverview({
             label="Buying Power"
             value={money(buyingPower)}
             detail="Available to trade"
-            help="Funds currently available for new trades. This may be lower than total wallet value when money is already invested."
           />
 
           <StatCard
             icon={<FaCoins />}
             label="Holdings"
             value={heldCoins.length.toLocaleString()}
-            help="Number of non-cash assets currently detected in your connected account."
             detail={
               heldCoins.length
                 ? heldCoins.join(", ")
@@ -699,7 +658,6 @@ export default function LiveDashboardOverview({
             icon={<FaRobot />}
             label="Open Positions"
             value={positions.length.toLocaleString()}
-            help="Trades IMALI currently considers open and still subject to exit management."
             detail={
               botRunning ? "Bot running" : "Bot stopped"
             }
@@ -709,7 +667,6 @@ export default function LiveDashboardOverview({
             icon={<FaTrophy />}
             label="Wins"
             value={wins.toLocaleString()}
-            help="Closed live trades with positive realized P/L."
             detail={`${totalTrades.toLocaleString()} total trades`}
             tone="text-emerald-300"
           />
@@ -718,7 +675,6 @@ export default function LiveDashboardOverview({
             icon={<FaTimesCircle />}
             label="Losses"
             value={losses.toLocaleString()}
-            help="Closed live trades with negative realized P/L."
             detail={`${closedTrades.toLocaleString()} closed trades`}
             tone="text-red-300"
           />
@@ -727,19 +683,13 @@ export default function LiveDashboardOverview({
             icon={<FaPercentage />}
             label="Win Rate"
             value={`${winRate.toFixed(1)}%`}
-            help="Winning closed live trades divided by wins plus losses."
             detail="Closed live trades"
           />
 
           <StatCard
             icon={<FaChartLine />}
             label="Live P/L"
-            value={
-              livePnl === 0
-                ? money(0)
-                : `${livePnl > 0 ? "+" : ""}${money(livePnl)}`
-            }
-            help="Realized P/L from completed live trades. Open-position gains and losses are not counted here."
+            value={`${livePnl >= 0 ? "+" : ""}${money(livePnl)}`}
             detail="Realized trading P/L"
             tone={
               livePnl >= 0
@@ -753,10 +703,7 @@ export default function LiveDashboardOverview({
       {/* ====================================================
           MAX TRADE CONTROL
           ==================================================== */}
-      <section
-        title="Sets the maximum dollars IMALI may use for one trade. Strategy and risk logic may choose a smaller amount."
-        className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
-      >
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg sm:text-xl font-black">
@@ -780,8 +727,6 @@ export default function LiveDashboardOverview({
 
         <input
           type="range"
-          title="Maximum dollars allowed for a single IMALI trade."
-          aria-label="Maximum amount per trade"
           min="5"
           max="1000"
           step="5"
