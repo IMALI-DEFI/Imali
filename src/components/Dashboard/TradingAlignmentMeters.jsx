@@ -112,7 +112,7 @@ export default function TradingAlignmentMeters({
     try {
       const [activityResult, statsResult] = await Promise.allSettled([
         BotAPI.getTradingActivity?.(exchange, 150),
-        BotAPI.getRealTradingStats?.(),
+        BotAPI.getRealTradingStats?.(exchange),
       ]);
 
       if (activityResult.status === "fulfilled") {
