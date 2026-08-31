@@ -56,6 +56,7 @@ import nftElite from "../../assets/images/nfts/nft-elite.png";
 import * as candleGenerator from "../../utils/demoCandleGenerator";
 
 import LiveBotActivity from "./LiveBotActivity";
+import TradingAlignmentMeters from "./TradingAlignmentMeters";
 ChartJS.register(ArcElement, Tooltip);
 
 // ============================================================================
@@ -3438,7 +3439,12 @@ getStrategy, state.debug.failedRequests]);
             </div>
           </section>
 
-          <LiveBotActivity
+          <TradingAlignmentMeters
+          exchange={activeTab.exchange}
+          running={state.botRunning}
+        />
+
+        <LiveBotActivity
             exchange={activeTab.exchange}
             running={state.botRunning}
           />
