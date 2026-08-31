@@ -542,6 +542,25 @@ const getLiveTradeHistory = async (limit = 20, exchange = "okx", skipCache = fal
   }, skipCache);
 
 const getUserTradingStats = async (days = 30) => unwrap(await api.get(`/api/user/trading-stats?days=${days}`));
+
+// =====================================================
+// USER TRADE SIZE SETTINGS
+// =====================================================
+
+const getTradingRiskSettings = async () =>
+  getData(await api.get("/api/trading/risk-settings"));
+
+const updateTradingRiskSettings = async (maxTradeUsd) => {
+  const result = getData(
+    await api.patch("/api/trading/risk-settings", {
+      max_trade_usd: Number(maxTradeUsd),
+    })
+  );
+
+  clearCache();
+  return result;
+};
+
 const getRealTradingStats = async (days = 30) => unwrap(await api.get(`/api/user/real-trading-stats?days=${days}`));
 const executePaperTrade = async (tradeData) => unwrap(await api.post("/api/trading/paper-trade", tradeData));
 const closePosition = async (positionId) => {
@@ -807,6 +826,8 @@ const BotAPI = {
   getLiveTradeHistory,
   getUserTradingStats,
   getRealTradingStats,
+  getTradingRiskSettings,
+  updateTradingRiskSettings,
   executePaperTrade,
   closePosition,
   closeAllPositions,

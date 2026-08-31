@@ -14,6 +14,7 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
+import TradeRiskControl from "./TradeRiskControl";
 import { motion, AnimatePresence } from "framer-motion";
 import CountUp from "react-countup";
 import { Doughnut } from "react-chartjs-2";
@@ -1133,7 +1134,13 @@ function DebugPanel({ state }) {
             </button>
           </div>
 
-          <div className="space-y-2 text-xs font-mono">
+          
+        {/* USER TRADE LIMIT + LIVE PERFORMANCE */}
+        <div className="mb-6">
+          <TradeRiskControl />
+        </div>
+
+<div className="space-y-2 text-xs font-mono">
             <p><span className="text-white/50">Bot Running:</span> {state.botRunning ? "✅ Yes" : "❌ No"}</p>
             <p><span className="text-white/50">Bot Mode:</span> {state.botMode}</p>
             <p><span className="text-white/50">Open Positions:</span> {state.openPositionsCount}</p>
