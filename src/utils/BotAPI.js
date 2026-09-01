@@ -699,6 +699,11 @@ const getWorkAgentOverview = () =>
     "/api/admin/work-agent/overview"
   );
 
+const getWorkAgentConversion = () =>
+  api.get(
+    "/api/admin/work-agent/conversion"
+  );
+
 const getWorkAgentOpportunities = (params = {}) =>
   api.get(
     "/api/admin/work-agent/opportunities",
@@ -788,6 +793,7 @@ const BotAPI = {
 
   // Admin — Work Agent
   getWorkAgentOverview,
+  getWorkAgentConversion,
   getWorkAgentOpportunities,
   approveWorkAgentApplication,
   markWorkAgentApplied,

@@ -323,6 +323,8 @@ function buildGroups(rows, field) {
 
 export default function AdminWorkAgent() {
   const [overview, setOverview] = useState({});
+  const [conversion, setConversion] = useState({});
+
   const [opportunities, setOpportunities] = useState([]);
   const [procurement, setProcurement] = useState([]);
   const [followups, setFollowups] = useState([]);
@@ -361,6 +363,7 @@ export default function AdminWorkAgent() {
     try {
       const requests = [
         BotAPI.getWorkAgentOverview?.(),
+        BotAPI.getWorkAgentConversion?.(),
         BotAPI.getWorkAgentOpportunities?.({
           limit: 500
         }),
@@ -378,6 +381,7 @@ export default function AdminWorkAgent() {
 
       const [
         overviewResult,
+        conversionResult,
         opportunityResult,
         procurementResult,
         followupResult,
@@ -387,6 +391,12 @@ export default function AdminWorkAgent() {
       if (overviewResult.status === "fulfilled") {
         setOverview(
           unwrap(overviewResult.value) || {}
+        );
+      }
+
+      if (conversionResult.status === "fulfilled") {
+        setConversion(
+          unwrap(conversionResult.value) || {}
         );
       }
 
@@ -468,6 +478,43 @@ export default function AdminWorkAgent() {
       overview ||
       {};
 
+    const c =
+      conversion?.summary ||
+      conversion?.conversion ||
+      conversion?.funnel ||
+      conversion?.metrics ||
+      conversion ||
+      {};
+
+    const applicationReview = Number(
+      pick(
+        c.application_review,
+        c.applicationReview,
+        c.review,
+        0
+      )
+    ) || 0;
+
+    const resumeReady = Number(
+      pick(
+        c.resume_ready,
+        c.resumeReady,
+        0
+      )
+    ) || 0;
+
+    const approved = Number(
+      pick(
+        c.approved,
+        c.applications_approved,
+        c.applicationsApproved,
+        0
+      )
+    ) || 0;
+
+    const conversionReady =
+      applicationReview + resumeReady + approved;
+
     const total = Number(
       pick(
         s.total_opportunities,
@@ -544,6 +591,9 @@ export default function AdminWorkAgent() {
 
       queued: Number(
         pick(
+          c.pursuit_queue,
+          c.pursuitQueue,
+          c.queued,
           s.queued,
           s.pursuit_queue,
           s.pursuitQueue,
@@ -553,6 +603,12 @@ export default function AdminWorkAgent() {
 
       ready: Number(
         pick(
+          conversionReady > 0
+            ? conversionReady
+            : undefined,
+          c.ready,
+          c.final_ready,
+          c.finalReady,
           s.ready,
           s.final_ready,
           s.finalReady,
@@ -562,6 +618,9 @@ export default function AdminWorkAgent() {
 
       sent: Number(
         pick(
+          c.sent,
+          c.applications_sent,
+          c.applicationsSent,
           s.sent,
           s.applications_sent,
           s.applicationsSent,
@@ -571,6 +630,8 @@ export default function AdminWorkAgent() {
 
       won: Number(
         pick(
+          c.won,
+          c.wins,
           s.won,
           s.wins,
           wonRows.length
@@ -584,6 +645,10 @@ export default function AdminWorkAgent() {
           lostRows.length
         )
       ),
+
+      applicationReview,
+      resumeReady,
+      approved,
 
       estimatedPipeline: Number(
         pick(
