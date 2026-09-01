@@ -112,7 +112,7 @@ export default function TradingAlignmentMeters({
     try {
       const [activityResult, statsResult] = await Promise.allSettled([
         BotAPI.getTradingActivity?.(exchange, 150),
-        BotAPI.getRealTradingStats?.(exchange),
+        BotAPI.getRealTradingStats?.(30),
       ]);
 
       if (activityResult.status === "fulfilled") {
@@ -146,7 +146,7 @@ export default function TradingAlignmentMeters({
   const decisions = useMemo(() => {
     return activity
       .filter((row) =>
-        String(row?.message || "").includes("ROBINHOOD TOKEN DECISION")
+        String(row?.message || "").includes("TOKEN DECISION")
       )
       .map((row) => {
         const message = row?.message || "";
@@ -171,7 +171,7 @@ export default function TradingAlignmentMeters({
 
   const blocked = useMemo(() => {
     return activity.find((row) =>
-      String(row?.message || "").includes("ROBINHOOD BUY BLOCKED")
+      String(row?.message || "").includes("BUY BLOCKED")
     );
   }, [activity]);
 

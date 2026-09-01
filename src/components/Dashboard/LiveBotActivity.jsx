@@ -149,29 +149,57 @@ export default function LiveBotActivity({
         item.category || ""
       ).toLowerCase();
 
-      if (
+      const message = String(
+        item.message || ""
+      ).toUpperCase();
+
+      const isTokenDecision =
+        message.includes("TOKEN DECISION");
+
+      const isScan =
         category === "scan" ||
-        category === "score"
-      ) {
+        category === "score" ||
+        isTokenDecision ||
+        message.includes("SCORING COMPLETE") ||
+        message.includes("SCAN COMPLETE");
+
+      const isDecision =
+        category === "decision" ||
+        category === "skip" ||
+        category === "risk" ||
+        isTokenDecision ||
+        message.includes("BUY BLOCKED") ||
+        message.includes("ROTATION BLOCKED");
+
+      const isOrder =
+        category === "order" ||
+        message.includes("SUBMITTING BUY") ||
+        message.includes("SUBMITTING SELL") ||
+        message.includes("ORDER SUBMITTED") ||
+        message.includes("ORDER PENDING") ||
+        message.includes("PENDING TRACKED");
+
+      const isFill =
+        category === "filled" ||
+        category === "exit" ||
+        message.includes("ORDER FILLED") ||
+        message.includes("POSITION CLOSED") ||
+        message.includes("TRADE CLOSED") ||
+        message.includes("EXECUTION COMPLETE");
+
+      if (isScan) {
         output.scans += 1;
       }
 
-      if (
-        category === "decision" ||
-        category === "skip" ||
-        category === "risk"
-      ) {
+      if (isDecision) {
         output.decisions += 1;
       }
 
-      if (category === "order") {
+      if (isOrder) {
         output.orders += 1;
       }
 
-      if (
-        category === "filled" ||
-        category === "exit"
-      ) {
+      if (isFill) {
         output.fills += 1;
       }
     });
