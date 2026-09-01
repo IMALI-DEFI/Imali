@@ -275,6 +275,13 @@ const connectAlpaca = async (payload = {}) => {
   return r;
 };
 
+const startAlpacaOAuth = async () => {
+  const r = unwrap(
+    await api.post("/api/integrations/alpaca/oauth/start")
+  );
+  return r;
+};
+
 const disconnectAlpaca = async () => {
   const r = unwrap(await api.delete("/api/integrations/alpaca"));
   clearCache();
@@ -826,6 +833,7 @@ const BotAPI = {
   connectOKX,
   disconnectOKX,
   connectAlpaca,
+  startAlpacaOAuth,
   disconnectAlpaca,
   // Robinhood Crypto
   getRobinhoodStatus,
