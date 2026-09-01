@@ -1679,27 +1679,44 @@ export default function MemberDashboard() {
         }
       }
 
-      const botPositions = num(
-        runningBot?.openPositions ?? runningBot?.open_positions ?? 0
-      );
+      // Bot status may not include an authoritative position
+      // count. Never overwrite the real positions endpoint with
+      // an implied zero.
+      const hasBotPositionCount =
+        runningBot?.openPositions != null ||
+        runningBot?.open_positions != null;
 
-      if (botPositions > 0 || isRunning) {
-        dispatch({
-          type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
-          payload: botPositions,
-        });
+      if (hasBotPositionCount) {
+        const botPositions = num(
+          runningBot.openPositions ??
+          runningBot.open_positions
+        );
+
+        if (botPositions > 0) {
+          dispatch({
+            type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+            payload: botPositions,
+          });
+        }
       }
 
       if (responseData.summary) {
-        const open = num(
-          responseData.summary.open_positions ?? responseData.summary.openPositions ?? 0
-        );
+        const hasSummaryCount =
+          responseData.summary.open_positions != null ||
+          responseData.summary.openPositions != null;
 
-        if (open > 0) {
-          dispatch({
-            type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
-            payload: open,
-          });
+        if (hasSummaryCount) {
+          const open = num(
+            responseData.summary.open_positions ??
+            responseData.summary.openPositions
+          );
+
+          if (open > 0) {
+            dispatch({
+              type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+              payload: open,
+            });
+          }
         }
       }
 
@@ -1981,9 +1998,27 @@ getStrategy, state.debug.failedRequests]);
       );
 
       const data = unwrapData(res);
-      const list = data.positions || data.openPositions || data.data || [];
 
-      dispatch({ type: ACTIONS.SET_POSITIONS, payload: list });
+      const rawList =
+        data.positions ??
+        data.openPositions ??
+        data.data ??
+        [];
+
+      const list = Array.isArray(rawList) ? rawList : [];
+
+      dispatch({
+        type: ACTIONS.SET_POSITIONS,
+        payload: list,
+      });
+
+      // The positions endpoint is the authoritative source for
+      // how many live positions are currently held on the
+      // selected exchange.
+      dispatch({
+        type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+        payload: list.length,
+      });
     } catch (err) {
       if (err.name === "AbortError") return;
       console.warn("Fetch positions failed:", err);
