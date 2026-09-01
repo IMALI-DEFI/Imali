@@ -351,6 +351,9 @@ export default function AdminWorkAgent() {
   }, [sections]);
 
 
+  const [procurementSearch, setProcurementSearch] =
+    useState("");
+
   const load = useCallback(async (silent = false) => {
     if (silent) {
       setRefreshing(true);
@@ -468,6 +471,36 @@ export default function AdminWorkAgent() {
   useEffect(() => {
     load(false);
   }, [load]);
+
+
+  const filteredProcurement = useMemo(() => {
+    const q = procurementSearch
+      .trim()
+      .toLowerCase();
+
+    if (!q) {
+      return procurement;
+    }
+
+    return procurement.filter((row) => {
+      const haystack = [
+        row?.title,
+        row?.company,
+        row?.agency,
+        row?.source,
+        row?.revenue_path,
+        row?.opportunity_type,
+        row?.procurement_status,
+        row?.solicitation_number,
+        row?.location
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [procurement, procurementSearch]);
 
 
   const summary = useMemo(() => {
@@ -1425,6 +1458,36 @@ export default function AdminWorkAgent() {
         sections={sections}
         setSections={setSections}
       >
+        <div className="wa-toolbar">
+          <div className="wa-search">
+            <FaSearch />
+            <input
+              type="search"
+              value={procurementSearch}
+              onChange={(event) =>
+                setProcurementSearch(
+                  event.target.value
+                )
+              }
+              placeholder="Search government opportunities..."
+              aria-label="Search government opportunities"
+            />
+          </div>
+
+          {procurementSearch ? (
+            <button
+              type="button"
+              className="wa-clear-button"
+              onClick={() =>
+                setProcurementSearch("")
+              }
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+
+
         <div className="wa-mini-grid">
           <MetricCard
             icon={<FaGlobeAmericas />}
