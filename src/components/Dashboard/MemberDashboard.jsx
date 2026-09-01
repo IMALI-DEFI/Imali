@@ -444,6 +444,7 @@ const ConnectionCard = memo(
     needsReconnect,
     userTier,
     onConnect,
+    onDisconnect,
     onUpgrade,
     lastUpdated,
   }) => (
@@ -503,7 +504,14 @@ const ConnectionCard = memo(
         </div>
 
         <button
-          onClick={isLocked ? onUpgrade : onConnect}
+          onClick={
+            isLocked
+              ? onUpgrade
+              : !needsReconnect &&
+                String(activeTab?.exchange || "").toLowerCase() === "alpaca"
+              ? onDisconnect
+              : onConnect
+          }
           className={`rounded-2xl px-4 sm:px-5 py-2 sm:py-3 font-black text-sm sm:text-base transition ${
             isLocked
               ? "bg-purple-500 hover:bg-purple-400"
@@ -521,6 +529,11 @@ const ConnectionCard = memo(
             <>
               <FaRedo className="inline mr-1 sm:mr-2" />
               Reconnect
+            </>
+          ) : String(activeTab?.exchange || "").toLowerCase() === "alpaca" ? (
+            <>
+              <FaPlug className="inline mr-1 sm:mr-2" />
+              Disconnect
             </>
           ) : (
             <>
@@ -2392,6 +2405,52 @@ getStrategy, state.debug.failedRequests]);
     navigate(activeTab.connectRoute);
   }, [isLocked, navigate, activeTab.connectRoute]);
 
+  const handleDisconnect = useCallback(async () => {
+    const exchange = String(activeTab?.exchange || "").toLowerCase();
+
+    if (exchange !== "alpaca") {
+      navigate(activeTab.connectRoute);
+      return;
+    }
+
+    if (!window.confirm("Disconnect your Alpaca account from IMALI?")) {
+      return;
+    }
+
+    dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
+
+    try {
+      const result = await BotAPI.disconnectAlpaca();
+
+      if (!result || result?.success === false) {
+        throw new Error(
+          result?.error ||
+          result?.message ||
+          "Unable to disconnect Alpaca."
+        );
+      }
+
+      await fetchIntegrationStatus();
+
+      showNotice("Alpaca account disconnected.");
+    } catch (error) {
+      console.error("Alpaca disconnect failed:", error);
+      showError(
+        error?.message ||
+        "Unable to disconnect Alpaca."
+      );
+    } finally {
+      dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
+    }
+  }, [
+    activeTab?.exchange,
+    activeTab.connectRoute,
+    navigate,
+    fetchIntegrationStatus,
+    showNotice,
+    showError,
+  ]);
+
   const handleStartBot = useCallback(async () => {
     if (isLocked) {
       showError("Your current plan does not include this trading type.");
@@ -3156,6 +3215,7 @@ getStrategy, state.debug.failedRequests]);
               needsReconnect={needsReconnect}
               userTier={effectiveTier}
               onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
               onUpgrade={() => navigate("/billing")}
               lastUpdated={state.lastUpdated}
             />
