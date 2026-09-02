@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
+import { ethers } from "ethers";
 
 const StatusBadge = ({ done }) => (
   <span
@@ -156,7 +157,6 @@ export default function Activation() {
     apiSecret: "",
     isLive: false,
   });
-  const [wallet, setWallet] = useState("");
 
   // ✅ Tier from URL or state or user
   const urlTier = useMemo(() => {
@@ -294,19 +294,65 @@ export default function Activation() {
     setError("");
     setSuccess("");
     setBusy("wallet");
-    const addr = wallet.trim();
-    if (!addr.startsWith("0x") || addr.length !== 42) {
-      setError("Wallet must start with 0x and be 42 characters.");
-      setBusy("");
-      return;
-    }
+
     try {
-      await BotAPI.connectWallet({ wallet: addr });
-      setSuccess("Wallet connected successfully.");
-      setWallet("");
+      if (!window.ethereum) {
+        throw new Error(
+          "MetaMask was not detected."
+        );
+      }
+
+      const provider =
+        new ethers.providers.Web3Provider(
+          window.ethereum,
+          "any"
+        );
+
+      await provider.send(
+        "eth_requestAccounts",
+        []
+      );
+
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+
+      const challenge =
+        await BotAPI.createWalletChallenge(
+          address
+        );
+
+      if (!challenge?.message || !challenge?.nonce) {
+        throw new Error(
+          "Wallet verification challenge was not received."
+        );
+      }
+
+      const signature =
+        await signer.signMessage(
+          challenge.message
+        );
+
+      await BotAPI.connectWallet({
+        wallet: address,
+        signature,
+        nonce: challenge.nonce,
+      });
+
+      setSuccess(
+        "Wallet ownership verified successfully."
+      );
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to connect wallet.");
+      if (err?.code === 4001) {
+        setError(
+          "Wallet verification was cancelled."
+        );
+      } else {
+        setError(
+          err?.message ||
+          "Failed to verify wallet ownership."
+        );
+      }
     } finally {
       setBusy("");
     }
@@ -438,9 +484,12 @@ export default function Activation() {
             {needs.wallet && !status.wallet && (
               <form onSubmit={connectWallet} className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5 space-y-4">
                 <h3 className="text-lg font-semibold text-purple-300">DeFi Wallet</h3>
-                <InfoBox type="tip">Use MetaMask or another EVM wallet for DeFi access.</InfoBox>
-                <SimpleInput label="Wallet Address" value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x..." helper="Must start with 0x and be 42 characters" disabled={busy === "wallet"} />
-                <ActionButton type="submit" loading={busy === "wallet"} color="purple">Connect Wallet</ActionButton>
+                <InfoBox type="tip">
+                  Connect MetaMask and sign a verification message. This proves wallet ownership but does not move funds or authorize trades.
+                </InfoBox>
+                <ActionButton type="submit" loading={busy === "wallet"} color="purple">
+                  Connect and Verify Wallet
+                </ActionButton>
               </form>
             )}
 

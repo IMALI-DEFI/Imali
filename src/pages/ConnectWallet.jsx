@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
+import { ethers } from "ethers";
 import {
   FaArrowLeft,
   FaCheckCircle,
@@ -45,28 +46,66 @@ export default function ConnectWallet() {
       return;
     }
 
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts",
-    });
+    try {
+      const provider =
+        new ethers.providers.Web3Provider(
+          window.ethereum,
+          "any"
+        );
 
-    const address = accounts?.[0];
+      await provider.send(
+        "eth_requestAccounts",
+        []
+      );
 
-    if (!address) {
-      alert("Wallet connection cancelled.");
-      return;
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+
+      const challenge =
+        await BotAPI.createWalletChallenge(
+          address
+        );
+
+      if (!challenge?.message || !challenge?.nonce) {
+        throw new Error(
+          "Wallet verification challenge was not received."
+        );
+      }
+
+      const signature =
+        await signer.signMessage(
+          challenge.message
+        );
+
+      const result =
+        await BotAPI.connectWallet({
+          wallet: address,
+          signature,
+          nonce: challenge.nonce,
+        });
+
+      if (result?.success === false) {
+        throw new Error(
+          result.error ||
+          "Failed to verify wallet."
+        );
+      }
+
+      await loadStatus();
+      alert("Wallet ownership verified.");
+    } catch (error) {
+      if (error?.code === 4001) {
+        alert(
+          "Wallet verification was cancelled."
+        );
+        return;
+      }
+
+      alert(
+        error?.message ||
+        "Failed to verify wallet ownership."
+      );
     }
-
-    const res = await BotAPI.connectWallet?.({
-      walletAddress: address,
-      provider: "metamask",
-    });
-
-    if (res?.success === false) {
-      alert(res.error || "Failed to connect wallet.");
-      return;
-    }
-
-    await loadStatus();
   };
 
   if (loading) {

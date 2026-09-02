@@ -789,6 +789,35 @@ const getSignalFeed = async (limit = 50) => {
   );
 };
 
+const createWalletChallenge = async (wallet) =>
+  getData(
+    await api.post("/api/integrations/wallet/challenge", {
+      wallet,
+    })
+  );
+
+const connectWallet = async ({
+  wallet,
+  walletAddress,
+  signature,
+  nonce,
+}) => {
+  const result = getData(
+    await api.post("/api/integrations/wallet", {
+      wallet: wallet || walletAddress,
+      signature,
+      nonce,
+    })
+  );
+
+  clearCache();
+  return {
+    success: true,
+    ...result,
+  };
+};
+
+
 const BotAPI = {
 
   // Admin — Automation Analytics
@@ -839,6 +868,8 @@ const BotAPI = {
   getSubscriptionDetails,
   syncBilling,
   getIntegrationStatus,
+  createWalletChallenge,
+  connectWallet,
   connectOKX,
   disconnectOKX,
   connectAlpaca,
