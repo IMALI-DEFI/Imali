@@ -161,6 +161,7 @@ const normalizeUser = (userData) => {
     okx_connected: normalizeBoolean(userData.okx_connected),
     robinhood_connected: normalizeBoolean(userData.robinhood_connected),
     wallet_connected: normalizeBoolean(userData.wallet_connected),
+    wallet_verified: normalizeBoolean(userData.wallet_verified),
     trial_status: userData.trial_status || "trial",
     trial_ends_at: userData.trial_ends_at || null,
     subscription_status: userData.subscription_status || "trial",
@@ -186,6 +187,7 @@ const normalizeActivation = (activationData) => {
     trading_enabled: normalizeBoolean(activationData.trading_enabled),
     paper_trading_enabled: normalizeBoolean(activationData.paper_trading_enabled),
     wallet_connected: normalizeBoolean(activationData.wallet_connected),
+    wallet_verified: normalizeBoolean(activationData.wallet_verified),
     okx_connected: normalizeBoolean(activationData.okx_connected),
     alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
     activation_complete: normalizeBoolean(activationData.activation_complete),
@@ -204,6 +206,7 @@ const defaultActivation = () => ({
   trading_enabled: false,
   paper_trading_enabled: false,
   wallet_connected: false,
+  wallet_verified: false,
   okx_connected: false,
   alpaca_connected: false,
   activation_complete: false,
@@ -1154,7 +1157,7 @@ export function AuthProvider({ children }) {
     const tier = activation.tier || user?.tier || "starter";
 
     if (tier === "starter") return true;
-    if (tier === "elite") return activation.wallet_connected;
+    if (tier === "elite") return activation.wallet_verified;
 
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
   }, [activation, user, isEnterpriseUser]);

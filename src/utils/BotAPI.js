@@ -789,6 +789,19 @@ const getSignalFeed = async (limit = 50) => {
   );
 };
 
+const prepareDexAuthorization = async ({
+  sell_token,
+  buy_token,
+  max_sell_amount_atomic,
+}) =>
+  getData(
+    await api.post("/api/dex/prepare-authorization", {
+      sell_token,
+      buy_token,
+      max_sell_amount_atomic,
+    })
+  );
+
 const createWalletChallenge = async (wallet) =>
   getData(
     await api.post("/api/integrations/wallet/challenge", {
@@ -868,6 +881,7 @@ const BotAPI = {
   getSubscriptionDetails,
   syncBilling,
   getIntegrationStatus,
+  prepareDexAuthorization,
   createWalletChallenge,
   connectWallet,
   connectOKX,

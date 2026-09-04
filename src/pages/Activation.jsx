@@ -193,7 +193,7 @@ export default function Activation() {
       billing: activation?.has_card_on_file === true,
       okx: activation?.okx_connected === true,
       alpaca: activation?.alpaca_connected === true,
-      wallet: activation?.wallet_connected === true,
+      wallet: activation?.wallet_verified === true,
       trading: activation?.trading_enabled === true,
     }),
     [activation]
@@ -495,7 +495,7 @@ export default function Activation() {
 
             {needs.okx && status.okx && <InfoBox type="success">✓ OKX connected</InfoBox>}
             {needs.alpaca && status.alpaca && <InfoBox type="success">✓ Alpaca connected</InfoBox>}
-            {needs.wallet && status.wallet && <InfoBox type="success">✓ Wallet connected</InfoBox>}
+            {needs.wallet && status.wallet && <InfoBox type="success">✓ Wallet verified</InfoBox>}
             {connectionsDone && <InfoBox type="success">All required connections are complete.</InfoBox>}
           </div>
         </StepCard>
