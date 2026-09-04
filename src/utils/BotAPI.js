@@ -233,6 +233,7 @@ const getIntegrationStatus = async (skipCache = false) =>
     const d = getData(await api.get("/api/integrations/status"));
     return {
       wallet_connected: bool(d.wallet_connected),
+      wallet_verified: bool(d.wallet_verified),
       wallet_address_masked: d.wallet_address_masked || "",
       okx_connected: bool(d.okx_connected),
       okx_api_key_masked: d.okx_api_key_masked || "",
