@@ -57,6 +57,7 @@ const BlogPost = lazy(() => import("./pages/BlogPost"));
 const ConnectRobinhood = lazy(() => import("./pages/ConnectRobinhood"));
 const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpaca"));
 const ConnectWallet = lazy(() => import("./pages/ConnectWallet"));
+const ConnectKalshi = lazy(() => import("./pages/ConnectKalshi"));
 
 // Enterprise dashboard pages
 const TeamPage = lazy(() => import("./pages/TeamPage"));
@@ -323,6 +324,11 @@ function MainAppRoutes() {
             <Route path="/connect-wallet" element={
               <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectWallet />
+              </ProtectedRoute>
+            } />
+            <Route path="/connect-kalshi" element={
+              <ProtectedRoute requirePaid={true} requireActivation={false}>
+                <ConnectKalshi />
               </ProtectedRoute>
             } />
 

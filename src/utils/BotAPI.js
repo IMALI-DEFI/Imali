@@ -227,6 +227,84 @@ const syncBilling = async () => {
   return r;
 };
 
+
+// ─── KALSHI / PREDICTION MARKETS ────────────────────
+// Read-only dashboard intelligence.
+// No order submission methods are exposed to the frontend.
+const getKalshiConnection = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-connection",
+    5000,
+    async () =>
+      unwrap(
+        await api.get("/api/kalshi/connection")
+      ),
+    skipCache
+  );
+
+const connectKalshi = async (payload = {}) => {
+  const result = unwrap(
+    await api.post(
+      "/api/kalshi/connect",
+      payload
+    )
+  );
+
+  clearCache();
+
+  return result;
+};
+
+const disconnectKalshi = async () => {
+  const result = unwrap(
+    await api.delete("/api/kalshi/disconnect")
+  );
+
+  clearCache();
+
+  return result;
+};
+
+const getKalshiStatus = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-status",
+    15000,
+    async () => unwrap(await api.get("/api/kalshi/status")),
+    skipCache
+  );
+
+const getKalshiMarkets = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-markets",
+    30000,
+    async () => unwrap(await api.get("/api/kalshi/markets")),
+    skipCache
+  );
+
+const getKalshiOpportunities = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-opportunities",
+    30000,
+    async () => unwrap(await api.get("/api/kalshi/opportunities")),
+    skipCache
+  );
+
+const getKalshiPositions = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-positions",
+    15000,
+    async () => unwrap(await api.get("/api/kalshi/positions")),
+    skipCache
+  );
+
+const getKalshiOrders = async (skipCache = false) =>
+  cachedGet(
+    "kalshi-orders",
+    15000,
+    async () => unwrap(await api.get("/api/kalshi/orders")),
+    skipCache
+  );
+
 // ─── INTEGRATIONS ───────────────────────────────────
 const getIntegrationStatus = async (skipCache = false) =>
   cachedGet("integrations", 10000, async () => {
@@ -401,16 +479,35 @@ const getTradingBotStatus = async (skipCache = false) =>
     };
   }, skipCache);
 
-const startTradingBot = async (exchange = "okx", strategy = "ai_weighted", runMode = "paper", category = null, config = {}) => {
-  const r = unwrap(await api.post("/api/trading/bot/start", {
-    exchange,
+const startTradingBot = async (
+  exchange = "okx",
+  strategy = "ai_weighted",
+  runMode = "paper",
+  category = null,
+  config = {}
+) => {
+  const payload = {
+    exchange: String(exchange || "okx").toLowerCase(),
     strategy,
     mode: mode(runMode),
     category,
+
     takeProfitPct: config.takeProfitPct,
     stopLossPct: config.stopLossPct,
+    maxPositions: config.maxPositions,
+
+    // Strategy position sizing.
+    tradePct: config.tradePct,
+
+    // Backward compatibility with backends that use
+    // a dollar-denominated maximum instead.
     maxTradeAmount: config.maxTradeAmount,
-  }));
+  };
+
+  const r = unwrap(
+    await api.post("/api/trading/bot/start", payload)
+  );
+
   clearCache();
   return r;
 };
@@ -803,6 +900,23 @@ const prepareDexAuthorization = async ({
     })
   );
 
+const verifyDexAuthorization = async ({
+  signature,
+  typed_data,
+  sell_token,
+  buy_token,
+  max_sell_amount_atomic,
+}) =>
+  getData(
+    await api.post("/api/dex/verify-authorization", {
+      signature,
+      typed_data,
+      sell_token,
+      buy_token,
+      max_sell_amount_atomic,
+    })
+  );
+
 const createWalletChallenge = async (wallet) =>
   getData(
     await api.post("/api/integrations/wallet/challenge", {
@@ -833,6 +947,15 @@ const connectWallet = async ({
 
 
 const BotAPI = {
+  getKalshiConnection,
+  connectKalshi,
+  disconnectKalshi,
+  getKalshiStatus,
+  getKalshiMarkets,
+  getKalshiOpportunities,
+  getKalshiPositions,
+  getKalshiOrders,
+
 
   // Admin — Automation Analytics
   getAutomationAnalytics,
@@ -883,6 +1006,7 @@ const BotAPI = {
   syncBilling,
   getIntegrationStatus,
   prepareDexAuthorization,
+  verifyDexAuthorization,
   createWalletChallenge,
   connectWallet,
   connectOKX,

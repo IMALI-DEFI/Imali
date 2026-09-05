@@ -53,7 +53,6 @@ import {
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
 import nftElite from "../../assets/images/nfts/nft-elite.png";
-import * as candleGenerator from "../../utils/demoCandleGenerator";
 
 import LiveBotActivity from "./LiveBotActivity";
 import TradingAlignmentMeters from "./TradingAlignmentMeters";
@@ -910,6 +909,342 @@ const FloatingPrices = memo(() => {
 });
 FloatingPrices.displayName = "FloatingPrices";
 
+
+// ============================================================================
+// KALSHI PREDICTION MARKET INTELLIGENCE
+// ============================================================================
+
+const KalshiIntelligencePanel = () => {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState(null);
+  const [opportunityData, setOpportunityData] = useState(null);
+
+  const loadKalshi = useCallback(async (force = false) => {
+    if (force) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const [statusResponse, opportunityResponse] =
+        await Promise.all([
+          BotAPI.getKalshiStatus(force),
+          BotAPI.getKalshiOpportunities(force),
+        ]);
+
+      setStatus(statusResponse || null);
+      setOpportunityData(opportunityResponse || null);
+      setError("");
+    } catch (err) {
+      console.error("Kalshi dashboard load error:", err);
+
+      setError(
+        err?.status === 401
+          ? "Sign in again to load Prediction Market intelligence."
+          : "Prediction Market intelligence is temporarily unavailable."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadKalshi(false);
+  }, [loadKalshi]);
+
+  const opportunities = Array.isArray(
+    opportunityData?.opportunities
+  )
+    ? opportunityData.opportunities
+    : [];
+
+  const approved = Number(
+    opportunityData?.approved ??
+    status?.scanner?.risk_approved ??
+    0
+  );
+
+  const scanned = Number(
+    opportunityData?.scanned ??
+    status?.scanner?.scanned ??
+    0
+  );
+
+  const providerHits = Number(
+    opportunityData?.provider_hits ?? 0
+  );
+
+  const balance =
+    Number(
+      status?.balance?.balance_dollars ??
+      status?.balance?.balance ??
+      0
+    ) || 0;
+
+  const topOpportunities = opportunities.slice(0, 6);
+
+  const pct = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return `${(n * 100).toFixed(1)}%`;
+  };
+
+  const money2 = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n)
+      ? `$${n.toFixed(2)}`
+      : "$0.00";
+  };
+
+  return (
+    <section className="rounded-[2rem] border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-white/[0.03] to-cyan-500/10 p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-3 py-1 text-[10px] sm:text-xs font-black uppercase tracking-wider text-violet-300">
+              Prediction Markets
+            </span>
+
+            <span
+              className={`rounded-full border px-3 py-1 text-[10px] sm:text-xs font-black uppercase tracking-wider ${
+                status?.live_trading
+                  ? "border-red-400/40 bg-red-500/10 text-red-300"
+                  : "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              {status?.live_trading
+                ? "Live Trading On"
+                : "Live Trading Off"}
+            </span>
+          </div>
+
+          <h3 className="mt-3 text-xl sm:text-2xl font-black">
+            Kalshi Intelligence
+          </h3>
+
+          <p className="mt-1 max-w-3xl text-sm text-white/55">
+            IMALI scans prediction markets, compares market prices with external data,
+            calculates potential edge, and applies risk filters before an opportunity
+            is approved.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => loadKalshi(true)}
+          disabled={refreshing}
+          className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-black text-cyan-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+        >
+          {refreshing ? (
+            <>
+              <FaSpinner className="mr-2 inline animate-spin" />
+              Refreshing
+            </>
+          ) : (
+            <>
+              <FaSyncAlt className="mr-2 inline" />
+              Refresh
+            </>
+          )}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="mt-6 rounded-2xl bg-black/20 py-10 text-center text-white/50">
+          <FaSpinner className="mr-2 inline animate-spin" />
+          Loading prediction markets…
+        </div>
+      ) : error ? (
+        <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+          {error}
+        </div>
+      ) : (
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <MiniBox
+              label="Markets Scanned"
+              value={scanned.toLocaleString()}
+            />
+
+            <MiniBox
+              label="Data Matches"
+              value={providerHits.toLocaleString()}
+            />
+
+            <MiniBox
+              label="Risk Approved"
+              value={approved.toLocaleString()}
+            />
+
+            <MiniBox
+              label="Kalshi Balance"
+              value={money2(balance)}
+            />
+
+            <MiniBox
+              label="Environment"
+              value={
+                status?.environment
+                  ? "Production"
+                  : "Unknown"
+              }
+            />
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-lg font-black">
+                  Top Opportunities
+                </h4>
+
+                <p className="text-xs sm:text-sm text-white/45">
+                  Opportunities shown here are analysis results, not executed orders.
+                </p>
+              </div>
+
+              <span className="text-xs font-bold text-white/40">
+                {approved} approved
+              </span>
+            </div>
+
+            {topOpportunities.length === 0 ? (
+              <div className="rounded-2xl bg-black/20 py-8 text-center text-sm text-white/40">
+                No prediction-market opportunities are currently available.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topOpportunities.map((opportunity) => {
+                  const decision = opportunity?.decision || {};
+                  const risk = opportunity?.risk || {};
+                  const provider = opportunity?.provider || {};
+
+                  return (
+                    <div
+                      key={opportunity.ticker}
+                      className={`rounded-2xl border p-4 ${
+                        risk.approved
+                          ? "border-emerald-500/30 bg-emerald-500/[0.06]"
+                          : "border-white/10 bg-black/20"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                                decision.outcome === "YES"
+                                  ? "bg-emerald-500/15 text-emerald-300"
+                                  : "bg-amber-500/15 text-amber-300"
+                              }`}
+                            >
+                              BUY {decision.outcome || "—"}
+                            </span>
+
+                            {risk.approved && (
+                              <span className="rounded-full bg-cyan-500/15 px-2.5 py-1 text-[10px] font-black text-cyan-300">
+                                RISK APPROVED
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-2 font-black leading-snug">
+                            {opportunity.title || opportunity.ticker}
+                          </p>
+
+                          <p className="mt-1 break-all text-[10px] text-white/35">
+                            {opportunity.ticker}
+                          </p>
+                        </div>
+
+                        <div className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
+                          <div>
+                            <p className="text-white/40">Market</p>
+                            <p className="font-black">
+                              {pct(decision.market_probability)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-white/40">IMALI Model</p>
+                            <p className="font-black text-cyan-300">
+                              {pct(decision.model_probability)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-white/40">Edge</p>
+                            <p className="font-black text-emerald-300">
+                              {pct(decision.adjusted_edge)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-white/40">Confidence</p>
+                            <p className="font-black">
+                              {Number(decision.confidence || provider.confidence || 0).toFixed(0)}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-white/[0.06] pt-3 text-[11px] text-white/45">
+                        <span>
+                          Entry: {money2(decision.entry_price)}
+                        </span>
+
+                        <span>
+                          Size: {money2(risk.allowed_usd)}
+                        </span>
+
+                        <span>
+                          Contracts: {Number(risk.count || 0)}
+                        </span>
+
+                        <span>
+                          Quality: {Number(opportunity.market_quality || 0).toFixed(1)}
+                        </span>
+
+                        <span>
+                          Source: {provider.source || decision.source || "external"}
+                        </span>
+
+                        {provider.forecast_temperature_f != null && (
+                          <span>
+                            Forecast: {provider.forecast_temperature_f}°F
+                          </span>
+                        )}
+                      </div>
+
+                      {!risk.approved &&
+                        Array.isArray(risk.reasons) &&
+                        risk.reasons.length > 0 && (
+                          <p className="mt-2 text-[11px] text-amber-300/70">
+                            Filtered: {risk.reasons.join(", ")}
+                          </p>
+                        )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3 text-xs text-cyan-100/70">
+            Prediction-market execution is currently disabled. This panel is read-only
+            and does not submit Kalshi orders.
+          </div>
+        </>
+      )}
+    </section>
+  );
+};
+
+
 // ============================================================================
 // INITIAL STATE & REDUCER
 // ============================================================================
@@ -1199,8 +1534,6 @@ export default function MemberDashboard() {
   const [signalFeedError, setSignalFeedError] = useState("");
   const [signalFeedUpdatedAt, setSignalFeedUpdatedAt] = useState(null);
 
-
-  const candleTicksRef = useRef(0);
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
@@ -2084,9 +2417,13 @@ getStrategy, state.debug.failedRequests]);
           .replace("-USDT", "")
           .replace("/USDT", "");
 
+        // Backend/connection state is authoritative.
+        // Do not guess that every non-Alpaca exchange is paper.
         const tradeMode =
           trade.mode ??
-          (activeTab.exchange === "alpaca" ? "live" : "paper");
+          activeConnection?.mode ??
+          state.botMode ??
+          "paper";
 
         return {
           id: trade.id || `${trade.symbol}-${trade.created_at}-${Math.random()}`,
@@ -2117,7 +2454,7 @@ getStrategy, state.debug.failedRequests]);
       if (err.name === "AbortError") return;
       console.warn("Failed to fetch live trades:", err);
     }
-  }, [activeTab.exchange]);
+  }, [activeTab.exchange, activeConnection, state.botMode]);
 
   const fetchImali = useCallback(async () => {
     try {
@@ -2161,8 +2498,27 @@ getStrategy, state.debug.failedRequests]);
         return;
       }
 
-      // Real candles from exchange
-      const symbol = activeTab.exchange === "alpaca" ? "AAPL" : "BTC-USDT";
+      // Real candles from exchange.
+      // Keep the symbol exchange-compatible instead of assuming
+      // every non-Alpaca market uses BTC-USDT.
+      const exchange = String(activeTab.exchange || "").toLowerCase();
+      const type = String(
+        activeTab.id || activeTab.categoryId || ""
+      ).toLowerCase();
+
+      const candleSymbol =
+        activeTab.candleSymbol ||
+        (
+          exchange === "alpaca"
+            ? "AAPL"
+            : exchange === "robinhood"
+            ? "BTC-USD"
+            : type === "dex"
+            ? "ETH-USDT"
+            : "BTC-USDT"
+        );
+
+      const symbol = candleSymbol;
       const res = await BotAPI.getMarketCandles?.({
         exchange: activeTab.exchange,
         symbol,
@@ -2189,18 +2545,30 @@ getStrategy, state.debug.failedRequests]);
       dispatch({ type: ACTIONS.SET_CANDLES, payload: formattedCandles });
       dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "live" });
     } catch (error) {
+      if (error?.name === "AbortError") return;
+
       console.warn("Could not load market candles:", error);
-      const fallbackCandles = candleGenerator.createInitialCandles({
-        count: 40,
-        startPrice: 67420,
-        intervalSeconds: 60,
+
+      // Never display fabricated market data.
+      dispatch({
+        type: ACTIONS.SET_CANDLES,
+        payload: [],
       });
-      dispatch({ type: ACTIONS.SET_CANDLES, payload: fallbackCandles });
-      dispatch({ type: ACTIONS.SET_CANDLES_SOURCE, payload: "unavailable" });
+
+      dispatch({
+        type: ACTIONS.SET_CANDLES_SOURCE,
+        payload: "unavailable",
+      });
     } finally {
       dispatch({ type: ACTIONS.SET_CANDLES_LOADING, payload: false });
     }
-  }, [activeTab.exchange, effectiveTier]);
+  }, [
+    activeTab.exchange,
+    activeTab.id,
+    activeTab.categoryId,
+    activeTab.candleSymbol,
+    effectiveTier,
+  ]);
 
   // ============================================================================
   // SAVE FUNCTIONS
@@ -2485,6 +2853,7 @@ getStrategy, state.debug.failedRequests]);
         stopLossPct: state.currentStrategy.stopLossPct,
         maxPositions: state.currentStrategy.maxPositions,
         tradePct: state.currentStrategy.tradePct,
+        maxTradeAmount: state.currentStrategy.maxTradeAmount,
       };
 
       let res = null;
@@ -2947,37 +3316,8 @@ getStrategy, state.debug.failedRequests]);
     return () => window.clearTimeout(timeoutId);
   }, [state.activeType, previousActiveType, refreshDashboard]);
 
-  // Candlestick animation for simulated data
-  useEffect(() => {
-    if (!state.botRunning || state.candlesSource !== "simulated") return undefined;
-
-    const animationInterval = window.setInterval(() => {
-      candleTicksRef.current += 1;
-
-      // Update the last candle (live candle)
-      const currentLive = state.candles[state.candles.length - 1];
-      if (!currentLive) return;
-
-      // Every 6 ticks, close the candle and start a new one
-      if (candleTicksRef.current % 6 === 0) {
-        const next = candleGenerator.createNextCandle(currentLive, 60);
-        dispatch({
-          type: ACTIONS.SET_CANDLES,
-          payload: [...state.candles.slice(-79), next],
-        });
-      } else {
-        const updated = candleGenerator.updateLiveCandle(currentLive, {
-          volatility: state.currentStrategy.id === "aggressive" ? 0.002 :
-                      state.currentStrategy.id === "growth" ? 0.0014 :
-                      state.currentStrategy.id === "safe" ? 0.0005 : 0.0009,
-        });
-        const newCandles = [...state.candles.slice(0, -1), updated];
-        dispatch({ type: ACTIONS.SET_CANDLES, payload: newCandles });
-      }
-    }, 400);
-
-    return () => window.clearInterval(animationInterval);
-  }, [state.botRunning, state.candlesSource, state.candles, state.currentStrategy.id]);
+  // Simulated candle animation removed.
+  // Dashboard candles must come from real market data only.
 
   // ============================================================================
   // RENDER
@@ -3231,6 +3571,11 @@ getStrategy, state.debug.failedRequests]);
             currentTier={normalizeTier(state.userTier)}
             onUpgrade={() => navigate("/billing")}
           />
+
+          {(effectiveTier === "elite" ||
+            effectiveTier === "enterprise") && (
+            <KalshiIntelligencePanel />
+          )}
 
           {/* LIVE ACCOUNT STATS + HELD COIN MARKET */}
           <LiveDashboardOverview
