@@ -225,7 +225,7 @@ export default function HowItWorks() {
                             number="2"
                             title="Connect an Exchange"
                         >
-                            Connect Robinhood Crypto or OKX for cryptocurrency trading, or Alpaca for U.S. stocks and ETFs, using supported secure account connections.
+                            Connect Robinhood Crypto or OKX for cryptocurrency trading, Alpaca for U.S. stocks and ETFs, Kalshi for supported prediction markets, or a supported wallet for DEX trading.
                         </StepCard>
 
                         <StepCard
@@ -312,6 +312,47 @@ export default function HowItWorks() {
                                 <li>• Fractional-share support</li>
                                 <li>• Buying-power validation</li>
                                 <li>• Market-hours awareness</li>
+                            </ul>
+                        </div>
+
+                        <div className={card}>
+                            <h3 className="flex items-center gap-2 font-bold text-slate-900">
+                                <span className="text-xl">🟣</span>
+                                Kalshi Prediction Markets
+                            </h3>
+
+                            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                Connect your Kalshi account so IMALI can scan supported
+                                prediction markets, evaluate probability, market quality,
+                                confidence, spread, and edge, and submit eligible orders
+                                when live execution is enabled.
+                            </p>
+
+                            <ul className="mt-3 space-y-1 text-xs text-slate-500">
+                                <li>• Prediction-market scanning</li>
+                                <li>• Probability and edge evaluation</li>
+                                <li>• Automated risk checks</li>
+                                <li>• Supported live order execution</li>
+                            </ul>
+                        </div>
+
+                        <div className={card}>
+                            <h3 className="flex items-center gap-2 font-bold text-slate-900">
+                                <span className="text-xl">🔗</span>
+                                DEX Wallet Trading
+                            </h3>
+
+                            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                Connect a supported wallet to access decentralized trading
+                                features. IMALI prepares eligible decentralized transactions
+                                while your wallet remains under your control.
+                            </p>
+
+                            <ul className="mt-3 space-y-1 text-xs text-slate-500">
+                                <li>• Wallet-based trading</li>
+                                <li>• Non-custodial architecture</li>
+                                <li>• Supported DEX execution flows</li>
+                                <li>• Wallet authorization remains with you</li>
                             </ul>
                         </div>
                     </div>
@@ -465,7 +506,7 @@ export default function HowItWorks() {
                         </li>
 
                         <li>
-                            Choose <span className="font-bold">Robinhood Crypto</span>, <span className="font-bold">OKX</span>, or <span className="font-bold">Alpaca</span>
+                            Choose <span className="font-bold">Robinhood Crypto</span>, <span className="font-bold">OKX</span>, <span className="font-bold">Alpaca</span>, <span className="font-bold">Kalshi</span>, or <span className="font-bold">DEX Wallet</span>
                             .
                         </li>
 
@@ -883,7 +924,7 @@ export default function HowItWorks() {
                             </h3>
 
                             <p className="mt-1 text-sm text-slate-600">
-                                You can connect supported OKX, Robinhood Crypto, Alpaca, and wallet-based accounts. Available execution modes vary by platform. The exact number of
+                                You can connect supported OKX, Robinhood Crypto, Alpaca, Kalshi, and wallet-based DEX accounts. Available execution modes vary by platform. The exact number of
                                 available connections may depend on
                                 your plan and current platform
                                 configuration.
@@ -971,6 +1012,8 @@ export default function HowItWorks() {
                                 "Robinhood Crypto connection",
                                 "OKX connection",
                                 "Alpaca connection",
+                                "Kalshi prediction market connection",
+                                "DEX wallet connection",
                                 "Strategy selection",
                                 "Dashboard navigation",
                                 "Security guidance",

@@ -368,7 +368,7 @@ export default function Home() {
                 number: "2",
                 icon: <FaPlug />,
                 title: "Connect Your Trading Account",
-                text: "Connect Robinhood Crypto, OKX, or Alpaca. Your money stays in that account.",
+                text: "Connect Robinhood Crypto, OKX, Alpaca, Kalshi, or your supported DEX wallet. Your funds stay in your connected account or wallet.",
               },
               {
                 number: "3",
@@ -408,7 +408,7 @@ export default function Home() {
           </p>
 
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            {["Robinhood Crypto", "OKX", "Alpaca"].map((provider) => (
+            {["Robinhood Crypto", "OKX", "Alpaca", "Kalshi", "DEX"].map((provider) => (
               <div
                 key={provider}
                 className="rounded-xl border border-white/10 bg-white/[0.04] px-6 py-3 font-semibold text-white/80"
@@ -419,8 +419,8 @@ export default function Home() {
           </div>
 
           <p className="mx-auto mt-7 max-w-xl text-sm leading-relaxed text-white/45">
-            IMALI connects to supported trading accounts without taking custody
-            of your funds.
+            IMALI connects to supported exchanges, brokerages, prediction markets,
+            and compatible wallets without taking custody of your funds.
           </p>
 
           <Link
