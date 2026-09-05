@@ -915,6 +915,7 @@ FloatingPrices.displayName = "FloatingPrices";
 // ============================================================================
 
 const KalshiIntelligencePanel = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -1033,24 +1034,35 @@ const KalshiIntelligencePanel = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => loadKalshi(true)}
-          disabled={refreshing}
-          className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-black text-cyan-300 transition hover:bg-white/[0.08] disabled:opacity-50"
-        >
-          {refreshing ? (
-            <>
-              <FaSpinner className="mr-2 inline animate-spin" />
-              Refreshing
-            </>
-          ) : (
-            <>
-              <FaSyncAlt className="mr-2 inline" />
-              Refresh
-            </>
-          )}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/connect-kalshi")}
+            className="rounded-2xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-black text-violet-200 transition hover:bg-violet-500/20"
+          >
+            <FaPlug className="mr-2 inline" />
+            Connect / Manage Kalshi
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadKalshi(true)}
+            disabled={refreshing}
+            className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-black text-cyan-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            {refreshing ? (
+              <>
+                <FaSpinner className="mr-2 inline animate-spin" />
+                Refreshing
+              </>
+            ) : (
+              <>
+                <FaSyncAlt className="mr-2 inline" />
+                Refresh
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {loading ? (
