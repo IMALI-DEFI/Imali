@@ -73,7 +73,7 @@ export default function Header() {
             to="/live"
             className="text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
           >
-            Live Dashboard
+            Trading Activity
           </Link>
 
           <Link
@@ -142,7 +142,7 @@ export default function Header() {
               onClick={closeMenu}
               className="mt-2 text-center text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
             >
-              Live Dashboard
+              Trading Activity
             </Link>
 
             <Link

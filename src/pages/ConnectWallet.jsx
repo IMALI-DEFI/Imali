@@ -410,6 +410,48 @@ export default function ConnectWallet() {
         );
       }
 
+      const verification =
+        await BotAPI.verifyDexAuthorization({
+          signature,
+          typed_data: typedData,
+          sell_token:
+            "0x036cbd53842c5426634e7929541ec2318f3dcf7c",
+          buy_token:
+            "0x4200000000000000000000000000000000000006",
+          max_sell_amount_atomic:
+            "1000000",
+        });
+
+      if (verification?.status !== "signature_verified_only") {
+        throw new Error(
+          "Unexpected DEX verification status. Authorization stopped."
+        );
+      }
+
+      if (
+        verification?.customer_signature_verified !== true ||
+        verification?.signer_matched !== true
+      ) {
+        throw new Error(
+          "Backend rejected the DEX authorization signature."
+        );
+      }
+
+      const safetyFlags = [
+        verification?.session_enabled,
+        verification?.safe_deployed,
+        verification?.user_operation_created,
+        verification?.user_operation_sent,
+        verification?.transaction_broadcast,
+        verification?.database_write,
+      ];
+
+      if (safetyFlags.some((value) => value !== false)) {
+        throw new Error(
+          "Incomplete or unsafe DEX verification response. Authorization stopped."
+        );
+      }
+
       setDexPrepare((current) => ({
         ...current,
         signing: false,
@@ -419,7 +461,7 @@ export default function ConnectWallet() {
       }));
 
       console.log(
-        "[DEX] Customer authorization signature created",
+        "[DEX] Customer authorization verified",
         {
           signer: signerAddress,
           permissionId: dexPrepare.permissionId,

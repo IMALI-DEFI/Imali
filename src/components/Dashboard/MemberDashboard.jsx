@@ -3131,7 +3131,12 @@ getStrategy, state.debug.failedRequests]);
       const robinhoodConnected = Boolean(
         integrations.robinhood_connected ??
         integrations.robinhoodConnected ??
-        integrations.robinhood?.connected
+        integrations.robinhood?.connected ??
+        Boolean(
+          integrations.robinhood_api_key_masked ||
+          integrations.robinhood_key_masked ||
+          integrations.robinhoodKeyMasked
+        )
       );
 
       const okxConnected = Boolean(

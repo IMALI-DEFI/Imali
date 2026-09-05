@@ -882,7 +882,7 @@ export default function EnterpriseDashboard({ demoMode = false }) {
                     {togglingPaper ? "Stopping..." : "Stop Paper"}
                   </Button>
                   <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
-                    Start Live Trading
+                    Start Trading
                   </Button>
                   <Button variant="primary" onClick={handleManualTrade} disabled={executingTrade || !paperTradingEnabled || demoMode} className="w-full lg:w-auto">
                     {executingTrade ? "Trading..." : "Manual Trade"}

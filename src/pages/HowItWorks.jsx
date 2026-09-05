@@ -190,17 +190,17 @@ export default function HowItWorks() {
                     </h1>
 
                     <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
-                        Connect your trading account, select a
-                        strategy, set your risk preferences, and
-                        manage automated trading from one dashboard.
+                        Connect a supported trading account, choose a
+                        strategy and trade size, set your risk preferences,
+                        and manage supported automation from one dashboard.
                     </p>
 
                     <Callout
                         type="important"
                         title="Live trading involves financial risk"
                     >
-                        IMALI places real orders using funds held in
-                        your connected exchange account. Only trade
+                        When live execution is supported and enabled, IMALI can place
+                        orders using funds held in your connected account. Only trade
                         with capital you can afford to lose.
                     </Callout>
                 </section>
@@ -373,6 +373,10 @@ export default function HowItWorks() {
                         type="info"
                         title="Features vary by plan"
                     >
+                        Prediction Market Intelligence analyzes supported event markets,
+                        external data, market probabilities, edge, and risk filters.
+                        Prediction-market order execution is currently disabled.
+
                         Futures, DEX trading, additional automation,
                         and advanced controls may require an eligible
                         subscription.
@@ -579,7 +583,7 @@ export default function HowItWorks() {
                             name="Conservative"
                             level="Lower Risk"
                             icon={FaShieldAlt}
-                            style="border-emerald-200 bg-emerald-50/50"
+                            style={{  }}
                             badgeStyle="bg-emerald-100 text-emerald-700"
                             description="Uses stricter entry rules and fewer trades, with an emphasis on measured opportunities and capital preservation."
                         />
@@ -588,7 +592,7 @@ export default function HowItWorks() {
                             name="Balanced AI"
                             level="Moderate Risk"
                             icon={FaBrain}
-                            style="border-blue-200 bg-blue-50/50"
+                            style={{  }}
                             badgeStyle="bg-blue-100 text-blue-700"
                             description="Combines technical indicators, market conditions, and confidence scoring to balance trading opportunities with risk."
                         />
@@ -597,7 +601,7 @@ export default function HowItWorks() {
                             name="Growth"
                             level="Higher Risk"
                             icon={FaChartLine}
-                            style="border-amber-200 bg-amber-50/50"
+                            style={{  }}
                             badgeStyle="bg-amber-100 text-amber-700"
                             description="Focuses on momentum and established market trends, seeking opportunities when market strength is confirmed."
                         />
@@ -606,7 +610,7 @@ export default function HowItWorks() {
                             name="Aggressive"
                             level="High Risk"
                             icon={FaFire}
-                            style="border-rose-200 bg-rose-50/50"
+                            style={{  }}
                             badgeStyle="bg-rose-100 text-rose-700"
                             description="Uses broader entry criteria and seeks more frequent opportunities. Designed for experienced users who understand elevated risk."
                         />
@@ -659,7 +663,7 @@ export default function HowItWorks() {
                                 number: 5,
                                 title: "Order Execution",
                                 description:
-                                    "When all requirements are met, IMALI submits the order to the connected exchange and records the result.",
+                                    "When live execution is supported and enabled for the selected connection, IMALI can submit the order and record the result. Paper, dry-run, and intelligence-only modes do not submit real-money orders.",
                             },
                             {
                                 number: 6,
@@ -879,7 +883,7 @@ export default function HowItWorks() {
                             </h3>
 
                             <p className="mt-1 text-sm text-slate-600">
-                                You can connect supported Robinhood Crypto, OKX, and Alpaca accounts. The exact number of
+                                You can connect supported OKX, Robinhood Crypto, Alpaca, and wallet-based accounts. Available execution modes vary by platform. The exact number of
                                 available connections may depend on
                                 your plan and current platform
                                 configuration.
@@ -990,8 +994,7 @@ export default function HowItWorks() {
                     </h2>
 
                     <p className="mx-auto mb-5 mt-2 max-w-xl text-sm text-slate-600">
-                        Create your IMALI account, connect a supported trading platform such as Robinhood Crypto, OKX, or Alpaca, and configure your live
-                        trading strategy.
+                        Create your IMALI account, connect a supported platform, choose your strategy and risk settings, and activate the execution mode available for that connection.
                     </p>
 
                     <Link

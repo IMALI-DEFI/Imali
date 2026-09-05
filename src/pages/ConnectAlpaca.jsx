@@ -391,7 +391,7 @@ export default function ConnectAlpaca() {
               <ul className="mt-3 space-y-2 text-sm text-white/60">
                 <li>• View your Alpaca account information</li>
                 <li>• View account balances and positions</li>
-                <li>• Place and manage trades at your direction</li>
+                <li>• Place and manage trades when the authorized account mode and IMALI execution path support it</li>
               </ul>
             </div>
 
@@ -541,8 +541,8 @@ export default function ConnectAlpaca() {
           <p className="mt-2 text-sm leading-6 text-white/60">
             By allowing IMALI to access your Alpaca account, you are
             granting IMALI access to your account information and
-            authorization to place transactions in your account at your
-            direction. Alpaca does not warrant or guarantee that IMALI
+            authorization to place transactions in your account when the
+            selected connection and execution mode support trading. Alpaca does not warrant or guarantee that IMALI
             will work as advertised or expected.
           </p>
 

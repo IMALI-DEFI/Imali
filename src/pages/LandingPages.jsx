@@ -30,7 +30,7 @@ const variants = {
   },
   redditB: {
     source: "Reddit",
-    title: "No Screenshots. No Fake Claims. Live Dashboard.",
+    title: "No Fake Claims. See IMALI Trading Activity.",
     subtitle:
       "Built solo over the last year with automation, risk controls, and transparent tracking.",
     cta: "Start Free Trial",
@@ -86,7 +86,7 @@ const variants = {
   },
   tgB: {
     source: "Telegram",
-    title: "Live Dashboard + Free Trial",
+    title: "Trading Activity + Free Trial",
     subtitle: "Try the system risk-free, track performance live, and cancel anytime.",
     cta: "Join Beta Group",
     eyebrow: "Risk-free start",
@@ -202,7 +202,7 @@ function DashboardMock() {
     <div className="rounded-3xl border border-white/10 bg-slate-900 p-4 shadow-2xl">
       <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <div>
-          <p className="text-sm text-slate-400">Live Dashboard</p>
+          <p className="text-sm text-slate-400">Trading Activity</p>
           <h3 className="text-lg font-semibold">Performance Snapshot</h3>
         </div>
         <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">

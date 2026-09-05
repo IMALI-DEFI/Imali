@@ -45,7 +45,7 @@ const TIER_CONFIG = {
     background:
       "from-blue-600/20 to-indigo-500/10",
     included: [
-      "Live stock trading with Alpaca",
+      "Alpaca stock trading access",
       "Live crypto spot trading with OKX",
       "AI-assisted strategies",
       "Take-profit and stop-loss controls",
@@ -746,7 +746,7 @@ function TradingConnections({
       label: "Robinhood Crypto",
       description: isRobinhoodConnected
         ? `Connected • ${String(robinhoodMode || "live").toUpperCase()}`
-        : "Connect Robinhood Crypto for live crypto trading.",
+        : "Connect Robinhood Crypto to use IMALI's supported Robinhood Crypto workflow.",
       icon: <FaBitcoin />,
       connected: isRobinhoodConnected,
       route: "/connect-robinhood",
@@ -770,7 +770,7 @@ function TradingConnections({
       id: "alpaca",
       label: "Alpaca Trading",
       description:
-        "Connect Alpaca for live stock trading.",
+        "Connect Alpaca using the trading mode supported by your connection.",
       icon: <FaApple />,
       connected: isAlpacaConnected,
       route: "/connect-alpaca",

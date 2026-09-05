@@ -413,7 +413,7 @@ export default function Activation() {
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold mb-2">Complete Your Setup</h1>
-          <p className="text-gray-400 capitalize">{tier} Plan • Complete the steps below to start live trading</p>
+          <p className="text-gray-400 capitalize">{tier} Plan • Complete the steps below to activate your trading access</p>
           {fullyActivated && (
             <div className="mt-4 p-4 bg-green-500/20 border border-green-500/50 rounded-xl">
               <p className="text-green-300 font-semibold">✓ All steps complete. Redirecting to dashboard...</p>

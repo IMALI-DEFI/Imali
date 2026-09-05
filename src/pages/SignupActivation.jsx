@@ -322,7 +322,7 @@ export default function SignupActivation() {
                     <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-bold mt-0.5">3</div>
                     <div>
                       <p className="font-medium">Connect & Trade</p>
-                      <p className="text-sm text-gray-400">Link OKX, Alpaca, or wallet and start live trading</p>
+                      <p className="text-sm text-gray-400">Link a supported account and activate the available trading mode</p>
                     </div>
                   </div>
                 </>

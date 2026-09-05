@@ -588,7 +588,7 @@ export default function TradeDemo() {
               </h1>
 
               <p className="text-slate-300 mt-5 text-base md:text-lg leading-8">
-                Experience IMALI with a <span className="text-emerald-400 font-bold">$1,000 virtual account</span> before connecting Robinhood, OKX, Alpaca, or another supported account.
+                Experience IMALI with a <span className="text-emerald-400 font-bold">$1,000 virtual account</span> before connecting a supported trading account.
               </p>
 
               <div className="flex flex-wrap gap-3 mt-7">
@@ -615,7 +615,7 @@ export default function TradeDemo() {
                   className="rounded-2xl px-5 md:px-6 py-3 font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 flex items-center gap-2 text-sm md:text-base"
                 >
                   <FaCrown />
-                  Upgrade to Live
+                  View Live Options
                 </button>
               </div>
 
@@ -769,7 +769,7 @@ export default function TradeDemo() {
                   onClick={() => navigate("/pricing")}
                   className="mt-4 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold transition flex items-center justify-center gap-2"
                 >
-                  <FaCrown /> Upgrade to Live Trading
+                  <FaCrown /> View Live Options Trading
                 </button>
                 <button
                   onClick={() => navigate("/activation")}
@@ -789,8 +789,8 @@ export default function TradeDemo() {
               <div className="space-y-2">
                 {[
                   { tier: "Demo", desc: "$1,000 Demo Account • AI Simulator", color: "emerald" },
-                  { tier: "Pro", desc: "Live trading • Robinhood • OKX • Alpaca • AI automation", color: "blue" },
-                  { tier: "Elite", desc: "DEX • Advanced bots • Sniper • Priority support", color: "purple" },
+                  { tier: "Pro", desc: "OKX automation • Robinhood Crypto workflow • Alpaca access • AI strategies", color: "blue" },
+                  { tier: "Elite", desc: "DEX tools • Advanced automation • Prediction Market Intelligence • Priority support", color: "purple" },
                 ].map((plan) => (
                   <div key={plan.tier} className={`rounded-xl border border-${plan.color}-500/20 bg-${plan.color}-500/5 p-3`}>
                     <div className="font-bold text-sm text-white">{plan.tier}</div>
@@ -813,12 +813,12 @@ export default function TradeDemo() {
           <div className="text-5xl mb-4">🚀</div>
           <h2 className="text-2xl md:text-3xl font-extrabold text-white">Ready to trade with your own account?</h2>
           <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-8 text-sm md:text-base">
-            Upgrade to Pro for live trading, connect Robinhood Crypto, OKX, Alpaca, or MetaMask, and start live trading.
-            <span className="block text-emerald-400 mt-2">You keep 100% of your profits. No hidden fees.</span>
+            Choose a plan, connect a supported account, and use the execution mode available for that platform. OKX supports automated live trading; other integrations may operate in paper, limited, or connection-specific modes.
+            <span className="block text-emerald-400 mt-2">Your funds remain in your connected account.</span>
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-8">
             <button onClick={() => navigate("/pricing")} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-6 md:px-8 py-3 md:py-4 font-bold transition text-sm md:text-base">
-              Upgrade to Live Trading →
+              View Live Options Trading →
             </button>
             <button onClick={() => navigate("/enterprise")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-6 md:px-8 py-3 md:py-4 font-bold transition text-sm md:text-base">
               View Enterprise Overview
@@ -830,8 +830,8 @@ export default function TradeDemo() {
         </div>
 
         <div className="text-center text-xs text-white/20 pb-4">
-          Demo environment only. $1,000 virtual account for learning purposes. No real money used.
-          Upgrade to Pro for live trading.
+          Demo environment only. $1,000 virtual account for learning purposes. No real money is used.
+          Paid plans unlock supported account connections and automation features.
         </div>
       </div>
     </div>

@@ -104,7 +104,7 @@ export default function Home() {
 
             <div className="mt-9">
               <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/40">
-                Start live trading for
+                Start automated trading from
               </div>
 
               <div className="mt-2 flex items-end justify-center gap-2">
@@ -125,7 +125,7 @@ export default function Home() {
                 }}
                 className="group inline-flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 shadow-2xl shadow-emerald-500/20 transition hover:scale-[1.02] hover:bg-emerald-400 sm:w-auto sm:min-w-[320px]"
               >
-                Start Live Trading
+                Start Trading with IMALI
                 <FaArrowRight className="transition group-hover:translate-x-1" />
               </Link>
             </div>
@@ -336,7 +336,7 @@ export default function Home() {
               }}
               className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-7 py-3.5 font-extrabold text-slate-950 transition hover:bg-emerald-400"
             >
-              Start Live Trading
+              Start Trading with IMALI
               <FaArrowRight />
             </Link>
           </div>
@@ -452,7 +452,7 @@ export default function Home() {
             }}
             className="mt-7 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 transition hover:bg-emerald-400"
           >
-            Start Live Trading — $19.95/month
+            Start Pro — $19.95/month
             <FaArrowRight />
           </Link>
         </div>

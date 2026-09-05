@@ -648,7 +648,7 @@ export default function PublicDashboard() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
-          <p className="text-sm text-gray-500">Loading Trading Dashboard...</p>
+          <p className="text-sm text-gray-500">Loading Activity Dashboard...</p>
         </div>
       </div>
     );
@@ -664,7 +664,7 @@ export default function PublicDashboard() {
               <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] text-yellow-700">UPDATING</span>
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
-              <span>{formatNumber(totalTrades)} trades tracked</span>
+              <span>{formatNumber(totalTrades)} records tracked</span>
               <span>•</span>
               <span>Polling every 30s</span>
               <span>•</span>
@@ -683,9 +683,16 @@ export default function PublicDashboard() {
         )}
 
         <div className="mb-4 text-center">
-          <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">Trading in Public</h1>
+          <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">IMALI Trading Activity</h1>
           <p className="text-xs text-gray-500">
-            {formatNumber(totalTrades)} total trades • {activeBots} active bots • Updating every 30 seconds
+            {formatNumber(totalTrades)} tracked records • {activeBots} active systems • Updating every 30 seconds
+          </p>
+
+          <p className="mx-auto mt-2 max-w-3xl text-[10px] leading-4 text-gray-400">
+            This dashboard reports activity returned by IMALI's public data feeds.
+            Records may include different execution environments. A displayed signal or
+            record should not be interpreted as a guaranteed or independently verified
+            live-money execution unless explicitly identified as such.
           </p>
         </div>
 

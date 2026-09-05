@@ -11,7 +11,7 @@ const Footer = () => {
         <div>
           <img src={Logo} alt="IMALI Logo" className="h-10 mb-3" />
           <p className="text-sm text-gray-400">
-            IMALI DeFi — Unlocking financial freedom for everyone.
+            IMALI connects supported trading accounts with AI analysis, strategy controls, risk management, and automation while your funds remain with your provider.
           </p>
         </div>
 
@@ -20,7 +20,7 @@ const Footer = () => {
           <h3 className="text-lg font-semibold mb-3">Quick Links</h3>
           <ul className="space-y-2 text-sm">
             <li><Link to="/" className="hover:text-indigo-400">Home</Link></li>
-            <li><Link to="/live" className="hover:text-indigo-400">Live Dashboard</Link></li>
+            <li><Link to="/live" className="hover:text-indigo-400">Trading Activity</Link></li>
             <li><Link to="/how-it-works" className="hover:text-indigo-400">How It Works</Link></li>
             <li><Link to="/referrals" className="hover:text-indigo-400">Referral Partner</Link></li>
             <li><Link to="/support" className="hover:text-indigo-400">Support</Link></li>

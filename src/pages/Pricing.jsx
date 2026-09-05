@@ -77,8 +77,8 @@ const plans = [
     category: "trading",
     stripePriceId: STRIPE_CONFIG.PRO_PRICE_ID,
     features: [
-      "Live stock trading (Alpaca)",
-      "Live crypto trading (Robinhood Crypto & OKX)",
+      "Alpaca stock trading (Paper OAuth; live API connections where supported)",
+      "Crypto trading workflows with OKX and Robinhood Crypto",
       "AI‑assisted strategies",
       "Take‑profit / stop‑loss",
       "Performance dashboard",
@@ -103,7 +103,8 @@ const plans = [
     stripePriceId: STRIPE_CONFIG.ELITE_PRICE_ID,
     features: [
       "Everything in Pro",
-      "DEX sniper (Uniswap, QuickSwap)",
+      "DEX wallet trading and authorization tools",
+      "Prediction Market Intelligence",
       "Futures trading",
       "Staking & Lending",
       "NFT membership benefits",
@@ -251,7 +252,7 @@ const faqs = [
   },
   {
     q: "What's the IMALI token utility?",
-    a: "IMALI tokens unlock fee discounts (up to 20%), staking rewards, governance voting, and exclusive NFT benefits.",
+    a: "IMALI token features may include eligible fee discounts and additional ecosystem benefits. Availability of staking, governance, and other token utilities depends on the feature being enabled in your account.",
   },
   {
     q: "What is the Admin Platform?",
@@ -536,7 +537,7 @@ export default function Pricing() {
 
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
             {activeTab === "trading"
-              ? "Start with paper trading, then go live with OKX, Alpaca, or MetaMask."
+              ? "Start with paper trading, then activate supported live connections when available for your selected platform."
               : "Everything you need in an admin panel. Already built. User management, billing, analytics, and more."}
           </p>
 
@@ -683,7 +684,7 @@ export default function Pricing() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
                 <FaStar className="mx-auto text-3xl text-amber-400" />
-                <h3 className="mt-3 text-xl font-bold">Staking Rewards</h3>
+                <h3 className="mt-3 text-xl font-bold">Token & DeFi Benefits</h3>
                 <p className="mt-2 text-sm text-slate-300">Stake IMALI tokens to earn platform revenue share (up to 12% APY).</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
@@ -749,8 +750,8 @@ export default function Pricing() {
                   [
                     ["Paper Trading", true, true, true, true],
                     ["Live Crypto (OKX)", false, true, true, true],
-                    ["Live Stocks (Alpaca)", false, true, true, true],
-                    ["DEX Sniper / DeFi", false, false, true, true],
+                    ["Alpaca Stocks (Paper OAuth / supported live API)", false, true, true, true],
+                    ["DEX / Wallet Trading Tools", false, false, true, true],
                     ["Futures Trading", false, false, true, true],
                     ["Staking / Lending", false, false, true, true],
                     ["Token Discounts", false, false, true, true],
