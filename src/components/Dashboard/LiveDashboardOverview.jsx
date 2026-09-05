@@ -361,7 +361,8 @@ export default function LiveDashboardOverview({
   const buyingPower = useMemo(() => {
     if (exchange === "robinhood") {
       return num(
-        balance.robinhood_available_usd ??
+        balance.robinhood_buying_power ??
+            balance.robinhood_available_usd ??
           balance.buying_power ??
           balance.cash
       );
