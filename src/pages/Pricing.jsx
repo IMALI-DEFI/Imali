@@ -67,7 +67,7 @@ const plans = [
     image: nftPro,
     alt: "Pro NFT Artwork",
     price: STRIPE_CONFIG.getPlanPrice("pro"),
-    profitShare: 10,
+    profitShare: null,
     subtitle: "Live trading + advanced signals.",
     cta: "Start Pro",
     ctaLoggedIn: "Upgrade to Pro",
@@ -85,7 +85,7 @@ const plans = [
       "Trade history",
       "Priority support",
     ],
-    locked: ["DEX sniper", "Futures", "Staking / Lending", "NFT membership"],
+    locked: ["Kalshi — Elite", "DEX — Elite or add-on", "Futures", "Staking / Lending", "NFT membership"],
   },
   {
     id: "elite",
@@ -93,7 +93,7 @@ const plans = [
     image: nftElite,
     alt: "Elite NFT Artwork",
     price: STRIPE_CONFIG.getPlanPrice("elite"),
-    profitShare: 8,
+    profitShare: null,
     subtitle: "Full access + DeFi & advanced tools.",
     cta: "Start Elite",
     ctaLoggedIn: "Upgrade to Elite",
@@ -104,6 +104,7 @@ const plans = [
     features: [
       "Everything in Pro",
       "DEX wallet trading and authorization tools",
+      "Kalshi prediction-market trading",
       "Prediction Market Intelligence",
       "Futures trading",
       "Staking & Lending",
@@ -579,13 +580,7 @@ export default function Pricing() {
                 onClick={() => setBillingModel("fixed")}
                 className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}
               >
-                Fixed Monthly
-              </button>
-              <button
-                onClick={() => setBillingModel("profit_share")}
-                className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "profit_share" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}
-              >
-                Profit Share
+                Monthly Subscription — No Profit Percentage
               </button>
             </div>
           )}
@@ -749,9 +744,12 @@ export default function Pricing() {
                 ) : (
                   [
                     ["Paper Trading", true, true, true, true],
+                    ["Robinhood Crypto", false, true, true, true],
                     ["Live Crypto (OKX)", false, true, true, true],
                     ["Alpaca Stocks (Paper OAuth / supported live API)", false, true, true, true],
+                    ["Kalshi Prediction Markets", false, false, true, true],
                     ["DEX / Wallet Trading Tools", false, false, true, true],
+                    ["RPC Access (+$5/mo add-on)", false, true, true, true],
                     ["Futures Trading", false, false, true, true],
                     ["Staking / Lending", false, false, true, true],
                     ["Token Discounts", false, false, true, true],
