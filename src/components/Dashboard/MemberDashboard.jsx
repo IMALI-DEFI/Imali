@@ -1587,8 +1587,13 @@ export default function MemberDashboard() {
       normalizedSubscriptionStatus === "trialing"
   );
 
-  const effectiveTier =
-    normalizeTier(state.userTier) === "starter"
+  // Admin/owner accounts get full dashboard visibility without
+  // changing the customer's stored subscription tier or billing state.
+  const isAdminUser = Boolean(user?.is_admin || user?.isAdmin);
+
+  const effectiveTier = isAdminUser
+    ? "enterprise"
+    : normalizeTier(state.userTier) === "starter"
       ? "starter"
       : hasPaidAccess
         ? normalizeTier(state.userTier)
