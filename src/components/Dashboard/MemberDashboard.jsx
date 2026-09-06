@@ -2110,6 +2110,16 @@ getStrategy, state.debug.failedRequests]);
       const res = await fetchWithRetry(() => BotAPI.getIntegrationStatus?.(true));
       const data = unwrapData(res);
 
+      let robinhoodStatus = null;
+      try {
+        const robinhoodRes = await fetchWithRetry(() =>
+          BotAPI.getRobinhoodStatus?.(true)
+        );
+        robinhoodStatus = unwrapData(robinhoodRes);
+      } catch (robinhoodErr) {
+        console.warn("Fetch Robinhood status failed:", robinhoodErr);
+      }
+
       const toBool = (value) =>
         value === true || value === "true" || value === 1 || value === "1";
 
@@ -2132,7 +2142,8 @@ getStrategy, state.debug.failedRequests]);
       );
 
       const robinhoodConnected = toBool(
-        data.robinhood_connected ??
+        robinhoodStatus?.connected ??
+          data.robinhood_connected ??
           data.robinhoodConnected ??
           data.robinhood?.connected ??
           Boolean(
@@ -3118,10 +3129,12 @@ getStrategy, state.debug.failedRequests]);
         fetchCandles(), // Load candles early
       ]);
 
-      const [integrationResult, balanceResult] = await Promise.allSettled([
-        BotAPI.getIntegrationStatus?.(true),
-        BotAPI.getExchangeBalance?.(true),
-      ]);
+      const [integrationResult, robinhoodStatusResult, balanceResult] =
+        await Promise.allSettled([
+          BotAPI.getIntegrationStatus?.(true),
+          BotAPI.getRobinhoodStatus?.(true),
+          BotAPI.getExchangeBalance?.(true),
+        ]);
 
       const integrations =
         integrationResult.status === "fulfilled"
@@ -3133,8 +3146,14 @@ getStrategy, state.debug.failedRequests]);
           ? unwrapData(balanceResult.value)
           : {};
 
+      const initialRobinhoodStatus =
+        robinhoodStatusResult.status === "fulfilled"
+          ? unwrapData(robinhoodStatusResult.value)
+          : null;
+
       const robinhoodConnected = Boolean(
-        integrations.robinhood_connected ??
+        initialRobinhoodStatus?.connected ??
+          integrations.robinhood_connected ??
         integrations.robinhoodConnected ??
         integrations.robinhood?.connected ??
         Boolean(
