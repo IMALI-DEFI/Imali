@@ -800,6 +800,17 @@ const getWorkAgentOverview = () =>
     "/api/admin/work-agent/overview"
   );
 
+
+const getWorkAgentSystemSafety = () =>
+  api.get(
+    "/api/admin/work-agent/system-safety"
+  );
+
+const resumeWorkAgentSystemSafety = () =>
+  api.post(
+    "/api/admin/work-agent/system-safety/resume"
+  );
+
 const getWorkAgentConversion = () =>
   api.get(
     "/api/admin/work-agent/conversion"
@@ -962,6 +973,8 @@ const BotAPI = {
 
   // Admin — Work Agent
   getWorkAgentOverview,
+  getWorkAgentSystemSafety,
+  resumeWorkAgentSystemSafety,
   getWorkAgentConversion,
   getWorkAgentOpportunities,
   approveWorkAgentApplication,

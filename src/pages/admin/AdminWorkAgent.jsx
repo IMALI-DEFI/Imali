@@ -351,6 +351,18 @@ export default function AdminWorkAgent() {
   }, [sections]);
 
 
+  const [systemSafety, setSystemSafety] =
+    useState(null);
+
+  const [safetyRefreshing, setSafetyRefreshing] =
+    useState(false);
+
+  const [safetyResuming, setSafetyResuming] =
+    useState(false);
+
+  const [safetyMessage, setSafetyMessage] =
+    useState("");
+
   const [procurementSearch, setProcurementSearch] =
     useState("");
 
@@ -375,7 +387,8 @@ export default function AdminWorkAgent() {
           BotAPI.getProcurementQueue?.()
         ),
         BotAPI.getWorkAgentFollowups?.(),
-        BotAPI.getWorkAgentSecurityRewards?.()
+        BotAPI.getWorkAgentSecurityRewards?.(),
+        BotAPI.getWorkAgentSystemSafety?.()
       ];
 
       const results = await Promise.allSettled(
@@ -388,7 +401,8 @@ export default function AdminWorkAgent() {
         opportunityResult,
         procurementResult,
         followupResult,
-        securityResult
+        securityResult,
+        systemSafetyResult
       ] = results;
 
       if (overviewResult.status === "fulfilled") {
@@ -441,6 +455,14 @@ export default function AdminWorkAgent() {
         );
       }
 
+      if (
+        systemSafetyResult.status === "fulfilled"
+      ) {
+        setSystemSafety(
+          unwrap(systemSafetyResult.value) || null
+        );
+      }
+
       const successful = results.filter(
         (result) => result.status === "fulfilled"
       ).length;
@@ -471,6 +493,99 @@ export default function AdminWorkAgent() {
   useEffect(() => {
     load(false);
   }, [load]);
+
+
+  const verifySystemSafety = useCallback(
+    async () => {
+      setSafetyRefreshing(true);
+      setSafetyMessage("");
+
+      try {
+        const response =
+          await BotAPI.getWorkAgentSystemSafety();
+
+        setSystemSafety(
+          unwrap(response) || null
+        );
+
+        setSafetyMessage(
+          "Safety verification refreshed."
+        );
+      } catch (err) {
+        setSafetyMessage(
+          err?.response?.data?.error ||
+          err?.message ||
+          "Unable to verify system safety."
+        );
+      } finally {
+        setSafetyRefreshing(false);
+      }
+    },
+    []
+  );
+
+  const verifyAndResume = useCallback(
+    async () => {
+      if (!systemSafety?.trading?.newEntriesPaused) {
+        setSafetyMessage(
+          "New entries are already enabled."
+        );
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Verify all safety gates and resume NEW entries only? " +
+        "This does not restart the trading executor."
+      );
+
+      if (!confirmed) return;
+
+      setSafetyResuming(true);
+      setSafetyMessage("");
+
+      try {
+        const response =
+          await BotAPI.resumeWorkAgentSystemSafety();
+
+        const result = unwrap(response);
+
+        setSafetyMessage(
+          result?.message ||
+          "Safe resume completed."
+        );
+
+        const refreshed =
+          await BotAPI.getWorkAgentSystemSafety();
+
+        setSystemSafety(
+          unwrap(refreshed) || null
+        );
+      } catch (err) {
+        const payload = err?.response?.data;
+
+        setSafetyMessage(
+          payload?.data?.message ||
+          payload?.error ||
+          err?.message ||
+          "Safe resume was refused."
+        );
+
+        try {
+          const refreshed =
+            await BotAPI.getWorkAgentSystemSafety();
+
+          setSystemSafety(
+            unwrap(refreshed) || null
+          );
+        } catch {
+          // Keep the last known safety state.
+        }
+      } finally {
+        setSafetyResuming(false);
+      }
+    },
+    [systemSafety]
+  );
 
 
   const filteredProcurement = useMemo(() => {
@@ -1218,6 +1333,227 @@ export default function AdminWorkAgent() {
           }
         />
       </div>
+
+
+      <section
+        className={
+          "wa-system-safety " +
+          (
+            systemSafety?.trading?.newEntriesPaused
+              ? "wa-system-safety-paused"
+              : "wa-system-safety-normal"
+          )
+        }
+      >
+        <div className="wa-system-safety-head">
+          <div>
+            <div className="wa-system-safety-title">
+              <FaShieldAlt />
+              <span>Trading System Safety</span>
+            </div>
+
+            <div className="wa-system-safety-subtitle">
+              Watchdog protection, reconciliation and
+              guarded new-entry control
+            </div>
+          </div>
+
+          <div
+            className={
+              "wa-safety-status " +
+              (
+                systemSafety?.trading?.newEntriesPaused
+                  ? "wa-safety-status-paused"
+                  : "wa-safety-status-normal"
+              )
+            }
+          >
+            {systemSafety?.status || "CHECKING"}
+          </div>
+        </div>
+
+        <div className="wa-safety-grid">
+          <div className="wa-safety-item">
+            <span>New Entries</span>
+            <strong>
+              {systemSafety?.trading?.newEntriesPaused
+                ? "PAUSED"
+                : "ENABLED"}
+            </strong>
+          </div>
+
+          <div className="wa-safety-item">
+            <span>Existing Exits</span>
+            <strong>
+              {systemSafety?.trading?.exitsEnabled
+                ? "ENABLED"
+                : "CHECK"}
+            </strong>
+          </div>
+
+          <div className="wa-safety-item">
+            <span>Reconciliation</span>
+            <strong>
+              {systemSafety?.trading?.reconciliationEnabled
+                ? "ENABLED"
+                : "CHECK"}
+            </strong>
+          </div>
+
+          <div className="wa-safety-item">
+            <span>Executor</span>
+            <strong>
+              {systemSafety?.executor?.active
+                ? "ACTIVE"
+                : "CHECK"}
+            </strong>
+            {systemSafety?.executor?.pid ? (
+              <small>
+                PID {systemSafety.executor.pid}
+              </small>
+            ) : null}
+          </div>
+
+          <div className="wa-safety-item">
+            <span>Watchdog</span>
+            <strong>
+              {systemSafety?.watchdog?.active
+                ? "ACTIVE"
+                : "CHECK"}
+            </strong>
+            {systemSafety?.watchdog?.pid ? (
+              <small>
+                PID {systemSafety.watchdog.pid}
+              </small>
+            ) : null}
+          </div>
+
+          <div className="wa-safety-item">
+            <span>Root Disk</span>
+            <strong>
+              {systemSafety?.disk?.percent ??
+               systemSafety?.diskPercent ??
+               "—"}
+              {(
+                systemSafety?.disk?.percent ??
+                systemSafety?.diskPercent
+              ) !== undefined &&
+              (
+                systemSafety?.disk?.percent ??
+                systemSafety?.diskPercent
+              ) !== null
+                ? "%"
+                : ""}
+            </strong>
+            <small>Resume requires &lt;85%</small>
+          </div>
+        </div>
+
+        {systemSafety?.trading?.newEntriesPaused ? (
+          <div className="wa-safety-pause-detail">
+            <FaExclamationTriangle />
+
+            <div>
+              <strong>
+                New entries are safety-paused
+              </strong>
+
+              <span>
+                Existing position management, exits and
+                reconciliation remain enabled.
+              </span>
+
+              {systemSafety?.trading?.pause?.component ? (
+                <span>
+                  Component:{" "}
+                  {systemSafety.trading.pause.component}
+                </span>
+              ) : null}
+
+              {systemSafety?.trading?.pause?.reason ? (
+                <span>
+                  Reason:{" "}
+                  {systemSafety.trading.pause.reason}
+                </span>
+              ) : null}
+
+              {systemSafety?.trading?.pause?.failures ? (
+                <span>
+                  Failures:{" "}
+                  {systemSafety.trading.pause.failures}
+                  {systemSafety?.trading?.pause
+                    ?.window_seconds
+                    ? ` in ${
+                        systemSafety.trading.pause
+                          .window_seconds
+                      } seconds`
+                    : ""}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="wa-safety-ok">
+            <FaShieldAlt />
+            <span>
+              New entries are enabled. Safety monitoring
+              remains active.
+            </span>
+          </div>
+        )}
+
+        <div className="wa-safety-actions">
+          <button
+            type="button"
+            className="wa-btn wa-btn-secondary"
+            onClick={verifySystemSafety}
+            disabled={
+              safetyRefreshing ||
+              safetyResuming
+            }
+          >
+            <FaRedo
+              className={
+                safetyRefreshing
+                  ? "wa-rotating"
+                  : ""
+              }
+            />
+            {safetyRefreshing
+              ? "Verifying"
+              : "Verify Safety"}
+          </button>
+
+          {systemSafety?.trading?.newEntriesPaused ? (
+            <button
+              type="button"
+              className="wa-btn wa-btn-primary"
+              onClick={verifyAndResume}
+              disabled={
+                safetyRefreshing ||
+                safetyResuming
+              }
+            >
+              <FaShieldAlt />
+              {safetyResuming
+                ? "Verifying & Resuming"
+                : "Verify & Resume"}
+            </button>
+          ) : null}
+        </div>
+
+        {safetyMessage ? (
+          <div className="wa-safety-message">
+            {safetyMessage}
+          </div>
+        ) : null}
+
+        <div className="wa-safety-footnote">
+          Resume is fail-closed. The admin panel cannot
+          directly restart the trading executor or directly
+          remove the safety pause.
+        </div>
+      </section>
 
 
       <Collapsible
