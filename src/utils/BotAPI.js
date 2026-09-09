@@ -822,6 +822,28 @@ const getWorkAgentOpportunities = (params = {}) =>
     { params }
   );
 
+const getWorkAgentHumanAttention = () =>
+  api.get(
+    "/api/admin/work-agent/human-attention"
+  );
+
+
+const actionWorkAgentHumanAttention = (
+  id,
+  issueType,
+  action,
+  note = ""
+) =>
+  api.post(
+    `/api/admin/work-agent/human-attention/${id}/action`,
+    {
+      issue_type: issueType,
+      action,
+      note
+    }
+  );
+
+
 const approveWorkAgentApplication = (id) =>
   api.post(
     `/api/admin/work-agent/opportunities/${id}/approve-application`
@@ -977,6 +999,8 @@ const BotAPI = {
   resumeWorkAgentSystemSafety,
   getWorkAgentConversion,
   getWorkAgentOpportunities,
+  getWorkAgentHumanAttention,
+  actionWorkAgentHumanAttention,
   approveWorkAgentApplication,
   markWorkAgentApplied,
   approveWorkAgentOutreach,

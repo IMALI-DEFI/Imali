@@ -326,6 +326,8 @@ export default function AdminWorkAgent() {
   const [conversion, setConversion] = useState({});
 
   const [opportunities, setOpportunities] = useState([]);
+  const [humanAttention, setHumanAttention] = useState([]);
+  const [attentionActionId, setAttentionActionId] = useState(null);
   const [procurement, setProcurement] = useState([]);
   const [followups, setFollowups] = useState([]);
   const [securityRewards, setSecurityRewards] = useState([]);
@@ -382,6 +384,7 @@ export default function AdminWorkAgent() {
         BotAPI.getWorkAgentOpportunities?.({
           limit: 500
         }),
+        BotAPI.getWorkAgentHumanAttention?.(),
         (
           BotAPI.getWorkAgentProcurement?.() ||
           BotAPI.getProcurementQueue?.()
@@ -399,6 +402,7 @@ export default function AdminWorkAgent() {
         overviewResult,
         conversionResult,
         opportunityResult,
+        humanAttentionResult,
         procurementResult,
         followupResult,
         securityResult,
@@ -426,6 +430,16 @@ export default function AdminWorkAgent() {
 
         setOpportunities(
           asArray(payload)
+        );
+      }
+
+      if (
+        humanAttentionResult.status === "fulfilled"
+      ) {
+        setHumanAttention(
+          asArray(
+            unwrap(humanAttentionResult.value)
+          )
         );
       }
 
@@ -988,50 +1002,50 @@ export default function AdminWorkAgent() {
   );
 
 
-  const attentionRows = useMemo(() => {
-    return opportunities
-      .filter((row) => {
-        const status = getOpportunityStatus(row);
+  const attentionRows = useMemo(
+    () => humanAttention.slice(0, 100),
+    [humanAttention]
+  );
 
-        const needsReview =
-          row?.needs_review === true ||
-          normalizeStatus(
-            row?.compliance_status
-          ) === "review" ||
-          [
-            "needs_review",
-            "human_review",
-            "eligibility_review",
-            "target_review",
-            "final_ready",
-            "ready"
-          ].includes(status);
 
-        return needsReview;
-      })
-      .sort((a, b) => {
-        const aScore = Number(
-          pick(
-            a?.priority,
-            a?.score,
-            a?.personal_fit,
-            0
-          )
+  const handleAttentionAction = useCallback(
+    async (row, action) => {
+      if (!row?.id || !row?.issue_type) return;
+
+      if (action === "submitted") {
+        const confirmed = window.confirm(
+          "Confirm that you actually submitted this application to the employer. This will record it as a real submitted application."
         );
 
-        const bScore = Number(
-          pick(
-            b?.priority,
-            b?.score,
-            b?.personal_fit,
-            0
-          )
+        if (!confirmed) return;
+      }
+
+      setAttentionActionId(row.id);
+      setError("");
+
+      try {
+        await BotAPI.actionWorkAgentHumanAttention?.(
+          row.id,
+          row.issue_type,
+          action,
+          action === "submitted"
+            ? "Human confirmed employer submission from Work Agent admin."
+            : ""
         );
 
-        return bScore - aScore;
-      })
-      .slice(0, 30);
-  }, [opportunities]);
+        await load(true);
+      } catch (err) {
+        setError(
+          err?.response?.data?.error ||
+          err?.message ||
+          "Unable to update Human Attention item."
+        );
+      } finally {
+        setAttentionActionId(null);
+      }
+    },
+    [load]
+  );
 
 
   const laneOptions = useMemo(() => {
@@ -1691,7 +1705,7 @@ export default function AdminWorkAgent() {
       <Collapsible
         id="attention"
         title="Human Attention"
-        subtitle="Items most likely to require your review or approval."
+        subtitle="Real blockers and decisions that require you before IMALI can continue."
         icon={<FaUserCheck />}
         badge={attentionRows.length}
         sections={sections}
@@ -1699,49 +1713,113 @@ export default function AdminWorkAgent() {
       >
         {attentionRows.length === 0 ? (
           <EmptyState>
-            Nothing currently flagged for
-            immediate human attention.
+            Nothing currently requires human attention.
           </EmptyState>
         ) : (
           <div className="wa-card-list">
-            {attentionRows.map((row) => (
-              <article
-                className="wa-opportunity-card"
-                key={row.id}
-              >
-                <div>
-                  <div className="wa-card-title">
-                    {row.title ||
-                      "Untitled opportunity"}
+            {attentionRows.map((row) => {
+              const busy = attentionActionId === row.id;
+
+              return (
+                <article
+                  className="wa-opportunity-card"
+                  key={`${row.id}-${row.issue_type}`}
+                >
+                  <div>
+                    <div className="wa-card-title">
+                      {row.title || "Untitled opportunity"}
+                    </div>
+
+                    <div className="wa-card-company">
+                      {row.company || "Unknown source"}
+                    </div>
+
+                    <div className="wa-card-meta">
+                      <StatusBadge tone="attention">
+                        {(row.issue_title || row.issue_type || "review")
+                          .replace(/_/g, " ")}
+                      </StatusBadge>
+
+                      <span>
+                        {row.revenue_path || "opportunity"}
+                      </span>
+
+                      {getRevenue(row) > 0 ? (
+                        <strong>{money(getRevenue(row))}</strong>
+                      ) : null}
+                    </div>
+
+                    {row.issue_summary ? (
+                      <p className="wa-card-description">
+                        {row.issue_summary}
+                      </p>
+                    ) : null}
+
+                    {row.next_action ? (
+                      <p className="wa-card-description">
+                        <strong>Next:</strong> {row.next_action}
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div className="wa-card-company">
-                    {row.company ||
-                      row.source ||
-                      "Unknown source"}
+                  <div className="wa-card-actions">
+                    {row.target_url ? (
+                      <a
+                        className="wa-clear-button"
+                        href={row.target_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Application
+                      </a>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      className="wa-clear-button"
+                      disabled={busy}
+                      onClick={() =>
+                        handleAttentionAction(row, "reviewed")
+                      }
+                    >
+                      Reviewed
+                    </button>
+
+                    <button
+                      type="button"
+                      className="wa-clear-button"
+                      disabled={busy}
+                      onClick={() =>
+                        handleAttentionAction(row, "retry")
+                      }
+                    >
+                      Retry
+                    </button>
+
+                    {[
+                      "captcha",
+                      "authentication",
+                      "human_questions",
+                      "submission_confirmation"
+                    ].includes(row.issue_type) ? (
+                      <button
+                        type="button"
+                        className="wa-clear-button"
+                        disabled={busy}
+                        onClick={() =>
+                          handleAttentionAction(
+                            row,
+                            "submitted"
+                          )
+                        }
+                      >
+                        {busy ? "Saving..." : "Mark Submitted"}
+                      </button>
+                    ) : null}
                   </div>
-                </div>
-
-                <div className="wa-card-meta">
-                  <StatusBadge tone="attention">
-                    {getOpportunityStatus(row)
-                      .replace(/_/g, " ")}
-                  </StatusBadge>
-
-                  <span>
-                    {row.revenue_path ||
-                      row.opportunity_type ||
-                      "opportunity"}
-                  </span>
-
-                  {getRevenue(row) > 0 ? (
-                    <strong>
-                      {money(getRevenue(row))}
-                    </strong>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </Collapsible>
