@@ -830,7 +830,7 @@ export default function AdminWorkAgent() {
         )
       )
     };
-  }, [overview, opportunities]);
+  }, [overview, opportunities, conversion]);
 
 
   const recovery = useMemo(() => {
@@ -1790,7 +1790,7 @@ export default function AdminWorkAgent() {
         title="Government & Contractor Pipeline"
         subtitle="Government opportunities, subcontracting and RFQ work."
         icon={<FaBuilding />}
-        badge={procurement.length}
+        badge={filteredProcurement.length}
         sections={sections}
         setSections={setSections}
       >
@@ -1828,7 +1828,7 @@ export default function AdminWorkAgent() {
           <MetricCard
             icon={<FaGlobeAmericas />}
             label="Procurement Records"
-            value={num(procurement.length)}
+            value={num(filteredProcurement.length)}
           />
 
           <MetricCard
