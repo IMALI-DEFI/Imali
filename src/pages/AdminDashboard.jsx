@@ -156,7 +156,7 @@ const AdminDashboard = () => {
             </Link>
             
             {/* Social */}
-            <Link to="/admin/social" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white/60 hover:bg-white/5 hover:text-white transition">
+            <Link to="/admin/social-connections" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white/60 hover:bg-white/5 hover:text-white transition">
               <i className="fas fa-share-alt w-5"></i>
               <span>Social Manager</span>
             </Link>

@@ -71,7 +71,7 @@ const DashboardOverview = lazy(() => import("../admin/DashboardOverview.jsx"));
 const TokenManagement = lazy(() => import("../admin/TokenManagement.jsx"));
 const FeeDistributor = lazy(() => import("../admin/FeeDistributor.jsx"));
 const ReferralAnalytics = lazy(() => import("../admin/ReferralAnalytics.jsx"));
-const SocialManager = lazy(() => import("../admin/SocialManager.jsx"));
+const SocialManager = lazy(() => import("../pages/admin/SocialConnectionsPage.jsx"));
 const AccessControl = lazy(() => import("../admin/AccessControl.jsx"));
 const UserManagement = lazy(() => import("../admin/UserManagement.jsx"));
 const PromoManagement = lazy(() => import("../admin/PromoManagement.jsx"));

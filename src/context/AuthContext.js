@@ -226,7 +226,7 @@ const getTrialDaysRemaining = (trialEndsAt) => {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 };
 
-const apiFetch = async (path, options = {}) => {
+export const apiFetch = async (path, options = {}) => {
   const token = getToken();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
