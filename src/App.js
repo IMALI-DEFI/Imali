@@ -23,6 +23,8 @@ import AboutUs from "./pages/AboutUs";
 import HowItWorks from "./pages/HowItWorks";
 import Support from "./pages/Support";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import DataDeletion from "./pages/DataDeletion";
+import SocialConnectionsPage from "./pages/admin/SocialConnectionsPage";
 import TermsOfService from "./pages/TermsOfService";
 import FundingGuide from "./pages/FundingGuide";
 import PublicDashboard from "./pages/PublicDashboard";
@@ -245,6 +247,7 @@ function MainAppRoutes() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/support" element={<Support />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
@@ -363,6 +366,7 @@ function MainAppRoutes() {
             <Route path="/admin/referral" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/email" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/newsletter" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/social-connections" element={<RequireAdmin><SocialConnectionsPage /></RequireAdmin>} />
             <Route path="/admin/social" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/promo-codes" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/system-health" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
