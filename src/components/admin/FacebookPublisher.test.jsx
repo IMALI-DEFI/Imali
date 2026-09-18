@@ -1,0 +1,31 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {act,Simulate} from 'react-dom/test-utils';
+import FacebookPublisher,{INSTAGRAM_DESTINATIONS} from './FacebookPublisher';
+let host,root;
+beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;Object.defineProperty(global,'crypto',{configurable:true,value:{randomUUID:()=> 'ui-test-1234567890'}});host=document.createElement('div');document.body.appendChild(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());host.remove();});
+const cfg={success:true,publishing_enabled:false,configured:true,page_id:'123'};
+test('disabled Facebook records a dry run through authenticated API',async()=>{
+ const api={get:jest.fn().mockResolvedValue(cfg),post:jest.fn().mockResolvedValue({success:true,data:{status:'disabled'}})};
+ await act(async()=>root.render(<FacebookPublisher api={api} onChanged={async()=>{}}/>));
+ expect(host.textContent).toContain('Facebook publishing is disabled');
+ act(()=>{Simulate.change(host.querySelector('textarea'),{target:{value:'Approved update'}});});
+ act(()=>{Simulate.change(host.querySelector('input[type=checkbox]'),{target:{checked:true}});});
+ const button=[...host.querySelectorAll('button')].find(b=>b.textContent==='Record Facebook dry run');
+ await act(async()=>Simulate.click(button));
+ expect(api.post.mock.calls[0][0]).toBe('/api/admin/social/imali/facebook/posts');
+ expect(host.textContent).toContain('Facebook: disabled');
+});
+test('both destinations retain existing Instagram endpoint and routing',async()=>{
+ const api={get:jest.fn().mockResolvedValue(cfg),post:jest.fn().mockResolvedValue({success:true,data:{status:'disabled'}})};
+ await act(async()=>root.render(<FacebookPublisher api={api} onChanged={async()=>{}} connections={[{brand:'imali',platform:'instagram',account_name:'imali_defi',connection_status:'CONNECTED',account_id:'456'}]}/>));
+ act(()=>Simulate.change(host.querySelector('select'),{target:{value:'both'}}));
+ act(()=>Simulate.change(host.querySelector('textarea'),{target:{value:'Approved caption'}}));
+ act(()=>Simulate.change(host.querySelector('input[type=url]'),{target:{value:'https://imali-defi.com/image.jpg'}}));
+ act(()=>Simulate.change(host.querySelector('input[type=checkbox]'),{target:{checked:true}}));
+ const button=[...host.querySelectorAll('button')].find(b=>b.textContent==='Submit approved content');
+ await act(async()=>Simulate.click(button));
+ expect(api.post.mock.calls.map(c=>c[0])).toEqual(['/api/admin/social/imali/facebook/posts','/api/admin/social/imali/instagram/media-tests']);
+ expect(INSTAGRAM_DESTINATIONS).toEqual({sports_jedi:'sportsjedi',imali:'imali_defi',founder:'whoisblackgriff',personal:'whoisblackgriff'});
+});
