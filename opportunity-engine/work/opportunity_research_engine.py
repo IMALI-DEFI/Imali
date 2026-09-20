@@ -137,11 +137,23 @@ def target(conn,d,alternative=False):
         try:
             final,text,links=fetch(url);seen.append(final)
             if d.get('revenue_path')=='employment':
-                # Use the existing resolver for ATS-specific verification later; a public source is only evidence.
-                ats=[u for u in links if any(h in (urlparse(u).hostname or '') for h in ['greenhouse.io','lever.co','ashbyhq.com','workable.com'])]
-                if ats:
-                    with conn.cursor() as cur:cur.execute('UPDATE developer_opportunities SET application_url=%s WHERE id=%s',(ats[0],d['id']))
-                    conn.commit();return 'progress','Source links to a public application target; verification remains required',{'source':final,'target':ats[0]}
+                from company_job_resolver import normalize
+                def matches_role(body):
+                    normalized=normalize(body)
+                    company=normalize(d.get('company'));title=normalize(d.get('title'))
+                    return bool(company and title) and company in normalized and title in normalized
+                ats_hosts=('greenhouse.io','lever.co','ashbyhq.com','workable.com')
+                def is_ats(u):
+                    parsed=urlparse(u);host=parsed.hostname or ''
+                    return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parsed.path.strip('/').split('/'))>=2
+                verified_target=final if is_ats(final) and matches_role(text) else None
+                for link in [u for u in links if is_ats(u)][:2]:
+                    if verified_target:break
+                    candidate,body,_=fetch(link)
+                    if is_ats(candidate) and matches_role(body):verified_target=candidate
+                if verified_target:
+                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason='Public ATS page corroborates exact company and role',target_quality_checked_at=now() WHERE id=%s",(verified_target,d['id']))
+                    conn.commit();return 'progress','Public application page corroborates company and role; eligibility/package verification follows',{'source':final,'target':verified_target}
                 continue
             h=host_of(final)
             if bad_host(h):
