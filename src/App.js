@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-r
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
+import SocialMediaCenter from './pages/admin/SocialMediaCenter';
 import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -354,7 +355,7 @@ function MainAppRoutes() {
             <Route path="/enterprise-pending" element={<Navigate to="/dashboard" replace />} />
 
             {/* ADMIN - Specific routes first, catch-all last */}
-            <Route path="/admin/dashboard" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/dashboard" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
             <Route path="/admin/users" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/organizations" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/billing" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
@@ -367,7 +368,7 @@ function MainAppRoutes() {
             <Route path="/admin/email" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/newsletter" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/social-connections" element={<RequireAdmin><SocialConnectionsPage /></RequireAdmin>} />
-            <Route path="/admin/social" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/social" element={<RequireAuth><RequireAdmin><SocialMediaCenter /></RequireAdmin></RequireAuth>} />
             <Route path="/admin/promo-codes" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/system-health" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/enterprise" element={<RequireAuth><AdminDashboard /></RequireAuth>} />

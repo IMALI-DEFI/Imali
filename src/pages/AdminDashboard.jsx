@@ -56,7 +56,7 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-[#050816] text-white">
       <div className="flex">
         {/* Sidebar */}
-        <div className="w-64 min-h-screen bg-[#0a0a1a] border-r border-white/5 p-4">
+        <div className="hidden md:block w-64 min-h-screen bg-[#0a0a1a] border-r border-white/5 p-4">
           <div className="mb-8">
             <h2 className="text-lg font-bold text-purple-400">
               <i className="fas fa-cubes mr-2"></i>
@@ -156,9 +156,9 @@ const AdminDashboard = () => {
             </Link>
             
             {/* Social */}
-            <Link to="/admin/social-connections" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white/60 hover:bg-white/5 hover:text-white transition">
+            <Link to="/admin/social" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white/60 hover:bg-white/5 hover:text-white transition">
               <i className="fas fa-share-alt w-5"></i>
-              <span>Social Manager</span>
+              <span>SOCIAL MEDIA CENTER</span>
             </Link>
             
             {/* Promo Codes */}
@@ -182,7 +182,7 @@ const AdminDashboard = () => {
         </div>
         
         {/* Main Content */}
-        <div className="flex-1 p-6">
+        <div className="flex-1 min-w-0 p-4"><div className="flex gap-4 mb-4"><Link to="/admin">← Admin overview</Link><Link to="/admin/social">SOCIAL MEDIA</Link></div>
           <Routes>
             <Route path="/" element={<AdminDashboardHome organization={organization} />} />
             <Route path="/dashboard" element={<AdminDashboardHome organization={organization} />} />
