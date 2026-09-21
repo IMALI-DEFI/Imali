@@ -7,9 +7,11 @@ import React, {
   lazy,
   useMemo,
 } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
+
+import {AttentionBadge} from '../admin/AdminExecutiveOverview';
 
 class TabErrorBoundary extends React.Component {
   constructor(props) {
@@ -67,7 +69,8 @@ const TabLoader = ({ name }) => (
 );
 
 // Existing Admin Components
-const DashboardOverview = lazy(() => import("../admin/DashboardOverview.jsx"));
+const DashboardOverview = lazy(() => import("../admin/AdminExecutiveOverview.jsx"));
+const AdminAttention = lazy(() => import("../admin/AdminExecutiveOverview.jsx").then(m=>({default:m.AdminAttention})));
 const TokenManagement = lazy(() => import("../admin/TokenManagement.jsx"));
 const FeeDistributor = lazy(() => import("../admin/FeeDistributor.jsx"));
 const ReferralAnalytics = lazy(() => import("../admin/ReferralAnalytics.jsx"));
@@ -203,7 +206,7 @@ const adminFetch = async (endpoint, options = {}, retries = 0) => {
   throw lastError || new Error("Request failed");
 };
 
-const TAB_SECTIONS = [
+const EXISTING_SECTIONS = [
   {
     id: "dashboard",
     name: "Dashboard",
@@ -528,6 +531,23 @@ const TAB_SECTIONS = [
   },
 ];
 
+const byKey = Object.fromEntries(EXISTING_SECTIONS.flatMap(s=>s.tabs).map(t=>[t.key,t]));
+byKey.overview.actions=[];
+byKey.social={...byKey.social,label:'Social Media Center',description:'Preview, approve, and track real social posts.',href:'/admin/social',actions:[]};
+byKey['work-agent']={...byKey['work-agent'],label:'Opportunity Control Center'};
+byKey.automation={...byKey.automation,label:'Legacy Automation Jobs',description:'Existing job definitions; delivery receipts are in Social Media Center.'};
+byKey.library={key:'content-library',label:'Content / Campaign Library',emoji:'📝',description:'Existing generated marketing content',href:'/admin/social?status=LIBRARY'};
+byKey.billing={key:'billing',label:'Subscriptions / Billing',emoji:'💳',description:'Existing subscription and billing controls',href:'/admin/billing'};
+byKey.attention={key:'attention',label:'Needs Your Attention',emoji:'🔔',component:AdminAttention,description:'Human decisions and publishing failures',actions:[]};
+const TAB_SECTIONS=[
+{id:'overview',name:'Overview',emoji:'📊',tabs:['overview','attention']},
+{id:'social',name:'SOCIAL MEDIA',emoji:'📱',tabs:['social']},
+{id:'opportunities',name:'Opportunity Engine',emoji:'💼',tabs:['work-agent']},
+{id:'marketing',name:'Marketing',emoji:'📢',tabs:['library','automation','automation-analytics','ga4-analytics','newsletter','autoresponder','promos','referral-partners','referrals','sports-jedi']},
+{id:'trading',name:'Trading',emoji:'📈',tabs:['trades','reports','treasury','token']},
+{id:'customers',name:'Customers',emoji:'👥',tabs:['users','billing','admin-customers','organizations','enterprise-requests','enterprise-analytics','withdrawals','fees']},
+{id:'system',name:'System',emoji:'⚙️',tabs:['health','audit','access']},
+].map(s=>({...s,tabs:s.tabs.map(k=>byKey[k])}));
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
 
 const SectionBadge = ({ emoji, name, description }) => (
@@ -783,9 +803,10 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
+    navigate(`/admin?tab=${encodeURIComponent(tabKey)}`);
     setMobileMenuOpen(false);
     setTabResetKey(0);
-  }, []);
+  }, [navigate]);
 
   // Handle URL tab parameter
   useEffect(() => {
@@ -963,6 +984,7 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-3">
             <button
+              aria-label="Open admin navigation" aria-expanded={mobileMenuOpen}
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               className="rounded-xl border border-white/10 bg-white/5 p-2 transition hover:bg-white/10 lg:hidden"
             >
@@ -991,7 +1013,7 @@ export default function AdminPanel({ forceOwner = false }) {
                   </span>
                 )}
                 <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">
-                  💰 ${formatNumber(stats.totalPnl).toFixed(2)}
+                  Trading P&L ${formatNumber(stats.totalPnl).toFixed(2)}
                 </span>
                 {stats.ga4ActiveUsers > 0 && (
                   <span className="rounded-full bg-cyan-500/15 px-2.5 py-1 text-xs text-cyan-300">
@@ -1010,6 +1032,7 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       </header>
 
+      <div className="flex flex-wrap gap-3 border-b border-white/10 bg-gray-950 px-4 py-3"><AttentionBadge/><Link to="/admin/social" className="rounded-xl bg-emerald-500/15 px-3 py-2 text-sm text-emerald-200">SOCIAL MEDIA →</Link></div>
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
@@ -1104,7 +1127,7 @@ export default function AdminPanel({ forceOwner = false }) {
         </aside>
 
         <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
-          {stats && (
+          {false && stats && (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
                 <div className="text-lg font-bold text-blue-300">{formatNumber(stats.totalUsers)}</div>

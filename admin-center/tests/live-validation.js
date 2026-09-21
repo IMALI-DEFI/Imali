@@ -1,0 +1,37 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('fs'),crypto=require('crypto'),cp=require('child_process');
+const app='/home/opc/imali-sniper',stage='/tmp/imali-admin-center-20260920';
+const peer=process.env.TEST_DB_PEER==='1';const env=peer?{}:require(app+'/node_modules/dotenv').parse(fs.readFileSync('/etc/imali-marketing.env'));const {Pool}=require(app+'/node_modules/pg');const db=new Pool(peer?{host:'/var/run/postgresql',user:'postgres',database:'imali'}:{connectionString:env.DATABASE_URL});
+const F=require(app+'/social/facebook-service');
+if(!peer){const pid=cp.execFileSync('systemctl',['show','user-api.service','--property=MainPID','--value'],{encoding:'utf8'}).trim();const vars=Object.fromEntries(fs.readFileSync('/proc/'+pid+'/environ','utf8').split('\0').filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),x.slice(i+1)];}));process.env.CREDENTIALS_DIRECTORY=vars.CREDENTIALS_DIRECTORY;}
+const nativeFetch=fetch;let blocked=0;global.fetch=(u,o={})=>{if((o.method||'GET')!=='GET'){blocked++;throw Error('EXTERNAL_PUBLISH_TEST_FORBIDDEN');}return nativeFetch(u,o);};
+const {createCenter,overview,normalize}=require(stage+'/backend/center');const options=peer?{facebookConfig:()=>({}),getConfig:()=>({})}:{facebookConfig:F.loadConfig,facebookCheck:()=>F.createService().connection(),getConfig:()=>({c:JSON.parse(fs.readFileSync('/etc/imali-social/config.json'))})};
+const digest=rows=>crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+async function checkEngine(){// Existing Opportunity Engine is read through its unmodified router.
+const express=require(app+'/node_modules/express'),serverApp=express();serverApp.use('/engine',require(app+'/routes/opportunity-engine')(db));const server=serverApp.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));try{for(const k of ['summary','health']){const res=await fetch(`http://127.0.0.1:${server.address().port}/engine/${k}`);assert.equal(res.status,200);const body=await res.json();fs.writeFileSync(stage+'/api-engine-'+k+'.json',JSON.stringify(body));if(k==='summary'){const c=body.counts;assert.equal(['AUTO_PROCESSING','ACTION_REQUIRED','BLOCKED_EXTERNAL','DISPOSED','COMPLETED'].reduce((a,k)=>a+c[k],0),c.total);}}}finally{server.close();}
+}
+(async()=>{const client=await db.connect();try{
+const before=(await db.query('SELECT * FROM social_queue_v1 ORDER BY id')).rows;
+const center=createCenter({db,...options});const initial=await center.snapshot();assert(initial.items.some(x=>x.caption));assert.equal(initial.counts.NEEDS_APPROVAL,before.filter(x=>x.state==='DRAFT').length);assert(initial.items.every(x=>x.capability!=='AUTO PUBLISH AVAILABLE'));
+const business=await overview(db);
+if(!peer){fs.writeFileSync(stage+'/api-social.json',JSON.stringify(initial));fs.writeFileSync(stage+'/api-business.json',JSON.stringify(business));}
+if(!peer){await checkEngine();cp.execFileSync('sudo',['-n','-u','postgres','env','TEST_DB_PEER=1','node',stage+'/tests/live-validation.js'],{stdio:'inherit'});return;}
+await client.query('BEGIN');
+await client.query("ALTER TABLE social_connections_v1 DROP CONSTRAINT social_connections_v1_platform_check");await client.query("ALTER TABLE social_connections_v1 ADD CONSTRAINT social_connections_v1_platform_check CHECK(platform IN ('x','facebook','instagram','tiktok','linkedin','youtube','pinterest','telegram','threads'))");
+// Savepoints let the real application transactions execute, while the outer transaction rolls every review back.
+const adapter={query:(...a)=>client.query(...a),connect:async()=>({query:(sql,args)=>client.query(sql==='BEGIN'?'SAVEPOINT review_action':sql==='COMMIT'?'RELEASE SAVEPOINT review_action':sql==='ROLLBACK'?'ROLLBACK TO SAVEPOINT review_action':sql,args),release(){}})};
+const review=createCenter({db:adapter,...options});const id=before.find(x=>x.platform==='facebook').id;
+const get=async()=>normalize((await client.query('SELECT * FROM social_queue_v1 WHERE id=$1',[id])).rows[0]);
+let p=await get();const first=p.revision;await review.change(id,{action:'approve',revision:p.revision},'rollback-validation');p=await get();assert.equal(p.status,'APPROVED');assert.equal(p.backend_state,'DRAFT');await assert.rejects(review.change(id,{action:'reject',revision:first},'rollback-validation'),/POST_CHANGED/);
+const draft={caption:p.caption+'\nReview test — rolled back.',title:p.title,cta:'Review',destination:p.destination||'',hashtags:'#Review',creative:''};await review.change(id,{action:'edit',draft,revision:p.revision},'rollback-validation');p=await get();assert.equal(p.status,'NEEDS_APPROVAL');assert.equal(p.caption,draft.caption);
+await review.change(id,{action:'reject',revision:p.revision},'rollback-validation');p=await get();assert.equal(p.status,'REJECTED');
+await review.change(id,{action:'regenerate',revision:p.revision},'rollback-validation');p=await get();assert.equal(p.status,'NEEDS_APPROVAL');assert(!p.caption.includes('rolled back'));
+await review.change(id,{action:'schedule',revision:p.revision,scheduled_at:new Date(Date.now()+86400000).toISOString()},'rollback-validation');p=await get();assert.equal(p.status,'SCHEDULED');assert.equal(p.backend_state,'DRAFT');assert.equal(p.review.schedule_method,'MANUAL_REMINDER');
+await review.change(id,{action:'manual',revision:p.revision,confirm:true,public_url:'https://example.com/rollback-only'},'rollback-validation');p=await get();assert.equal(p.status,'PUBLISHED');assert.equal(p.publishing_method,'MANUAL');assert.equal(p.backend_state,'DRAFT');
+await assert.rejects(review.change(id,{action:'approve',revision:p.revision},'rollback-validation'),/LOCKED/);
+await client.query("UPDATE social_queue_v1 SET state='POSTING',provider_state='{}' WHERE id=$1",[id]);p=await get();assert.equal(p.status,'FAILED');assert.equal(p.manual_allowed,false);await assert.rejects(review.change(id,{action:'dismiss',revision:p.revision},'rollback-validation'),/LOCKED/);
+await client.query("UPDATE social_queue_v1 SET state='FAILED',error='FACEBOOK_API_REJECTED' WHERE id=$1",[id]);p=await get();await review.change(id,{action:'dismiss',revision:p.revision},'rollback-validation');p=await get();assert.equal(p.status,'DRAFTS');assert.equal(p.error,'FACEBOOK_API_REJECTED');
+const legacy=initial.library.find(x=>x.can_import&&x.platform==='threads');assert(legacy,'Existing Threads package must be exercised');if(legacy){await review.importLegacy(legacy.id,'rollback-validation');await review.importLegacy(legacy.id,'rollback-validation');assert.equal((await client.query("SELECT count(*)::int n FROM social_queue_v1 WHERE content->>'legacy_id'=$1",[legacy.id])).rows[0].n,1);}
+await client.query('ROLLBACK');const after=(await db.query('SELECT * FROM social_queue_v1 ORDER BY id')).rows;assert.equal(digest(before),digest(after));assert.equal(blocked,0);
+console.log(JSON.stringify({passed:true,counts:initial.counts,library:initial.library.length,business,queue_unchanged:true,external_posts:0,checks:['approve','stale revision rejection','edit clears approval','reject','source regeneration','manual planning date','manual publication receipt','published and uncertain outcome guards','failure dismissal retains error','idempotent legacy import','real PostgreSQL rollback','Opportunity Engine summary partition','Opportunity Engine health']}));
+}finally{await client.query('ROLLBACK');client.release();await db.end();}})().catch(e=>{console.error(e.stack);process.exitCode=1;});
