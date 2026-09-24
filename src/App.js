@@ -3,6 +3,7 @@ import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import DashboardErrorBoundary from "./components/Dashboard/DashboardErrorBoundary";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import SocialMediaCenter from './pages/admin/SocialMediaCenter';
 import AdminPanel from "./components/AdminPanel";
@@ -81,7 +82,7 @@ class AppErrorBoundary extends React.Component {
     return { hasError: true, error }; 
   }
   componentDidCatch(error, info) { 
-    console.error("[AppErrorBoundary]", error, info); 
+    console.error("[AppErrorBoundary] Rendering failed; recovery screen displayed.");
   }
   render() {
     if (this.state.hasError) {
@@ -302,9 +303,11 @@ function MainAppRoutes() {
 
             {/* DASHBOARD - MAIN MEMBER DASHBOARD */}
             <Route path="/dashboard" element={
-              <ProtectedRoute requirePaid={false} requireActivation={false}>
-                <MemberDashboard />
-              </ProtectedRoute>
+              <DashboardErrorBoundary>
+                <ProtectedRoute requirePaid={false} requireActivation={false}>
+                  <MemberDashboard />
+                </ProtectedRoute>
+              </DashboardErrorBoundary>
             } />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 

@@ -36,7 +36,13 @@ if (missingRequired.length) {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-export const firebaseAuth = getAuth(app);
+// An unavailable optional Google provider must not crash email login/session recovery.
+let initializedAuth = null;
+if (!missingRequired.length) {
+  try { initializedAuth = getAuth(app); }
+  catch { console.warn('[Firebase] Google sign-in unavailable; email login remains available.'); }
+}
+export const firebaseAuth = initializedAuth;
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
@@ -44,6 +50,7 @@ googleProvider.setCustomParameters({
 });
 
 export async function getGoogleIdToken() {
+  if (!firebaseAuth) throw new Error('Google sign-in is temporarily unavailable. Please sign in with email.');
   const result = await signInWithPopup(firebaseAuth, googleProvider);
   const token = await result.user.getIdToken(true);
 
@@ -54,6 +61,7 @@ export async function getGoogleIdToken() {
 }
 
 export async function signOutGoogle() {
+  if (!firebaseAuth) return;
   try {
     await firebaseSignOut(firebaseAuth);
   } catch (error) {

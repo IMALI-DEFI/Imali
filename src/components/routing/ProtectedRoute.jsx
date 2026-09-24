@@ -1,5 +1,6 @@
 // imali/Frontend/src/components/routing/ProtectedRoute.jsx
 import React from "react";
+import {DashboardRecovery} from "../Dashboard/DashboardErrorBoundary";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -33,6 +34,11 @@ export default function ProtectedRoute({
   } = auth;
 
   if (loading) return <Spinner />;
+
+  if (auth.error) return <DashboardRecovery
+    message={auth.error === 'ACCOUNT_ACCESS_DENIED' ? 'Your account does not have access. Review your plan or contact support.' : 'We could not verify your account. Please try again.'}
+    onRetry={() => auth.loadUser(true)}
+  />;
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;

@@ -1,0 +1,11 @@
+import axios from 'axios';
+import BotAPI from '../utils/BotAPI';
+jest.mock('axios',()=>({create:jest.fn(()=>({interceptors:{request:{use:jest.fn()},response:{use:jest.fn()}},get:jest.fn()}))}));
+const client=axios.create.mock.results[0].value;
+const [onSuccess,onFailure]=client.interceptors.response.use.mock.calls[0];
+beforeEach(()=>{localStorage.clear();client.get.mockReset();});
+test('optional null bot rows are discarded',async()=>{client.get.mockResolvedValue({data:{data:[null,{bot_id:'one',exchange:'okx',status:'stopped'}]}});const x=await BotAPI.getTradingBotStatus(true);expect(x.bots).toHaveLength(1);});
+test('null assets are discarded before reaching render code',async()=>{client.get.mockResolvedValue({data:{okx_assets:[null],robinhood_assets:null}});const x=await BotAPI.getExchangeBalance(true);expect(x.okx_assets).toEqual([]);});
+test('cached account data cannot cross authentication sessions',async()=>{localStorage.setItem('imali_token','session-one');client.get.mockResolvedValueOnce({data:{user:{id:'one'}}});expect((await BotAPI.getMe()).id).toBe('one');localStorage.setItem('imali_token','session-two');client.get.mockResolvedValueOnce({data:{user:{id:'two'}}});expect((await BotAPI.getMe()).id).toBe('two');expect(client.get).toHaveBeenCalledTimes(2);});
+test.each([401,403,500])('HTTP %s broadcasts status without credentials or server details',async status=>{localStorage.setItem('imali_token','test-token');const listener=jest.fn();window.addEventListener('imali:request-status',listener);const e=await onFailure({config:{url:'/api/me?private=value',method:'get',headers:{Authorization:'Bearer test-token'}},response:{status,data:{error:'INTERNAL_SECRET'}}}).catch(x=>x);expect(e.status).toBe(status);expect(e.config).toBeUndefined();expect(e.message).not.toContain('INTERNAL_SECRET');expect(listener.mock.calls[0][0].detail).toEqual({status,path:'/api/me',failed:true});window.removeEventListener('imali:request-status',listener);});
+test('malformed successful JSON becomes a visible data error',async()=>{await expect(onSuccess({status:200,config:{method:'get',url:'/api/exchanges/balance'},data:'<html>bad gateway</html>'})).rejects.toMatchObject({status:502});});

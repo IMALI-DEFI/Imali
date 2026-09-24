@@ -105,7 +105,7 @@ const DB_TIER_MAPPING = {
 
 const normalizeTier = (tier) => {
   if (!tier) return "starter";
-  const lowerTier = tier.toLowerCase();
+  const lowerTier = typeof tier === "string" ? tier.toLowerCase() : "starter";
   
   // Map database tiers to frontend tiers
   if (DB_TIER_MAPPING[lowerTier]) {
@@ -121,7 +121,8 @@ const normalizeTier = (tier) => {
 };
 
 const normalizeUser = (userData) => {
-  if (!userData || (!userData.id && !userData.email)) return null;
+  if (!userData || typeof userData !== 'object' || Array.isArray(userData) ||
+      (!['string', 'number'].includes(typeof userData.id) && typeof userData.email !== 'string')) return null;
 
   const rawTier = userData.tier || "starter";
   const tier = normalizeTier(rawTier);
@@ -129,9 +130,9 @@ const normalizeUser = (userData) => {
 
   return {
     id: userData.id || null,
-    email: userData.email || null,
-    first_name: userData.first_name || userData.firstName || null,
-    last_name: userData.last_name || userData.lastName || null,
+    email: typeof (userData.email) === "string" ? (userData.email) : null,
+    first_name: typeof (userData.first_name || userData.firstName) === "string" ? (userData.first_name || userData.firstName) : null,
+    last_name: typeof (userData.last_name || userData.lastName) === "string" ? (userData.last_name || userData.lastName) : null,
     profile_picture: userData.profile_picture || userData.photoURL || null,
     email_verified: normalizeBoolean(userData.email_verified),
     auth_provider: userData.auth_provider || "local",
@@ -164,7 +165,7 @@ const normalizeUser = (userData) => {
     wallet_verified: normalizeBoolean(userData.wallet_verified),
     trial_status: userData.trial_status || "trial",
     trial_ends_at: userData.trial_ends_at || null,
-    subscription_status: userData.subscription_status || "trial",
+    subscription_status: typeof userData.subscription_status === "string" ? userData.subscription_status : "inactive",
     // Display fields
     displayName: tierInfo.displayName,
     tierBadge: tierInfo.badge,
@@ -229,25 +230,38 @@ const getTrialDaysRemaining = (trialEndsAt) => {
 export const apiFetch = async (path, options = {}) => {
   const token = getToken();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-
-  const contentType = response.headers.get("content-type") || "";
-  const rawText = await response.text();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, {once:true});
+  if (options.signal?.aborted) abort();
+  const timer = setTimeout(abort, 15000);
+  let response, rawText, contentType;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+    contentType = response.headers.get("content-type") || "";
+    rawText = await response.text();
+  } catch {
+    throw new Error('Account request could not complete. Please try again.');
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
+  }
 
   let data = null;
   if (contentType.includes("application/json") && rawText) {
     try {
       data = JSON.parse(rawText);
     } catch {
-      throw new Error(`Invalid JSON response from ${path}`);
+      if (response.ok) throw new Error('Account response could not be read. Please try again.');
     }
   }
 
@@ -268,7 +282,7 @@ export const apiFetch = async (path, options = {}) => {
         safeStorageRemove(USER_KEY);
         safeStorageRemove(ACTIVATION_KEY);
         safeStorageRemove(REDIRECT_KEY);
-        sessionStorage.clear();
+        try { sessionStorage.clear(); } catch { /* Storage may be unavailable. */ }
         
         if (!window.location.pathname.includes("/login")) {
           window.location.href = "/login?expired=true";
@@ -289,7 +303,7 @@ export const apiFetch = async (path, options = {}) => {
       rawText ||
       `HTTP ${response.status} ${response.statusText}`;
 
-    const error = new Error(message);
+    const error = new Error(response.status >= 500 ? 'Account service is temporarily unavailable. Please try again.' : message);
     error.status = response.status;
     error.data = data;
     throw error;
@@ -452,6 +466,8 @@ export function AuthProvider({ children }) {
   const loadUser = useCallback(
     async (skipCache = false) => {
       const token = getToken();
+      setLoading(true);
+      setError(null);
 
       if (!token) {
         clearAuth();
@@ -467,12 +483,7 @@ export function AuthProvider({ children }) {
         const userData = data?.data?.user || data?.user || data?.data || data;
         const normalizedUser = persistUser(userData);
 
-        if (!normalizedUser) {
-          clearAuth();
-          setLoading(false);
-          setIsInitialized(true);
-          return null;
-        }
+        if (!normalizedUser) throw new Error('Account response is incomplete. Please try again.');
 
         setError(null);
         
@@ -489,12 +500,12 @@ export function AuthProvider({ children }) {
         
         return normalizedUser;
       } catch (err) {
-        console.error("[Auth] loadUser failed:", err.message);
+        console.warn("[Auth] Account verification failed", {status: err.status || 0});
 
         if (err.status === 401) {
           clearAuth();
         } else {
-          setError(err.message || "Failed to load user");
+          setError(err.status === 403 ? "ACCOUNT_ACCESS_DENIED" : "Account could not load. Please try again.");
         }
 
         setLoading(false);

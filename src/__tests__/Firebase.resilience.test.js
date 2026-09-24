@@ -1,0 +1,3 @@
+jest.mock('firebase/app',()=>({getApps:()=>[],initializeApp:()=>({}),getApp:()=>({})}));
+jest.mock('firebase/auth',()=>({getAuth:jest.fn(),GoogleAuthProvider:class {setCustomParameters(){}},signInWithPopup:jest.fn(),signOut:jest.fn()}));
+test('missing optional Google configuration does not prevent login module from loading',async()=>{const warning=jest.spyOn(console,'warn').mockImplementation(()=>{});const {firebaseAuth,getGoogleIdToken,signOutGoogle}=require('../firebase');expect(firebaseAuth).toBeNull();await expect(getGoogleIdToken()).rejects.toThrow('Please sign in with email');await expect(signOutGoogle()).resolves.toBeUndefined();warning.mockRestore();});
