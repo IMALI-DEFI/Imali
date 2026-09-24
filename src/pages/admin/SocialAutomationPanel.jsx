@@ -11,7 +11,9 @@ const title=x=>({
   nfl:'NFL',
   cfb:'College Football',
   instagram:'Instagram',
-  facebook:'Facebook'
+  facebook:'Facebook',
+  threads:'Threads',
+  player_parlay:'Player props · high risk / longshot'
 }[x]||x);
 
 export default function SocialAutomationPanel(){
@@ -81,7 +83,7 @@ export default function SocialAutomationPanel(){
 
       setNotice(
         `${title(row.brand)} ${title(row.content_type)} settings saved. `+
-        'This does not start the scheduler or publish anything.'
+        'The active scheduler will use these settings for eligible slots.'
       );
       await load();
     }catch(e){
@@ -91,16 +93,16 @@ export default function SocialAutomationPanel(){
     }
   };
 
+  async function generate(row){setBusy('generate');setError('');try{const r=await apiFetch(`${API}/generate`,{method:'POST',body:JSON.stringify({brand:row.brand,platform:row.platform,content_type:row.content_type,window:row.preview_window||row.posting_windows.split(',')[0].trim()})});setNotice(`Slot ${r.run?.status||'not generated'}: ${r.run?.details?.reason||r.run?.details?.error||'Open its preview below. Repeated requests reuse the same slot.'}`);await load();}catch(e){setError(e.message)}finally{setBusy('')}}
   const settings=Object.entries(drafts);
 
   return (
-    <section className="sm-automation">
+    <details className="sm-automation"><summary>Social automation · settings &amp; activity</summary>
       <div className="sm-section-title">
         <div>
           <h2>Social Automation</h2>
           <p className="sm-muted">
-            Configure planned posting frequency. Scheduler and automatic
-            publishing remain disabled until separately activated.
+            Live scheduler and worker status comes from the server. Slots publish only when qualification and destination requirements pass.
           </p>
         </div>
         <button onClick={load}>Refresh automation</button>
@@ -116,6 +118,7 @@ export default function SocialAutomationPanel(){
         </span>
       </div>
 
+      {data?.stats&&<div className="sm-automation-state">{Object.entries(data.stats).map(([k,v])=><span key={k}>{k.replace(/_/g,' ')}: <b>{v}</b></span>)}</div>}
       {error&&<p className="sm-error" role="alert">{error}</p>}
       {notice&&<p className="sm-callout" role="status">{notice}</p>}
 
@@ -175,6 +178,8 @@ export default function SocialAutomationPanel(){
                     Require qualified signal
                   </label>
 
+                  <label>Preview slot<select value={row.preview_window||row.posting_windows.split(',')[0]?.trim()} onChange={e=>change(key,'preview_window',e.target.value)}>{row.posting_windows.split(',').filter(Boolean).map(w=><option key={w} value={w.trim()}>{w.trim()}</option>)}</select></label>
+                  <button disabled={!!busy} onClick={()=>generate(row)}>Generate Now · preview only</button>
                   <button
                     className="sm-primary"
                     disabled={busy===key}
@@ -187,14 +192,14 @@ export default function SocialAutomationPanel(){
             </div>
       }
 
-      {data?.runs?.length>0&&(
+      {data?.recent_runs?.length>0&&(
         <details>
           <summary>Recent automation activity</summary>
           <div className="sm-automation-runs">
-            {data.runs.slice(0,20).map(run=>(
+            {data.recent_runs.slice(0,20).map(run=>(
               <p key={run.id}>
                 <b>{title(run.brand)} · {title(run.content_type)}</b>
-                {' — '}{run.status}
+                {' — '}{run.queue_state||run.status}{run.queue_id&&<> · <a href={`/admin/social?post=${run.queue_id}`}>Preview / approve</a></>}{(run.error||run.details?.error||run.details?.reason)&&<small> · {run.error||run.details?.error||run.details?.reason}</small>}
                 {run.scheduled_for
                   ? ` · ${new Date(run.scheduled_for).toLocaleString()}`
                   : ''}
@@ -208,6 +213,6 @@ export default function SocialAutomationPanel(){
           </div>
         </details>
       )}
-    </section>
+    </details>
   );
 }

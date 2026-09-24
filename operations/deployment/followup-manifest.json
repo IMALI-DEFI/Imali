@@ -1,0 +1,12 @@
+[
+  {
+    "source": "social/center.js",
+    "target": "/home/opc/imali-sniper/social/center.js",
+    "before": "92bcac81cdaabb72cbccba984101b3e1bcf3aed9fa6c45f64f0fbf17138a0a8b"
+  },
+  {
+    "source": "engine/sources/remoteok.py",
+    "target": "/home/opc/imali-work-agent/sources/remoteok.py",
+    "before": "32569ce818b6b8f51b31493c858230022ec72eb4b8e5f850bf7c440cb094286e"
+  }
+]

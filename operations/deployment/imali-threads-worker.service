@@ -1,0 +1,13 @@
+[Unit]
+Description=IMALI Threads durable publisher worker
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=opc
+WorkingDirectory=/home/opc/imali-sniper
+EnvironmentFile=/etc/imali-marketing.env
+ExecStart=/usr/bin/node /home/opc/imali-sniper/marketing/threads-worker.js
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
