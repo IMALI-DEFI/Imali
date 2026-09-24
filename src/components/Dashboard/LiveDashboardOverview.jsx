@@ -11,6 +11,7 @@ import {
   FaSyncAlt,
 } from "react-icons/fa";
 import BotAPI from "../../utils/BotAPI";
+import {recordRows, safeText} from "../../utils/dashboardSafety";
 import CandlestickChart from "../charts/CandlestickChart";
 
 const num = (value) => {
@@ -168,7 +169,7 @@ const ScanCard = ({ scan }) => {
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-black text-white">{symbol}</p>
+          <p className="font-black text-white">{safeText(symbol, "Unknown")}</p>
           <p className="text-xs text-white/35">Current scan</p>
         </div>
 
@@ -293,7 +294,7 @@ export default function LiveDashboardOverview({
       raw = Array.isArray(balance.assets) ? balance.assets : [];
     }
 
-    return raw
+    return recordRows(raw)
       .map((asset) => {
         const symbol =
           asset.ccy ||
@@ -480,7 +481,7 @@ export default function LiveDashboardOverview({
           data.data ||
           [];
 
-        setPositions(Array.isArray(list) ? list : []);
+        setPositions(recordRows(list));
       }
 
       if (results[2]?.status === "fulfilled") {
@@ -546,7 +547,7 @@ export default function LiveDashboardOverview({
           }
         }
 
-        setScans(actualScans.slice(0, 12));
+        setScans(recordRows(actualScans).slice(0, 12));
       }
 
       if (
@@ -565,6 +566,8 @@ export default function LiveDashboardOverview({
           setSavedMaxTradeUsd(current);
         }
       }
+    } catch {
+      // Optional account data must not reject the dashboard startup effect.
     } finally {
       setLoading(false);
     }

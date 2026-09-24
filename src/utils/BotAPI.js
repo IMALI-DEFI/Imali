@@ -1,5 +1,6 @@
 // src/utils/BotAPI.js
 import axios from "axios";
+import {recordRows, storageGet, reportDashboardRequest} from "./dashboardSafety";
 
 const API_BASE = (
   process.env.REACT_APP_API_BASE_URL ||
@@ -19,7 +20,7 @@ const cache = new Map();
 
 const getToken = () => {
   for (const key of TOKEN_KEYS) {
-    const v = localStorage.getItem(key);
+    const v = storageGet(key);
     if (v) return v;
   }
   return null;
@@ -39,6 +40,8 @@ const mode = (v) => String(v || "paper").toLowerCase() === "live" ? "live" : "pa
 const clearCache = () => cache.clear();
 
 const cachedGet = async (key, ttl, fn, skipCache = false) => {
+  // Session-scoped cache prevents data from a previous login being reused.
+  key = `${getToken() || 'signed-out'}:${key}`;
   const hit = cache.get(key);
   if (!skipCache && hit && Date.now() - hit.time < ttl) return hit.value;
   const value = await fn();
@@ -53,10 +56,29 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    const message = error?.response?.data?.error || error?.response?.data?.message || error?.message || "Request failed";
-    return Promise.reject({ ...error, message, status: error?.response?.status });
+  (res) => {
+    if (res.config.method === 'get' && res.data != null && typeof res.data !== 'object') {
+      reportDashboardRequest(502, res.config.url, true);
+      const error = new Error('Dashboard data could not be read. Please retry.');
+      error.status = 502;
+      return Promise.reject(error);
+    }
+    if (res.config.method === 'get') reportDashboardRequest(res.status, res.config.url, false);
+    return res;
+  },
+  (failure) => {
+    const status = failure?.response?.status || 0;
+    const message = status === 401 ? 'Your session has expired. Please sign in again.' :
+      status === 403 ? 'This feature is not available for your account. Review your plan or permissions.' :
+      status >= 500 || status === 0 ? 'Dashboard data is temporarily unavailable. Please retry.' : 'The request could not be completed.';
+    // Do not propagate Axios config/Authorization headers into component logs.
+    const error = new Error(message);
+    error.status = status;
+    if (failure?.config?.method === 'get' &&
+        failure.config.headers?.Authorization === `Bearer ${getToken()}`) {
+      reportDashboardRequest(status, failure.config.url, true);
+    }
+    return Promise.reject(error);
   }
 );
 
@@ -420,7 +442,7 @@ const getExchangeBalance = async (skipCache = false) =>
       okx: money(d.okx ?? d.okx_total),
       okx_total: money(d.okx ?? d.okx_total),
       okx_available_usdt: money(d.okx_available_usdt),
-      okx_assets: Array.isArray(d.okx_assets) ? d.okx_assets : [],
+      okx_assets: recordRows(d.okx_assets),
 
       robinhood: money(d.robinhood ?? d.robinhood_total),
       robinhood_total: money(d.robinhood ?? d.robinhood_total),
@@ -429,9 +451,7 @@ const getExchangeBalance = async (skipCache = false) =>
         d.robinhood_available_usd ??
         d.buying_power
       ),
-      robinhood_assets: Array.isArray(d.robinhood_assets)
-        ? d.robinhood_assets
-        : [],
+      robinhood_assets: recordRows(d.robinhood_assets),
 
       alpaca: money(d.alpaca ?? d.alpaca_total),
       alpaca_total: money(d.alpaca ?? d.alpaca_total),
@@ -439,7 +459,7 @@ const getExchangeBalance = async (skipCache = false) =>
         d.alpaca_available_usd ??
         d.alpaca_available_usdt
       ),
-      alpaca_assets: Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [],
+      alpaca_assets: recordRows(d.alpaca_assets),
 
       total: money(d.total),
     };
@@ -462,7 +482,7 @@ const getTradingBotStatus = async (skipCache = false) =>
   cachedGet("bot_status", 3000, async () => {
     const raw = getData(await api.get("/api/trading/bot/status"));
     const list = Array.isArray(raw) ? raw : Array.isArray(raw.data) ? raw.data : [];
-    const bots = list.map((b) => ({
+    const bots = recordRows(list).map((b) => ({
       ...b,
       botId: b.botId || b.bot_id,
       isRunning: bool(b.isRunning) || String(b.status || "").toLowerCase() === "running",

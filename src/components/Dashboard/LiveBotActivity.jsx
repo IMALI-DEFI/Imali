@@ -18,6 +18,7 @@ import {
 } from "react-icons/fa";
 
 import BotAPI from "../../utils/BotAPI";
+import {recordRows} from "../../utils/dashboardSafety";
 
 const iconFor = (category) => {
   switch (
@@ -102,17 +103,14 @@ export default function LiveBotActivity({
             [];
 
           setActivity(
-            Array.isArray(rows)
-              ? rows
-              : []
+            recordRows(rows)
           );
 
           setUpdatedAt(new Date());
           setError("");
         } catch (err) {
           setError(
-            err?.message ||
-              "Unable to load live activity."
+            "Unable to load live activity. Please retry."
           );
         } finally {
           setLoading(false);

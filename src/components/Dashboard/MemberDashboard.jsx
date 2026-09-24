@@ -14,6 +14,8 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
+import {isRecord, recordRows, safeText, storageGet, storageSet, signOutForRecovery} from "../../utils/dashboardSafety";
+import DashboardErrorBoundary from "./DashboardErrorBoundary";
 import LiveDashboardOverview from "./LiveDashboardOverview";
 import { motion } from "framer-motion";
 import { Doughnut } from "react-chartjs-2";
@@ -296,7 +298,7 @@ const fetchWithRetry = async (
     try {
       return await fn();
     } catch (err) {
-      if (i === retries) throw err;
+      if (i === retries || err?.status === 401 || err?.status === 403 || err?.status === 404) throw err;
       await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
     }
   }
@@ -957,11 +959,7 @@ const KalshiIntelligencePanel = () => {
     loadKalshi(false);
   }, [loadKalshi]);
 
-  const opportunities = Array.isArray(
-    opportunityData?.opportunities
-  )
-    ? opportunityData.opportunities
-    : [];
+  const opportunities = recordRows(opportunityData?.opportunities);
 
   const approved = Number(
     opportunityData?.approved ??
@@ -1364,9 +1362,9 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_ACTIVE_TYPE:
       return { ...state, activeType: action.payload };
     case ACTIONS.SET_STRATEGIES:
-      return { ...state, strategies: action.payload };
+      return { ...state, strategies: recordRows(action.payload).length ? recordRows(action.payload) : FALLBACK_STRATEGIES };
     case ACTIONS.SET_CURRENT_STRATEGY:
-      return { ...state, currentStrategy: action.payload };
+      return { ...state, currentStrategy: isRecord(action.payload) ? action.payload : FALLBACK_STRATEGIES[1] };
     case ACTIONS.SET_BOT_RUNNING:
       return { ...state, botRunning: Boolean(action.payload) };
     case ACTIONS.SET_BOT_MODE:
@@ -1383,10 +1381,10 @@ function dashboardReducer(state, action) {
         usdCashValue: action.payload.usdCashValue ?? state.usdCashValue,
         usdtValue: action.payload.usdtValue ?? state.usdtValue,
         usdtQty: action.payload.usdtQty ?? state.usdtQty,
-        assets: action.payload.assets ?? state.assets,
+        assets: action.payload.assets == null ? state.assets : recordRows(action.payload.assets),
       };
     case ACTIONS.SET_POSITIONS:
-      return { ...state, positions: action.payload };
+      return { ...state, positions: recordRows(action.payload) };
     case ACTIONS.SET_OPEN_POSITIONS_COUNT:
       return { ...state, openPositionsCount: num(action.payload) };
     case ACTIONS.SET_LAST_UPDATED:
@@ -1396,7 +1394,7 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_NOTICE:
       return { ...state, notice: action.payload };
     case ACTIONS.SET_TRADE_FEED:
-      return { ...state, tradeFeed: action.payload };
+      return { ...state, tradeFeed: recordRows(action.payload) };
     case ACTIONS.SET_STATS:
       return { ...state, stats: { ...state.stats, ...action.payload } };
     case ACTIONS.SET_IMALI:
@@ -1410,8 +1408,8 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_CANDLES_SOURCE:
       return { ...state, candlesSource: action.payload };
     case ACTIONS.UPDATE_STRATEGY_PREF:
-      localStorage.setItem("imali_selected_strategy", action.payload.id);
-      return { ...state, currentStrategy: action.payload };
+      storageSet("imali_selected_strategy", action.payload.id);
+      return { ...state, currentStrategy: isRecord(action.payload) ? action.payload : FALLBACK_STRATEGIES[1] };
     case ACTIONS.RESET_STATE:
       return { ...initialState, loading: false };
     default:
@@ -1422,45 +1420,6 @@ function dashboardReducer(state, action) {
 // ============================================================================
 // ERROR BOUNDARY
 // ============================================================================
-
-class DashboardErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error("Dashboard crashed:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center p-8">
-          <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-8 max-w-md text-center">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-2xl font-black mb-2">Dashboard Error</h2>
-            <p className="text-white/60 mb-4">
-              Something went wrong loading your dashboard.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="rounded-2xl bg-cyan-500 px-6 py-3 font-black hover:bg-cyan-400 transition"
-            >
-              Refresh Page
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
 
 // ============================================================================
 // DEBUG PANEL
@@ -1530,7 +1489,7 @@ function DebugPanel({ state }) {
 // MAIN COMPONENT
 // ============================================================================
 
-export default function MemberDashboard() {
+function MemberDashboardContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, activation, logout } = useAuth();
@@ -1540,6 +1499,22 @@ export default function MemberDashboard() {
   const abortControllersRef = useRef([]);
   const intervalsRef = useRef({});
   const [isVisible, setIsVisible] = useState(true);
+  const [requestErrors, setRequestErrors] = useState({});
+  useEffect(() => {
+    const onRequest = ({detail}) => {
+      if (!detail) return;
+      if (detail.failed && detail.status === 401) { signOutForRecovery(); return; }
+      setRequestErrors(previous => {
+        if (!detail.failed && !(detail.path in previous)) return previous;
+        const next = {...previous};
+        if (detail.failed) next[detail.path] = detail.status;
+        else delete next[detail.path];
+        return next;
+      });
+    };
+    window.addEventListener('imali:request-status', onRequest);
+    return () => window.removeEventListener('imali:request-status', onRequest);
+  }, []);
 
   const [signalFeed, setSignalFeed] = useState([]);
   const [signalFeedLoading, setSignalFeedLoading] = useState(true);
@@ -1573,17 +1548,8 @@ export default function MemberDashboard() {
       ""
   ).toLowerCase();
 
-  const hasCardOnFile = Boolean(
-    user?.has_card_on_file ||
-      user?.billing_complete ||
-      activation?.has_card_on_file ||
-      activation?.billing_complete
-  );
-
   const hasPaidAccess = Boolean(
-    hasCardOnFile ||
-      normalizedSubscriptionStatus === "active" ||
-      normalizedSubscriptionStatus === "trial" ||
+    normalizedSubscriptionStatus === "active" ||
       normalizedSubscriptionStatus === "trialing"
   );
 
@@ -1631,9 +1597,7 @@ export default function MemberDashboard() {
         throw new Error(payload?.error || "Signal feed unavailable");
       }
 
-      const signals = Array.isArray(payload?.signals)
-        ? payload.signals
-        : [];
+      const signals = recordRows(payload?.signals);
 
       setSignalFeed(signals);
       setSignalFeedError("");
@@ -1807,7 +1771,8 @@ export default function MemberDashboard() {
     []
   );
 
-  const normalizeAsset = useCallback((asset) => {
+  const normalizeAsset = useCallback((asset = {}) => {
+    asset = isRecord(asset) ? asset : {};
     const symbol = String(
       asset.ccy || asset.currency || asset.symbol || asset.asset || ""
     ).toUpperCase();
@@ -1914,7 +1879,7 @@ export default function MemberDashboard() {
 
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
 
-      const mapped = Object.entries(raw).map(([id, cfg]) => ({
+      const mapped = Object.entries(raw).filter(([, cfg]) => isRecord(cfg)).map(([id, cfg]) => ({
         id,
         name:
           cfg.name ||
@@ -1954,7 +1919,7 @@ export default function MemberDashboard() {
 
       dispatch({ type: ACTIONS.SET_STRATEGIES, payload: mapped });
 
-      const savedStrategyId = localStorage.getItem("imali_selected_strategy");
+      const savedStrategyId = storageGet("imali_selected_strategy");
       let selectedStrategy = null;
 
       try {
@@ -2431,7 +2396,7 @@ getStrategy, state.debug.failedRequests]);
       );
 
       const data = unwrapData(res);
-      const trades = data.trades || data.data || [];
+      const trades = recordRows(data.trades || data.data);
 
       const formattedTrades = trades.slice(0, 20).map((trade) => {
         let tradeType = "Trade";
@@ -2603,7 +2568,7 @@ getStrategy, state.debug.failedRequests]);
   // ============================================================================
 
   const saveStrategyPreference = useCallback(async (strategyId) => {
-    localStorage.setItem("imali_selected_strategy", strategyId);
+    storageSet("imali_selected_strategy", strategyId);
 
     try {
       await BotAPI.updateUserStrategy?.(strategyId);
@@ -3231,7 +3196,18 @@ getStrategy, state.debug.failedRequests]);
       }, 500);
     };
 
-    loadCritical();
+    const startupTimeout = window.setTimeout(() => {
+      if (mountedRef.current) {
+        dispatch({type: ACTIONS.SET_LOADING, payload: false});
+        dispatch({type: ACTIONS.SET_ERROR, payload: 'Some dashboard data could not load. Please retry.'});
+      }
+    }, 20000);
+    loadCritical().catch(() => {
+      if (mountedRef.current) dispatch({type: ACTIONS.SET_ERROR, payload: 'Some dashboard data could not load. Please retry.'});
+    }).finally(() => {
+      window.clearTimeout(startupTimeout);
+      if (mountedRef.current) dispatch({type: ACTIONS.SET_LOADING, payload: false});
+    });
 
     if (user) {
       intervalsRef.current.bot = window.setInterval(() => {
@@ -3273,6 +3249,7 @@ getStrategy, state.debug.failedRequests]);
 
     return () => {
       mountedRef.current = false;
+      window.clearTimeout(startupTimeout);
 
       Object.values(intervalsRef.current).forEach((interval) => {
         if (interval) window.clearInterval(interval);
@@ -3364,19 +3341,9 @@ getStrategy, state.debug.failedRequests]);
   // RENDER
   // ============================================================================
 
-  if (state.loading && !state.lastUpdated) {
-    return (
-      <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <FaSpinner className="animate-spin text-5xl text-cyan-300 mx-auto" />
-          <p className="text-white/60">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <DashboardErrorBoundary>
+    <>
       <div className="min-h-screen bg-[#050816] text-white pb-10 overflow-x-hidden">
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
@@ -3416,6 +3383,17 @@ getStrategy, state.debug.failedRequests]);
         </header>
 
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
+          {state.loading && <p role="status">Loading dashboard data…</p>}
+          {(Object.keys(requestErrors).length > 0 || state.error) && <section role="alert" className="rounded-2xl border border-amber-400/40 p-4">
+            <p>{Object.values(requestErrors).includes(403) ? 'Some features are unavailable for your account. Review your subscription or access permissions.' : 'Some dashboard data is unavailable. Other sections remain available.'}</p>
+            <button className="rounded-xl bg-cyan-700 px-5 py-3 mt-3" onClick={() => refreshDashboard(true, {refreshBot:true,refreshBalance:true,refreshTrades:true,refreshProfile:true,refreshBilling:true,refreshStrategies:true})}>Retry dashboard data</button>
+          </section>}
+          {!hasPaidAccess && !isAdminUser && <section className="rounded-2xl border border-white/20 p-4">
+            <h3>Limited dashboard access</h3><p>No active paid subscription is confirmed. Review plans to access paid features.</p>
+            <button className="rounded-xl bg-emerald-700 px-5 py-3 mt-3" onClick={() => navigate('/billing')}>Review plans</button>
+          </section>}
+          {!isConnected && <p>Connect an account to load balances and account data.</p>}
+          {!state.botRunning && <p>No running bot. Review your account and bot setup before starting.</p>}
           {state.error && (
             <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200" role="alert">
               {state.error}
@@ -3443,7 +3421,7 @@ getStrategy, state.debug.failedRequests]);
               <p className="text-sm text-white/50">Welcome back,</p>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl sm:text-2xl font-black truncate">
-                  {user?.displayName || user?.name || user?.firstName || "Trader"}
+                  {safeText(user?.displayName || user?.name || user?.firstName, "Trader")}
                 </h2>
                 <span className={`rounded-lg px-2 py-1 text-[10px] sm:text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
                   {accountStatus.icon} {accountStatus.label}
@@ -3456,7 +3434,7 @@ getStrategy, state.debug.failedRequests]);
                 )}
               </div>
               <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
-              <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
+              <p className="text-sm text-white/50 truncate">{safeText(user?.email, "Member")}</p>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <StatusPill running={state.botRunning} />
@@ -4178,7 +4156,7 @@ getStrategy, state.debug.failedRequests]);
 
         <DebugPanel state={state} />
       </div>
-    </DashboardErrorBoundary>
+    </>
   );
 }
 
@@ -4194,4 +4172,7 @@ function usePrevious(value) {
   }, [value]);
 
   return ref.current;
+}
+export default function MemberDashboard() {
+  return <DashboardErrorBoundary><MemberDashboardContent /></DashboardErrorBoundary>;
 }
