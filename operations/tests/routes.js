@@ -1,0 +1,8 @@
+'use strict';
+const fs=require('fs'),assert=require('assert/strict'),express=require('express');
+const root='/home/opc/imali-sniper';const {Pool}=require(root+'/node_modules/pg');const db=new Pool({connectionString:require(root+'/node_modules/dotenv').parse(fs.readFileSync('/etc/imali-marketing.env')).DATABASE_URL});
+(async()=>{const app=express();app.use(express.json());require('../social/connections').mount(app,{db,authenticateToken:(q,r,n)=>{q.user={id:'integration-check'};n()},requireAdmin:(q,r,n)=>n()});const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port;try{
+ for(const p of ['/connections','/queue','/automation']){const r=await fetch(base+'/api/admin/social'+p);const b=await r.json();assert.equal(r.status,200,JSON.stringify(b));assert.equal(b.success,true);if(p==='/automation')assert.equal(typeof b.scheduler_active,'boolean')}
+ for(const [p,body,error] of [['/imali/threads/media-tests',{},'THREADS_CONTROLLED_TEST_DISABLED'],['/automation/posts/00000000-0000-0000-0000-000000000000/publish',{},'EXTERNAL_PUBLISH_CONFIRMATION_REQUIRED']]){const r=await fetch(base+'/api/admin/social'+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,400);const b=await r.json();assert.equal(b.error,error)}
+ console.log(JSON.stringify({mounted_routes:true,actual_database_reads:true,rejected_publish_without_confirmation:true,external_posts:0}));
+ }finally{server.close();await db.end()}})().catch(e=>{console.error(e.code||e.message);process.exitCode=1});

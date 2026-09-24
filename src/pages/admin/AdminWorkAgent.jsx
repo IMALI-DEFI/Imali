@@ -1,6 +1,7 @@
 import React, {useState,useEffect,useCallback} from 'react';
 import BotAPI from '../../utils/BotAPI';
 import './AdminWorkAgent.css';
+import OpportunityFunnel from './OpportunityFunnel';
 const endpoint='/api/admin/work-agent/engine';
 const money=v=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Number(v)||0);
 const number=v=>Number(v||0).toLocaleString();
@@ -26,6 +27,7 @@ export default function AdminWorkAgent(){
  return <main className="oe">
   <header className="oe-head"><div><small>IMALI · ADMIN OPERATIONS</small><h1>Opportunity Control Center</h1><p>Safe preparation runs automatically. You control external action.</p></div><button onClick={refresh} disabled={busy}>Refresh</button></header>
   {error&&<div role="alert" className="oe-error">{error}</div>}{notice&&<div role="status" className="oe-notice">{notice}</div>}
+  <OpportunityFunnel onOpen={open}/>
   {!summary?<p>Loading aggregate database state…</p>:<>
   <div className="oe-kpis">{[['total','Total opportunities'],['AUTO_PROCESSING','Auto processing'],['ACTION_REQUIRED','Action required'],['BLOCKED_EXTERNAL','Blocked'],['DISPOSED','Disposed'],['COMPLETED','Completed'],['won','Won'],['actual_revenue','Actual revenue']].map(([key,title])=><button key={key} className={'oe-kpi '+(key==='ACTION_REQUIRED'?'oe-focus':'')} onClick={()=>select({metric:key})}><span>{title}</span><strong>{key==='actual_revenue'?money(c.actual_revenue_amount):number(c[key])}</strong><small>View records ↗</small></button>)}</div>
   <button className="oe-potential" onClick={()=>select({metric:'estimated_pipeline'})}><span>Estimated pipeline · <b>POTENTIAL — NOT EARNED</b></span><strong>{money(c.estimated_pipeline_amount)}</strong></button>

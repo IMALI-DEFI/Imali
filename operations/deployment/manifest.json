@@ -1,0 +1,122 @@
+[
+  {
+    "source": "social/security.js",
+    "target": "/home/opc/imali-sniper/social/security.js",
+    "before": "b8c7c7a43143e680fb5713689372f366cd9e1a2cd4fb95c78534306e9dff2402"
+  },
+  {
+    "source": "social/center.js",
+    "target": "/home/opc/imali-sniper/social/center.js",
+    "before": "2ecd0d5ac3ec3bd4f2921b76502100ee9c12e623be38505ba21a670ac118a2b0"
+  },
+  {
+    "source": "social/connections.js",
+    "target": "/home/opc/imali-sniper/social/connections.js",
+    "before": "da7f61084c4dd47f6a9c9486155bb2869e7fb60df7b88b83adbd01bc23a25360"
+  },
+  {
+    "source": "social/automation.js",
+    "target": "/home/opc/imali-sniper/social/automation.js",
+    "before": "cf66c4426ef31d3f847cc18afdf85ce77aa559eac2d4a5c1d9b8db02764f9c47"
+  },
+  {
+    "source": "social/threads-readiness.js",
+    "target": "/home/opc/imali-sniper/social/threads-readiness.js",
+    "before": null
+  },
+  {
+    "source": "social/automation-preview.js",
+    "target": "/home/opc/imali-sniper/social/automation-preview.js",
+    "before": null
+  },
+  {
+    "source": "social/threads-jobs.js",
+    "target": "/home/opc/imali-sniper/social/threads-jobs.js",
+    "before": null
+  },
+  {
+    "source": "social/automation-actions.js",
+    "target": "/home/opc/imali-sniper/social/automation-actions.js",
+    "before": null
+  },
+  {
+    "source": "social/destinations.js",
+    "target": "/home/opc/imali-sniper/social/destinations.js",
+    "before": null
+  },
+  {
+    "source": "social/automation-queue.js",
+    "target": "/home/opc/imali-sniper/social/automation-queue.js",
+    "before": "5bb3f42f51a40a58cd6c2ba345f9fed32e9caf90c8c6a5c4e197858e51be6e75"
+  },
+  {
+    "source": "social/automation-generate.js",
+    "target": "/home/opc/imali-sniper/social/automation-generate.js",
+    "before": "24ff8c940e915bb668a9db642508fed781927d8310c3c14942aea3f6289c1dbe"
+  },
+  {
+    "source": "social/providers.js",
+    "target": "/home/opc/imali-sniper/social/providers.js",
+    "before": "9f638082fd44ac061cc64f900a9fc5acc5d55de7e2145b46601ba19aba2c38b5"
+  },
+  {
+    "source": "social/automation-scheduler.js",
+    "target": "/home/opc/imali-sniper/social/automation-scheduler.js",
+    "before": "fbc5891ca46ff4fee066ac555d839e1d4a841f1422c55927100dda64a281f1be"
+  },
+  {
+    "source": "social/threads-media.js",
+    "target": "/home/opc/imali-sniper/social/threads-media.js",
+    "before": null
+  },
+  {
+    "source": "marketing/threads-worker.js",
+    "target": "/home/opc/imali-sniper/marketing/threads-worker.js",
+    "before": "68d477c7a6b37c3469ea2c7679df132bca963f480d8dfdd9af37dbad5fbbe532"
+  },
+  {
+    "source": "engine/discovery_quality.py",
+    "target": "/home/opc/imali-work-agent/discovery_quality.py",
+    "before": null
+  },
+  {
+    "source": "engine/opportunity_discovery.py",
+    "target": "/home/opc/imali-work-agent/opportunity_discovery.py",
+    "before": "3bef19996dcbd3980e44ee33fe85224d30ffdb9a0234bdb0827b26f5b96e9758"
+  },
+  {
+    "source": "engine/opportunity-engine.js",
+    "target": "/home/opc/imali-sniper/routes/opportunity-engine.js",
+    "before": "66239bba175e30ee98e4f47805b924492ca22793b8a65b7a75621946224e723c"
+  },
+  {
+    "source": "engine/opportunity_funnel.py",
+    "target": "/home/opc/imali-work-agent/opportunity_funnel.py",
+    "before": null
+  },
+  {
+    "source": "sports-jedi/generate_player_parlay.py",
+    "target": "/home/opc/sports-jedi/marketing/generate_player_parlay.py",
+    "before": "f643cc4d5bb3682d25c143320de998b5dfc3440c5d4b27224bd9d0b8ce7557ea"
+  },
+  {
+    "source": "deployment/imali-threads-worker.service",
+    "target": "/etc/systemd/system/imali-threads-worker.service",
+    "before": null
+  },
+  {
+    "source": "deployment/imali-threads-worker.timer",
+    "target": "/etc/systemd/system/imali-threads-worker.timer",
+    "before": null
+  },
+  {
+    "source": "engine/sources/remoteok.py",
+    "target": "/home/opc/imali-work-agent/sources/remoteok.py",
+    "before": "32569ce818b6b8f51b31493c858230022ec72eb4b8e5f850bf7c440cb094286e"
+  },
+  {
+    "source": "deployment/facebook-scheduler-credential.conf",
+    "target": "/etc/systemd/system/imali-social-automation.service.d/70-facebook-credential.conf",
+    "before": null
+  }
+]

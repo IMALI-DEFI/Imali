@@ -1,0 +1,8 @@
+[Unit]
+Description=Advance approved Threads jobs
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=imali-threads-worker.service
+[Install]
+WantedBy=timers.target
