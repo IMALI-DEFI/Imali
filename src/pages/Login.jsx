@@ -199,7 +199,7 @@ export default function Login() {
     }
     
     // Priority 2: NEW - Admin platform users go to admin dashboard
-    const productType = userData?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
+    const productType = userData?.product_type || "trading";
     if (productType === "admin") {
       console.log("[Login] Admin platform user, redirecting to /admin/dashboard");
       return "/admin/dashboard";
@@ -289,6 +289,16 @@ export default function Login() {
 
       // Get user data from result
       const userData = result.user;
+
+      // Clear account-specific metadata left by a previously logged-in user.
+      // Current authenticated user data is written back below when present.
+      [
+        "IMALI_SELECTED_TIER",
+        "IMALI_PRODUCT_TYPE",
+        "IMALI_BILLING_MODEL",
+        "IMALI_PROFIT_SHARE_PCT",
+        "IMALI_TOKEN_TIER"
+      ].forEach((key) => localStorage.removeItem(key));
       
       // Save tier and product_type to localStorage
       if (userData?.tier) {
@@ -324,7 +334,7 @@ export default function Login() {
         idToken,
         acceptedTerms: false,
         newsletterSubscribed: false,
-        productType: localStorage.getItem("IMALI_PRODUCT_TYPE") || "trading",
+        productType: "trading",
       });
 
       if (!result?.success) {
