@@ -122,6 +122,7 @@ const normalizeTier = (tier) => {
 
 const normalizeUser = (userData) => {
   if (!userData || typeof userData !== 'object' || Array.isArray(userData) ||
+      (!userData.id && !userData.email) ||
       (!['string', 'number'].includes(typeof userData.id) && typeof userData.email !== 'string')) return null;
 
   const rawTier = userData.tier || "starter";

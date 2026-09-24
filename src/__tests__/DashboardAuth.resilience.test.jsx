@@ -18,3 +18,5 @@ test.each(['null','{bad-json','{"tier":{"malformed":true},"id":"old"}'])('malfor
 test('null profile shows useful recovery rather than blank or trusted cache',async()=>{fetch.mockResolvedValue(response(null));await mount();expect(node.textContent).toContain("Dashboard couldn't load");});
 test('malformed JSON shows recovery',async()=>{fetch.mockResolvedValue({...response({}),text:async()=>'{broken'});await mount();expect(node.textContent).toContain("Dashboard couldn't load");});
 test('stalled authentication times out and ends loading',async()=>{fetch.mockImplementation((_,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')))));await mount();await act(async()=>{jest.advanceTimersByTime(15001);for(let i=0;i<20;i++)await Promise.resolve();});expect(node.textContent).toContain("Dashboard couldn't load");});
+
+test('empty identity in profile is not accepted as authenticated account data',async()=>{fetch.mockResolvedValue(response({user:{id:'',email:''}}));await mount();expect(node.textContent).toContain("Dashboard couldn't load");expect(node.textContent).not.toContain('Member dashboard');});
