@@ -1,0 +1,454 @@
+--- a/user-api.js
++++ b/user-api.js
+@@ -242,7 +242,10 @@
+ );
+ 
+ 
+-app.use(express.json({ limit: "1mb" }));
++app.use(express.json({ limit: "1mb", verify(req, res, buffer) {
++  if ((req.originalUrl || "").split("?")[0] === "/api/stripe/webhook")
++    req.stripeRawBody = Buffer.from(buffer);
++} }));
+ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+ 
+ 
+@@ -13593,51 +13596,54 @@
+ ===================================================== */
+ 
+ // Create Stripe checkout session for upgrade
+-app.post("/api/subscription/create-checkout", authenticateToken, async (req, res) => {
+-  const { price_id, success_url, cancel_url } = req.body;
+-  const user = await getUserById(req.user.id);
+-  
+-  if (!stripe) {
+-    return authError(res, 503, "Payment system not configured");
+-  }
+-  
+-  try {
+-    // Get or create Stripe customer
+-    let customerId = user.billing?.stripe_customer_id;
+-    if (!customerId) {
+-      const customer = await stripe.customers.create({
+-        email: user.email,
+-        metadata: { user_id: user.id }
+-      });
+-      customerId = customer.id;
+-      
+-      await db.query(
+-        `UPDATE users SET billing = jsonb_set(billing, '{stripe_customer_id}', $1::jsonb) WHERE id = $2`,
+-        [JSON.stringify(customerId), user.id]
+-      );
+-    }
+-    
+-    // Resolve requested price against server-controlled Stripe prices.
+-    // Never allow an arbitrary client-provided Stripe price to grant access.
++app.post(["/api/subscription/create-checkout", "/api/billing/create-checkout-session"], authenticateToken, async (req, res) => {
++  const { price_id, success_url, cancel_url } = req.body || {};
++  try {
++    const stripe = process.env.STRIPE_SECRET_KEY
++      ? new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 15000, maxNetworkRetries: 0 })
++      : null;
++    if (!stripe) return authError(res, 503, "Payment system not configured");
++    const SITE_ORIGIN = "https://imali-defi.com";
+     const serverPriceIds = {
+       pro: process.env.STRIPE_PRICE_PRO || process.env.STRIPE_PRO_PRICE_ID,
+       elite: process.env.STRIPE_PRICE_ELITE || process.env.STRIPE_ELITE_PRICE_ID
+     };
+-
+-    const requestedTier =
+-      Object.entries(serverPriceIds).find(
+-        ([, configuredPriceId]) =>
+-          configuredPriceId && configuredPriceId === price_id
+-      )?.[0] || null;
+-
+-    if (!requestedTier) {
+-      return authError(res, 400, "Invalid or unconfigured subscription price");
+-    }
+-
++    const requestedTier = Object.entries(serverPriceIds).find(
++      ([, id]) => id && id === price_id
++    )?.[0];
++    if (!requestedTier) return authError(res, 400, "Invalid or unconfigured subscription price");
+     const checkoutPriceId = serverPriceIds[requestedTier];
+-
++    for (const target of [success_url, cancel_url]) {
++      if (!target) continue;
++      let parsed;
++      try { parsed = new URL(target); } catch { return authError(res, 400, "Invalid checkout return URL"); }
++      if (parsed.origin !== SITE_ORIGIN || parsed.username || parsed.password)
++        return authError(res, 400, "Invalid checkout return URL");
++    }
++    const user = await getUserById(req.user.id);
++    if (!user) return authError(res, 404, "Account not found");
++    const billing = parseJsonField(user.billing, {});
++    let customerId = user.stripe_customer_id || billing.stripe_customer_id;
++    if (customerId) {
++      const existing = await stripe.subscriptions.list({customer:customerId,status:"all",limit:100});
++      if (!Array.isArray(existing?.data)) throw new Error("SUBSCRIPTION_RESPONSE_INVALID");
++      if (existing.has_more || existing.data.some(subscription =>
++        ["active", "trialing", "past_due", "incomplete", "unpaid"].includes(subscription.status) &&
++        (subscription.items?.data || []).some(item => Object.values(serverPriceIds).filter(Boolean).includes(item.price?.id))
++      )) return authError(res, 409, "An existing subscription needs review before starting another checkout");
++    } else {
++      const customer = await stripe.customers.create({email:user.email,metadata:{user_id:user.id}});
++      customerId = customer.id;
++      if (!customerId) throw new Error("CUSTOMER_ID_MISSING");
++      await db.query(
++        `UPDATE users SET stripe_customer_id=$1,
++         billing=COALESCE(billing,'{}'::jsonb)||jsonb_build_object('stripe_customer_id',$1::text),
++         updated_at=NOW() WHERE id=$2`,
++        [customerId,user.id]
++      );
++    }
+     const session = await stripe.checkout.sessions.create({
+-      customer: stripeCustomerId,
++      customer: customerId,
+       payment_method_types: ['card'],
+       line_items: [{ price: checkoutPriceId, quantity: 1 }],
+       mode: 'subscription',
+@@ -13657,10 +13663,11 @@
+       }
+     });
+     
++    if (!session.id || !session.url) throw new Error("CHECKOUT_CONFIRMATION_MISSING");
+     res.json({ success: true, data: { session_url: session.url, session_id: session.id } });
+   } catch (error) {
+-    console.error("Checkout error:", error);
+-    res.status(500).json({ success: false, error: error.message });
++    console.error("CHECKOUT_PREPARATION_FAILED");
++    return authError(res, 503, "Unable to prepare checkout. Please try again or contact support.");
+   }
+ });
+ 
+@@ -13731,6 +13738,10 @@
+ ===================================================== */
+ 
+ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
++  const stripe = process.env.STRIPE_SECRET_KEY
++    ? new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 15000, maxNetworkRetries: 0 })
++    : null;
++  if (!stripe) return res.status(503).json({success:false,error:"Billing is temporarily unavailable"});
+   const sig = req.headers['stripe-signature'];
+   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+   
+@@ -13741,14 +13752,68 @@
+   let event;
+   
+   try {
+-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
++    event = stripe.webhooks.constructEvent(req.stripeRawBody || req.body, sig, webhookSecret);
+   } catch (err) {
+-    console.error(`Webhook signature verification failed: ${err.message}`);
+-    return res.status(400).json({ success: false, error: err.message });
++    console.error("WEBHOOK_SIGNATURE_INVALID");
++    return res.status(400).json({ success: false, error: "Invalid webhook signature" });
+   }
+   
+-  // Handle the event
+-  switch (event.type) {
++  const priceIds = {
++    pro: process.env.STRIPE_PRICE_PRO || process.env.STRIPE_PRO_PRICE_ID,
++    elite: process.env.STRIPE_PRICE_ELITE || process.env.STRIPE_ELITE_PRICE_ID
++  };
++  const baseEvents = ["checkout.session.completed", "customer.subscription.created",
++    "customer.subscription.updated", "customer.subscription.deleted"];
++  if (!baseEvents.includes(event.type)) return res.json({received:true});
++  const object = event.data.object;
++  if (object.metadata?.product_type === "service_addon") return res.json({received:true});
++  let client;
++  try {
++    let subscription = object;
++    if (event.type === "checkout.session.completed") {
++      if (object.mode !== "subscription" || !object.subscription) return res.json({received:true});
++      subscription = await stripe.subscriptions.retrieve(object.subscription);
++      if (subscription.id !== object.subscription) throw new Error("SUBSCRIPTION_MISMATCH");
++    } else {
++      subscription = await stripe.subscriptions.retrieve(object.id);
++      if (subscription.id !== object.id) throw new Error("SUBSCRIPTION_MISMATCH");
++      if (event.type === "customer.subscription.deleted" && subscription.status !== "canceled")
++        throw new Error("DELETION_NOT_CONFIRMED");
++    }
++    if (subscription.metadata?.product_type === "service_addon") return res.json({received:true});
++    const tiers = [...new Set((subscription.items?.data || []).flatMap(item =>
++      Object.entries(priceIds).filter(([,id]) => id && id === item.price?.id).map(([tier])=>tier)))];
++    if (tiers.length !== 1) throw new Error("BASE_PRICE_NOT_CONFIRMED");
++    const customerId = String(subscription.customer?.id || subscription.customer || "");
++    if (!customerId || (object.customer && String(object.customer?.id || object.customer) !== customerId))
++      throw new Error("CUSTOMER_MISMATCH");
++    client = await db.connect();
++    await client.query("BEGIN");
++    const owners = await client.query(
++      `SELECT id,stripe_subscription_id,billing FROM users WHERE stripe_customer_id=$1 OR billing->>'stripe_customer_id'=$1 FOR UPDATE`,
++      [customerId]
++    );
++    if (owners.rows.length !== 1) throw new Error("CUSTOMER_OWNERSHIP_UNCONFIRMED");
++    const owner = String(owners.rows[0].id);
++    const boundId = owners.rows[0].stripe_subscription_id || parseJsonField(owners.rows[0].billing, {})?.stripe_subscription_id;
++    if (boundId && boundId !== subscription.id) {
++      if (!["active", "trialing"].includes(subscription.status)) {
++        await client.query("COMMIT");
++        return res.json({received:true});
++      }
++      const bound = await stripe.subscriptions.retrieve(boundId);
++      if (!["canceled", "incomplete_expired"].includes(bound.status))
++        throw new Error("EXISTING_SUBSCRIPTION_REQUIRES_REVIEW");
++    }
++    for (const metadata of [object.metadata, subscription.metadata]) {
++      if (metadata?.user_id && String(metadata.user_id) !== owner) throw new Error("USER_MISMATCH");
++      if (metadata?.tier && metadata.tier !== tiers[0]) throw new Error("PLAN_MISMATCH");
++    }
++    object.metadata = {...object.metadata,user_id:owner,tier:tiers[0]};
++    subscription.metadata = {...subscription.metadata,user_id:owner,tier:tiers[0]};
++    if (event.type !== "checkout.session.completed") event.data.object = subscription;
++    // Handle the event only after signature, price and ownership verification.
++    switch (event.type) {
+     case 'checkout.session.completed': {
+       const session = event.data.object;
+       const userId = session.metadata?.user_id;
+@@ -13768,9 +13833,7 @@
+           ? session.metadata.tier
+           : "pro";
+ 
+-      const stripeSubscription = await stripe.subscriptions.retrieve(
+-        session.subscription
+-      );
++      const stripeSubscription = subscription;
+ 
+       const stripeStatus = stripeSubscription.status;
+       const entitled = ["active", "trialing"].includes(stripeStatus);
+@@ -13782,7 +13845,7 @@
+         break;
+       }
+ 
+-      await db.query(
++      await client.query(
+         `UPDATE users
+          SET tier = $1,
+              tier_active = $1,
+@@ -13813,7 +13876,7 @@
+       // Keep API-key entitlement synchronized with the verified Stripe plan.
+       const purchasedLimits = getTierLimits(purchasedTier);
+ 
+-      await db.query(
++      await client.query(
+         `UPDATE user_api_keys
+          SET plan = $1,
+              daily_trade_limit = $2,
+@@ -13858,7 +13921,7 @@
+       let userResult;
+ 
+       if (userId) {
+-        userResult = await db.query(
++        userResult = await client.query(
+           `SELECT id, tier, billing
+            FROM users
+            WHERE id = $1
+@@ -13866,7 +13929,7 @@
+           [userId]
+         );
+       } else {
+-        userResult = await db.query(
++        userResult = await client.query(
+           `SELECT id, tier, billing
+            FROM users
+            WHERE stripe_customer_id = $1
+@@ -13899,7 +13962,7 @@
+       const entitled = ["active", "trialing"].includes(stripeStatus);
+ 
+       if (entitled) {
+-        await db.query(
++        await client.query(
+           `UPDATE users
+            SET tier = $1,
+                tier_active = $1,
+@@ -13933,7 +13996,7 @@
+ 
+         const limits = getTierLimits(purchasedTier);
+ 
+-        await db.query(
++        await client.query(
+           `UPDATE user_api_keys
+            SET plan = $1,
+                daily_trade_limit = $2,
+@@ -13955,7 +14018,7 @@
+         // Stripe no longer grants paid entitlement.
+         const starterLimits = getTierLimits("starter");
+ 
+-        await db.query(
++        await client.query(
+           `UPDATE users
+            SET tier = 'starter',
+                tier_active = 'starter',
+@@ -13977,7 +14040,7 @@
+           [customerId, subscriptionId, stripeStatus, userId]
+         );
+ 
+-        await db.query(
++        await client.query(
+           `UPDATE user_api_keys
+            SET plan = 'starter',
+                daily_trade_limit = $1,
+@@ -14004,22 +14067,18 @@
+       const customerId = String(subscription.customer || "");
+       const subscriptionId = subscription.id;
+ 
+-      const userResult = await db.query(
++      const userResult = await client.query(
+         `SELECT id
+          FROM users
+-         WHERE stripe_customer_id = $1
+-            OR stripe_subscription_id = $2
+-            OR billing->>'stripe_customer_id' = $1
+-            OR billing->>'stripe_subscription_id' = $2
+-         LIMIT 1`,
+-        [customerId, subscriptionId]
++         WHERE id = $1 LIMIT 1`,
++        [owner]
+       );
+ 
+       if (userResult.rows.length > 0) {
+         const userId = userResult.rows[0].id;
+         const starterLimits = getTierLimits("starter");
+ 
+-        await db.query(
++        await client.query(
+           `UPDATE users
+            SET tier = 'starter',
+                tier_active = 'starter',
+@@ -14041,7 +14100,7 @@
+           [customerId, subscriptionId, userId]
+         );
+ 
+-        await db.query(
++        await client.query(
+           `UPDATE user_api_keys
+            SET plan = 'starter',
+                daily_trade_limit = $1,
+@@ -14074,7 +14133,15 @@
+       break;
+   }
+   
+-  res.json({ received: true });
++    await client.query("COMMIT");
++    return res.json({ received: true });
++  } catch (error) {
++    if (client) { try { await client.query("ROLLBACK"); } catch {} }
++    console.error("BILLING_WEBHOOK_PROCESSING_FAILED");
++    return res.status(503).json({success:false,error:"Billing event could not be processed"});
++  } finally {
++    if (client) client.release();
++  }
+ });
+ 
+ 
+@@ -15198,109 +15265,7 @@
+  * POST /api/billing/create-checkout-session
+  * Create Stripe checkout session for subscription
+  */
+-app.post("/api/billing/create-checkout-session", authenticateToken, async (req, res) => {
+-  const { price_id, success_url, cancel_url } = req.body;
+-  
+-  if (!stripe) {
+-    return authError(res, 503, "Payment system not configured");
+-  }
+-  
+-  if (!price_id) {
+-    return authError(res, 400, "Price ID required");
+-  }
+-
+-  try {
+-    const user = await getUserById(req.user.id);
+-    const billing = parseJsonField(user?.billing, {});
+-    let customerId = billing.stripe_customer_id;
+-    const https = require('https');
+-
+-    // Create customer via HTTPS if needed
+-    if (!customerId) {
+-      const custBody = new URLSearchParams({
+-        'email': user.email,
+-        'metadata[user_id]': user.id
+-      }).toString();
+-      
+-      const custData = await new Promise((resolve, reject) => {
+-        const req = https.request({
+-          hostname: 'api.stripe.com',
+-          path: '/v1/customers',
+-          method: 'POST',
+-          headers: {
+-            'Authorization': 'Bearer ' + STRIPE_SECRET_KEY,
+-            'Content-Type': 'application/x-www-form-urlencoded',
+-            'Content-Length': Buffer.byteLength(custBody)
+-          }
+-        }, (res) => {
+-          let d = '';
+-          res.on('data', c => d += c);
+-          res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { reject(new Error(d)); } });
+-        });
+-        req.on('error', reject);
+-        req.write(custBody);
+-        req.end();
+-      });
+-      
+-      if (custData.error) throw new Error(custData.error.message);
+-      customerId = custData.id;
+-      
+-      await db.query(
+-        `UPDATE users SET billing = jsonb_set(billing, '{stripe_customer_id}', $1::jsonb) WHERE id = $2`,
+-        [JSON.stringify(customerId), user.id]
+-      );
+-    }
+-
+-    // Create checkout session via HTTPS
+-    const sessionBody = new URLSearchParams({
+-      'customer': customerId,
+-      'payment_method_types[]': 'card',
+-      'saved_payment_method_options[allow_redisplay_filters][]': 'always',
+-      'line_items[0][price]': price_id,
+-      'line_items[0][quantity]': '1',
+-      'mode': 'subscription',
+-      'payment_method_collection': 'if_required',
+-      'success_url': success_url || `${SITE_ORIGIN}/dashboard?upgrade=success`,
+-      'cancel_url': cancel_url || `${SITE_ORIGIN}/pricing`,
+-      'metadata[user_id]': user.id,
+-      'metadata[user_email]': user.email
+-    }).toString();
+-
+-    const sessionData = await new Promise((resolve, reject) => {
+-      const req = https.request({
+-        hostname: 'api.stripe.com',
+-        path: '/v1/checkout/sessions',
+-        method: 'POST',
+-        headers: {
+-          'Authorization': 'Bearer ' + STRIPE_SECRET_KEY,
+-          'Content-Type': 'application/x-www-form-urlencoded',
+-          'Content-Length': Buffer.byteLength(sessionBody)
+-        }
+-      }, (res) => {
+-        let d = '';
+-        res.on('data', c => d += c);
+-        res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { reject(new Error(d)); } });
+-      });
+-      req.on('error', reject);
+-      req.write(sessionBody);
+-      req.end();
+-    });
+-
+-    if (sessionData.error) {
+-      throw new Error(sessionData.error.message || sessionData.error.type);
+-    }
+-
+-    const session = { url: sessionData.url, id: sessionData.id };
+-
+-    res.json({
+-      success: true,
+-      data: { session_url: session.url, session_id: session.id }
+-    });
+-  } catch (error) {
+-    console.error("Create checkout error:", error);
+-    res.status(500).json({ success: false, error: error.message });
+-  }
+-});
++// Both checkout URLs use the authenticated, server-price-validated handler above.
+ 
+ /**
+  * POST /api/billing/cancel-subscription
