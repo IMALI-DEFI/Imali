@@ -64,7 +64,7 @@ app.post(["/api/subscription/create-checkout", "/api/billing/create-checkout-ses
         }
       }
     });
-    
+
     if (!session.id || !session.url) throw new Error("CHECKOUT_CONFIRMATION_MISSING");
     res.json({ success: true, data: { session_url: session.url, session_id: session.id } });
   } catch (error) {
@@ -72,4 +72,3 @@ app.post(["/api/subscription/create-checkout", "/api/billing/create-checkout-ses
     return authError(res, 503, "Unable to prepare checkout. Please try again or contact support.");
   }
 });
-

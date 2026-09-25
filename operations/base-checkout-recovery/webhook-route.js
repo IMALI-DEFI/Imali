@@ -5,20 +5,20 @@ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async
   if (!stripe) return res.status(503).json({success:false,error:"Billing is temporarily unavailable"});
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  
+
   if (!webhookSecret) {
     return res.status(400).json({ success: false, error: "Webhook secret not configured" });
   }
-  
+
   let event;
-  
+
   try {
     event = stripe.webhooks.constructEvent(req.stripeRawBody || req.body, sig, webhookSecret);
   } catch (err) {
     console.error("WEBHOOK_SIGNATURE_INVALID");
     return res.status(400).json({ success: false, error: "Invalid webhook signature" });
   }
-  
+
   const priceIds = {
     pro: process.env.STRIPE_PRICE_PRO || process.env.STRIPE_PRO_PRICE_ID,
     elite: process.env.STRIPE_PRICE_ELITE || process.env.STRIPE_ELITE_PRICE_ID
@@ -393,7 +393,7 @@ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async
       // Optionally notify user
       break;
   }
-  
+
     await client.query("COMMIT");
     return res.json({ received: true });
   } catch (error) {
