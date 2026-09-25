@@ -1,0 +1,52 @@
+--- a/user-api.js
++++ b/user-api.js
+@@ -8231,11 +8231,14 @@
+  * Gets subscription details from Stripe
+  */
+ app.get("/api/billing/subscription", authenticateToken, async (req, res) => {
+-  if (!stripe) return authError(res, 503, "Stripe is not configured");
+-
+-  try {
++  try {
++    const stripe = process.env.STRIPE_SECRET_KEY
++      ? new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 15000, maxNetworkRetries: 0 })
++      : null;
++    if (!stripe) return authError(res, 503, "Billing is temporarily unavailable");
+     const user = await getUserById(req.user.id);
+-    const billing = parseJsonField(user?.billing, {});
++    if (!user) return authError(res, 404, "Account not found");
++    const billing = parseJsonField(user.billing, {});
+     const stripeCustomerId = billing.stripe_customer_id;
+ 
+     if (!stripeCustomerId) {
+@@ -8258,6 +8261,7 @@
+       limit: 1
+     });
+ 
++    if (!Array.isArray(subscriptions?.data)) throw new Error("SUBSCRIPTION_RESPONSE_INVALID");
+     const subscription = subscriptions.data[0];
+     if (!subscription) {
+       return res.json({
+@@ -8273,7 +8277,7 @@
+       });
+     }
+ 
+-    const item = subscription.items.data[0];
++    const item = subscription.items?.data?.[0];
+     const plan = item?.price;
+     
+     return res.json({
+@@ -8293,8 +8297,11 @@
+     });
+ 
+   } catch (error) {
+-    console.error('Error fetching subscription:', error.message);
+-    return authError(res, 500, "Failed to fetch subscription details");
++    console.error('BILLING_SUBSCRIPTION_READ_FAILED', {
++      type: /^[A-Za-z]+$/.test(error.type || '') ? error.type : 'ReadError',
++      http: Number.isInteger(error.statusCode) ? error.statusCode : null
++    });
++    return authError(res, 503, "Billing is temporarily unavailable. Please try again.");
+   }
+ });
+ // Get REAL live trading stats (excludes paper/simulated)
