@@ -1,0 +1,13 @@
+--- a/user-api.js
++++ b/user-api.js
+@@ -15307,6 +15307,10 @@
+  * Cancel user's subscription
+  */
+ app.post("/api/billing/cancel-subscription", authenticateToken, async (req, res) => {
++  // Fail before local account changes when the payment client is unavailable.
++  if (typeof stripe === "undefined" || !stripe) {
++    return authError(res, 503, "Subscription cancellation is temporarily unavailable. Please contact support.");
++  }
+   try {
+     const user = await getUserById(req.user.id);
+     
