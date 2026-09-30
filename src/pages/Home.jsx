@@ -80,7 +80,7 @@ export default function Home() {
                 playsInline
                 preload="metadata"
               >
-                <source src="/videos/imali-defi.MP4" type="video/mp4" />
+                <source src="/videos/StoryExport.mov" type="video/quicktime" />
                 Your browser does not support video playback.
               </video>
             </div>
