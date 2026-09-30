@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -8,68 +8,10 @@ import {
   FaRobot,
   FaPlug,
   FaChartLine,
-  FaBrain,
-  FaClock,
-  FaSpinner,
 } from "react-icons/fa";
 
 
-const DEMO_SIGNAL_URL =
-  `${process.env.REACT_APP_API_URL || "https://api.imali-defi.com"}/api/public/signals/demo`;
-
 export default function Home() {
-  const [demoSignals, setDemoSignals] = useState([]);
-  const [demoLoading, setDemoLoading] = useState(true);
-  const [demoUpdatedAt, setDemoUpdatedAt] = useState(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadDemoSignals = async () => {
-      try {
-        const response = await fetch(DEMO_SIGNAL_URL, {
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Signal demo HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (!mounted) return;
-
-        setDemoSignals(
-          Array.isArray(data?.signals)
-            ? data.signals
-            : []
-        );
-
-        setDemoUpdatedAt(new Date());
-      } catch (error) {
-        console.error("Homepage signal demo error:", error);
-      } finally {
-        if (mounted) {
-          setDemoLoading(false);
-        }
-      }
-    };
-
-    loadDemoSignals();
-
-    const interval = window.setInterval(
-      loadDemoSignals,
-      30000
-    );
-
-    return () => {
-      mounted = false;
-      window.clearInterval(interval);
-    };
-  }, []);
-
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
       {/* HERO */}
@@ -102,35 +44,92 @@ export default function Home() {
               opportunities, manage risk, and automate trades.
             </p>
 
-            <div className="mt-9">
-              <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/40">
-                Start automated trading from
-              </div>
+          </motion.div>
+        </div>
+      </section>
 
-              <div className="mt-2 flex items-end justify-center gap-2">
-                <span className="text-5xl font-black text-white sm:text-6xl">
-                  $19.95
-                </span>
-                <span className="mb-2 text-lg text-white/50">/month</span>
-              </div>
+
+      {/* PRODUCT DEMO */}
+      <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl px-5 sm:px-6 lg:px-8">
+
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
+              <FaRobot />
+              See IMALI in Action
             </div>
 
-            <div className="mt-8 flex justify-center">
-              <Link
-                to="/signup?plan=pro&tier=pro&product_type=trading"
-                state={{
-                  tier: "pro",
-                  product_type: "trading",
-                  from: "home",
-                }}
-                className="group inline-flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 shadow-2xl shadow-emerald-500/20 transition hover:scale-[1.02] hover:bg-emerald-400 sm:w-auto sm:min-w-[320px]"
+            <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
+              See What Trading With
+              <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                IMALI Looks Like
+              </span>
+            </h2>
+
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
+              Take a quick look inside IMALI and see how your trading dashboard
+              brings your account, automation, and market activity together.
+            </p>
+          </div>
+
+          <div className="mx-auto mt-10 max-w-5xl">
+            <div className="overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl shadow-cyan-500/10">
+              <video
+                className="block h-auto w-full"
+                controls
+                playsInline
+                preload="metadata"
               >
-                Start Trading with IMALI
-                <FaArrowRight className="transition group-hover:translate-x-1" />
-              </Link>
+                <source src="/videos/imali-defi.MP4" type="video/mp4" />
+                Your browser does not support video playback.
+              </video>
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45 sm:text-sm">
+            <p className="mx-auto mt-4 max-w-2xl text-center text-xs leading-relaxed text-white/35">
+              Product demonstration. Available features and account information
+              can vary by connected service and plan.
+            </p>
+          </div>
+
+          {/* OFFER */}
+          <div className="mx-auto mt-12 max-w-3xl rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-7 text-center sm:p-10">
+
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">
+              Start with IMALI
+            </p>
+
+            <h3 className="mt-3 text-3xl font-black sm:text-4xl">
+              Put AI to Work on Your Trading
+            </h3>
+
+            <p className="mx-auto mt-4 max-w-xl text-white/55">
+              Connect a supported trading account, choose your settings,
+              and let IMALI help analyze opportunities and automate eligible trades.
+            </p>
+
+            <div className="mt-7 flex items-end justify-center gap-2">
+              <span className="text-5xl font-black text-white">
+                $19.95
+              </span>
+              <span className="mb-2 text-lg text-white/50">
+                /month
+              </span>
+            </div>
+
+            <Link
+              to="/signup?plan=pro&tier=pro&product_type=trading"
+              state={{
+                tier: "pro",
+                product_type: "trading",
+                from: "home-video-demo",
+              }}
+              className="group mt-7 inline-flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 shadow-xl shadow-emerald-500/20 transition hover:scale-[1.02] hover:bg-emerald-400 sm:w-auto sm:min-w-[320px]"
+            >
+              Start Trading with IMALI
+              <FaArrowRight className="transition group-hover:translate-x-1" />
+            </Link>
+
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45">
               <span className="flex items-center gap-2">
                 <FaShieldAlt className="text-emerald-400" />
                 Non-custodial
@@ -146,200 +145,8 @@ export default function Home() {
                 Cancel anytime
               </span>
             </div>
-          </motion.div>
-        </div>
-      </section>
-
-
-      {/* LIVE AI SIGNAL DEMO */}
-      <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl px-5 sm:px-6 lg:px-8">
-
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
-              <FaBrain />
-              See IMALI Working
-            </div>
-
-            <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
-              See What IMALI
-              <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                {" "}Finds
-              </span>
-            </h2>
-
-            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-              IMALI watches the market all day. When it finds a possible trade,
-               it gives that trade a score. Here are some things IMALI recently found.
-            </p>
-
-            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/30">
-              <FaClock />
-
-              {demoUpdatedAt
-                ? `Updated ${demoUpdatedAt.toLocaleTimeString()}`
-                : "Loading latest signals"}
-            </div>
           </div>
 
-          <div className="mt-9">
-            {demoLoading && demoSignals.length === 0 ? (
-              <div className="grid min-h-[220px] place-items-center">
-                <div className="text-center text-white/45">
-                  <FaSpinner className="mx-auto mb-3 animate-spin text-2xl text-cyan-300" />
-                  Loading IMALI AI signals...
-                </div>
-              </div>
-            ) : demoSignals.length === 0 ? (
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center text-white/40">
-                New AI signals will appear here automatically.
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {demoSignals.map((signal, index) => {
-                  const score = Number(signal.score || 0);
-                  const confidence = Number(signal.confidence || 0);
-                  const price = Number(signal.price || 0);
-
-                  const side = String(signal.side || "").toUpperCase();
-
-                  const sideClasses =
-                    side === "BUY"
-                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/20"
-                      : "bg-red-500/15 text-red-300 border-red-400/20";
-
-                  return (
-                    <motion.div
-                      key={signal.id || `${signal.symbol}-${index}`}
-                      initial={{ opacity: 0, y: 12 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.35, delay: index * 0.04 }}
-                      className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-5 shadow-xl backdrop-blur"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-black text-lg">
-                            {signal.symbol}
-                          </div>
-
-                          <div className="mt-1 text-xs text-white/35">
-                            {signal.market || "Market"}
-                          </div>
-                        </div>
-
-                        <span
-                          className={`rounded-full border px-3 py-1 text-xs font-black ${sideClasses}`}
-                        >
-                          {side || "SIGNAL"}
-                        </span>
-                      </div>
-
-                      <div className="mt-5 grid grid-cols-2 gap-3">
-
-                        <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-sm font-black text-emerald-300">
-                            ★ TRADE SCORE
-                          </div>
-
-                          <div className="mt-1 text-xl font-black text-white">
-                            {score.toFixed(1)}
-                            <span className="ml-1 text-xs font-normal text-white/40">
-                              / 100
-                            </span>
-                          </div>
-
-                          <div className="mt-1 text-xs leading-snug text-white/50">
-                            How good this trade looks
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-sm font-black text-cyan-300">
-                            🧠 AI CONFIDENCE
-                          </div>
-
-                          <div className="mt-1 text-xl font-black text-white">
-                            {confidence.toFixed(1)}%
-                          </div>
-
-                          <div className="mt-1 text-xs leading-snug text-white/50">
-                            How sure the AI is
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-sm font-black text-emerald-300">
-                            💵 PRICE FOUND
-                          </div>
-
-                          <div className="mt-1 truncate text-lg font-black text-white">
-                            {price > 0
-                              ? `$${price.toLocaleString(undefined, {
-                                  maximumFractionDigits: 8,
-                                })}`
-                              : "-"}
-                          </div>
-
-                          <div className="mt-1 text-xs leading-snug text-white/50">
-                            Price when IMALI found it
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-black/20 p-3">
-                          <div className="text-sm font-black text-amber-300">
-                            ⚠ RISK LEVEL
-                          </div>
-
-                          <div className="mt-1 text-lg font-black capitalize text-white">
-                            {signal.risk || "N/A"}
-                          </div>
-
-                          <div className="mt-1 text-xs leading-snug text-white/50">
-                            How risky this trade looks
-                          </div>
-                        </div>
-
-                      </div>
-
-                      
-
-                      <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
-                        
-
-                        <span className="text-[10px] text-white/25">
-                          {signal.sent_at
-                            ? new Date(signal.sent_at).toLocaleString()
-                            : "Recent"}
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-9 text-center">
-            <p className="mx-auto max-w-xl text-xs leading-relaxed text-white/35">
-              These examples show what IMALI is finding in the market.
-               They do not mean a real-money trade happened.
-               Real trading can make or lose money.
-            </p>
-
-            <Link
-              to="/signup?plan=pro&tier=pro&product_type=trading"
-              state={{
-                tier: "pro",
-                product_type: "trading",
-                from: "home-demo",
-              }}
-              className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-7 py-3.5 font-extrabold text-slate-950 transition hover:bg-emerald-400"
-            >
-              Start Trading with IMALI
-              <FaArrowRight />
-            </Link>
-          </div>
         </div>
       </section>
 
