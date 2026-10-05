@@ -127,6 +127,16 @@ const logout = () => {
   clearCache();
 };
 
+const forgotPassword = async (email) =>
+  unwrap(await api.post("/api/auth/forgot-password", { email }));
+
+const resetPassword = async (token, newPassword) =>
+  unwrap(await api.post("/api/auth/reset-password", {
+    token,
+    new_password: newPassword,
+  }));
+
+
 const isAuthenticated = () => Boolean(getToken());
 
 const getMe = async (skipCache = false) =>
@@ -1047,6 +1057,8 @@ const BotAPI = {
   isAuthenticated,
   login,
   logout,
+  forgotPassword,
+  resetPassword,
   getMe,
   getActivationStatus,
   getTrialStatus,
