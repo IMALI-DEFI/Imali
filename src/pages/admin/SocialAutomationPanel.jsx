@@ -34,7 +34,10 @@ export default function SocialAutomationPanel(){
           ...row,
           posting_windows:Array.isArray(row.posting_windows)
             ? row.posting_windows.join(', ')
-            : ''
+            : '',
+          active_days:Array.isArray(row.active_days)&&row.active_days.length
+            ? row.active_days
+            : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
         };
       }
       setDrafts(next);
@@ -77,6 +80,7 @@ export default function SocialAutomationPanel(){
           posts_per_day:Number(row.posts_per_day),
           timezone:'America/New_York',
           posting_windows:windows,
+          active_days:Array.isArray(row.active_days)?row.active_days:[],
           require_qualified_signal:Boolean(row.require_qualified_signal)
         })
       });
@@ -164,6 +168,13 @@ export default function SocialAutomationPanel(){
                       placeholder="08:00, 10:00, 12:00"
                     />
                   </label>
+
+                  <div>
+                    <span>Active days — Eastern Time</span>
+                    <div className="sm-day-grid">
+                      {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=><label key={day} className="sm-day-toggle"><input type="checkbox" checked={(row.active_days||[]).includes(day)} onChange={e=>change(key,'active_days',e.target.checked?[...(row.active_days||[]),day]:(row.active_days||[]).filter(x=>x!==day))}/><span>{day}</span></label>)}
+                    </div>
+                  </div>
 
                   <label className="sm-automation-toggle">
                     <input

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 
 const API =
   process.env.REACT_APP_API_URL ||
@@ -101,6 +102,8 @@ export const trackMarketingEvent = (
 };
 
 export default function MarketingTracker() {
+  const location = useLocation();
+
   useEffect(() => {
     const params = new URLSearchParams(
       window.location.search
@@ -126,17 +129,15 @@ export default function MarketingTracker() {
       }
     });
 
-    const key =
-      `imali_landing_${window.location.pathname}`;
+    const eventName =
+      location.pathname === "/pricing"
+        ? "pricing_view"
+        : "landing_view";
 
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, "1");
-
-      trackMarketingEvent(
-        "landing_view"
-      );
-    }
-  }, []);
+    trackMarketingEvent(eventName, {
+      metadata: { path: location.pathname },
+    });
+  }, [location.pathname, location.search]);
 
   return null;
 }

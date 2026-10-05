@@ -3,3 +3,8 @@
 .sm-pipeline button{flex:0 0 auto}.sm-dialog header>button{align-self:flex-start;width:44px;height:44px;flex-shrink:0}.sm-kpis button{min-width:0}
 
 .sm-kpis button{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.sm-attention .sm-post{flex-direction:row;align-items:center;gap:16px}.sm-executive .sm-posts{grid-template-columns:repeat(2,minmax(0,1fr))}.sm-executive .sm-attention .sm-posts{grid-template-columns:1fr}@media(min-width:900px){.sm-executive .sm-posts,.sm-executive .sm-attention .sm-posts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.sm-day-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:8px}
+.sm-day-toggle{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 4px;font-size:12px;background:rgba(255,255,255,.03)}
+.sm-day-toggle input{accent-color:#10b981}
+@media(max-width:720px){.sm-day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}

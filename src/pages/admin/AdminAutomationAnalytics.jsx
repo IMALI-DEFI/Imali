@@ -72,6 +72,9 @@ function MetricCard({ label, value, subtext }) {
 
 export default function AdminAutomationAnalytics() {
   const [data, setData] = useState({});
+  const [apiCosts, setApiCosts] = useState({});
+  const [budgetDraft, setBudgetDraft] = useState("100");
+  const [budgetSaving, setBudgetSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -80,8 +83,16 @@ export default function AdminAutomationAnalytics() {
     setError("");
 
     try {
-      const response = await BotAPI.getAutomationAnalytics();
+      const [response, costResponse] = await Promise.all([
+        BotAPI.getAutomationAnalytics(),
+        BotAPI.getApiCosts().catch(() => null),
+      ]);
       setData(unwrap(response) || {});
+      const costs = unwrap(costResponse) || {};
+      setApiCosts(costs);
+      if (costs?.openai?.monthly_budget_usd != null) {
+        setBudgetDraft(String(costs.openai.monthly_budget_usd));
+      }
     } catch (err) {
       console.error("Automation analytics load failed:", err);
 
@@ -111,6 +122,23 @@ export default function AdminAutomationAnalytics() {
   const funnel = data.marketing_funnel || {};
   const marketingSources = data.marketing_sources || [];
   const campaigns = data.campaign_performance || [];
+  const openaiCosts = apiCosts.openai || {};
+  const creativeUsage = apiCosts.creative_usage || {};
+
+  const saveBudget = async () => {
+    const value = Number(budgetDraft);
+    if (!Number.isFinite(value) || value < 0) return;
+    setBudgetSaving(true);
+    try {
+      await BotAPI.updateApiCostSettings(value);
+      const refreshed = await BotAPI.getApiCosts();
+      setApiCosts(unwrap(refreshed) || {});
+    } catch (err) {
+      setError(err?.message || "Unable to save API budget.");
+    } finally {
+      setBudgetSaving(false);
+    }
+  };
 
   const totalRuns = useMemo(
     () =>
@@ -227,7 +255,7 @@ export default function AdminAutomationAnalytics() {
             Visitor activity captured from attributed marketing sessions.
           </p>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <MetricCard
               label="Visits"
               value={fmt(funnel.visits)}
@@ -252,7 +280,44 @@ export default function AdminAutomationAnalytics() {
               label="Checkout Starts"
               value={fmt(funnel.checkout_starts)}
             />
+            <MetricCard
+              label="Completed Signups"
+              value={fmt(funnel.signups_completed)}
+            />
+            <MetricCard
+              label="Paid Customers"
+              value={fmt(funnel.paid_customers || funnel.purchases_completed)}
+              subtext={`${fmt(funnel.purchases_completed)} purchase events`}
+            />
           </div>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">API Cost & Creative Usage</h2>
+              <p className="mt-1 text-sm text-white/45">Direct OpenAI API spend plus local creative-generation volume. ChatGPT subscription usage is separate.</p>
+            </div>
+            <div className="flex items-end gap-2">
+              <label className="text-xs text-white/50">Monthly API budget
+                <input type="number" min="0" step="1" value={budgetDraft} onChange={(e)=>setBudgetDraft(e.target.value)} className="ml-2 w-28 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white" />
+              </label>
+              <button onClick={saveBudget} disabled={budgetSaving} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 disabled:opacity-50">{budgetSaving?"Saving…":"Save budget"}</button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <MetricCard label="OpenAI MTD" value={openaiCosts.month_to_date_usd == null ? "Not connected" : `$${Number(openaiCosts.month_to_date_usd).toFixed(2)}`} subtext={openaiCosts.configured ? "Organization Costs API" : "OPENAI_ADMIN_KEY required"} />
+            <MetricCard label="Today" value={openaiCosts.today_usd == null ? "—" : `$${Number(openaiCosts.today_usd).toFixed(2)}`} />
+            <MetricCard label="Budget Remaining" value={openaiCosts.remaining_budget_usd == null ? "—" : `$${Number(openaiCosts.remaining_budget_usd).toFixed(2)}`} subtext={openaiCosts.budget_used_pct == null ? "" : `${openaiCosts.budget_used_pct}% used`} />
+            <MetricCard label="Creatives 24h" value={fmt(creativeUsage.generated_24h)} />
+            <MetricCard label="Creatives This Month" value={fmt(creativeUsage.generated_month)} />
+            <MetricCard label="Automated This Month" value={fmt(creativeUsage.automated_month)} />
+          </div>
+
+          {openaiCosts.error && <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">{openaiCosts.error}</p>}
+
+          {Array.isArray(openaiCosts.line_items) && openaiCosts.line_items.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{openaiCosts.line_items.map((item)=><div key={item.name} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm"><span>{item.name}</span><strong>${Number(item.cost_usd||0).toFixed(2)}</strong></div>)}</div>}
         </section>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -509,6 +574,8 @@ export default function AdminAutomationAnalytics() {
                     <th className="px-3 py-3">Visitors</th>
                     <th className="px-3 py-3">Clicks</th>
                     <th className="px-3 py-3">Signup Starts</th>
+                    <th className="px-3 py-3">Completed</th>
+                    <th className="px-3 py-3">Paid</th>
                   </tr>
                 </thead>
 
@@ -533,13 +600,15 @@ export default function AdminAutomationAnalytics() {
                       <td className="px-3 py-3 text-emerald-300">
                         {fmt(row.signup_starts)}
                       </td>
+                      <td className="px-3 py-3 text-blue-300">{fmt(row.signups_completed)}</td>
+                      <td className="px-3 py-3 text-amber-300">{fmt(row.purchases_completed)}</td>
                     </tr>
                   ))}
 
                   {marketingSources.length === 0 && (
                     <tr>
                       <td
-                        colSpan="5"
+                        colSpan="7"
                         className="px-3 py-6 text-center text-white/40"
                       >
                         No marketing-source activity yet.
@@ -565,6 +634,8 @@ export default function AdminAutomationAnalytics() {
                     <th className="px-3 py-3">Visits</th>
                     <th className="px-3 py-3">Visitors</th>
                     <th className="px-3 py-3">Clicks</th>
+                    <th className="px-3 py-3">Signups</th>
+                    <th className="px-3 py-3">Paid</th>
                     <th className="px-3 py-3">Last Activity</th>
                   </tr>
                 </thead>
@@ -590,6 +661,8 @@ export default function AdminAutomationAnalytics() {
                       <td className="px-3 py-3">
                         {fmt(row.clicks)}
                       </td>
+                      <td className="px-3 py-3 text-blue-300">{fmt(row.signups_completed)}</td>
+                      <td className="px-3 py-3 text-amber-300">{fmt(row.purchases_completed)}</td>
                       <td className="px-3 py-3 text-white/55">
                         {fmtDate(row.last_activity)}
                       </td>
@@ -599,7 +672,7 @@ export default function AdminAutomationAnalytics() {
                   {campaigns.length === 0 && (
                     <tr>
                       <td
-                        colSpan="6"
+                        colSpan="8"
                         className="px-3 py-6 text-center text-white/40"
                       >
                         No campaign activity yet.

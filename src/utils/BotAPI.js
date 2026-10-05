@@ -808,6 +808,12 @@ const getOrganizations = async (skipCache = false) =>
 const getAutomationAnalytics = () =>
   api.get("/api/admin/automation/analytics");
 
+const getApiCosts = () =>
+  api.get("/api/admin/api-costs");
+
+const updateApiCostSettings = (openai_monthly_budget_usd) =>
+  api.put("/api/admin/api-costs/settings", { openai_monthly_budget_usd });
+
 
 // ============================================================
 // ADMIN — SPORTS JEDI
@@ -1022,6 +1028,8 @@ const BotAPI = {
 
   // Admin — Automation Analytics
   getAutomationAnalytics,
+  getApiCosts,
+  updateApiCostSettings,
 
   // Admin — Work Agent
   getWorkAgentOverview,
