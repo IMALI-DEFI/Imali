@@ -13,7 +13,8 @@ const title=x=>({
   instagram:'Instagram',
   facebook:'Facebook',
   threads:'Threads',
-  player_parlay:'Player props · high risk / longshot'
+  player_parlay:'Player props · high risk / longshot',
+  partner:'Referral Partner'
 }[x]||x);
 
 export default function SocialAutomationPanel(){
