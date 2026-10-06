@@ -57,6 +57,8 @@ def classify(d, context=None, now=None):
     if lane=='Government' and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
     if lane=='Government' and d.get('procurement_stage') in ('award','cancelled','closed'):
         return dispose('CANCELLED' if d['procurement_stage']=='cancelled' else 'CLOSED',{'official_stage':d['procurement_stage'],'source':d.get('url')})
+    if lane=='Government' and d.get('revenue_path')=='ignore':
+        return dispose('OUT_OF_SCOPE',{'reason':'Recorded business classification is ignore; procurement research is not justified','personal_fit':d.get('personal_fit'),'business_value':d.get('business_value'),'demand_confidence':d.get('demand_confidence'),'source':d.get('url')})
     if reward.get('participation_status')=='closed_to_new_entrants': return dispose('CLOSED',{'participation_status':reward['participation_status'],'reason':reward.get('participation_reason')})
     # Staleness policy is source-specific and uses the original posting date, not crawler time.
     posted=date(d.get('source_posted_at'))

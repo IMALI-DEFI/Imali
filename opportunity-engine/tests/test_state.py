@@ -23,6 +23,9 @@ class States(unittest.TestCase):
  def test_hackernews_stale_disposed_even_if_misrouted(self):
   r=self.row();r.update(source='hackernews',source_posted_at='2025-01-01',revenue_path='direct_contract')
   s=classify(r,now=NOW);self.assertEqual(s['disposition_reason'],'STALE_BEYOND_POLICY')
+ def test_government_ignore_disposes_before_research(self):
+  r=self.row();r.update(source='sam_gov',revenue_path='ignore',personal_fit=10,business_value=20,demand_confidence=30)
+  s=classify(r,now=NOW);self.assertEqual(s['operational_state'],'DISPOSED');self.assertEqual(s['disposition_reason'],'OUT_OF_SCOPE')
  def test_metadata_not_qualified(self):
   r=self.row();r.update(source='sam_gov',procurement_qualified=True,procurement_bid_ready=True)
   s=classify(r,now=NOW);self.assertEqual(s['next_machine_action'],'procurement_research');self.assertIsNone(s['final_approval_type'])
