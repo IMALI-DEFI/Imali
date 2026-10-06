@@ -235,6 +235,14 @@ def target(conn,d,alternative=False):
                 def is_employer_career(u):
                     parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
                     return (not bad_host(host)) and bool(re.search(r'/jobs?(/|$)|/careers?(/|$)|/positions?(/|$)|/apply(/|$)|jobid=|job_id=',path+'?'+parsed.query,re.I))
+                def is_application_landing(u):
+                    parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
+                    return (not bad_host(host)) and bool(re.search(r'/(?:apply(?:[-/]|$)|join(?:/|$)|register(?:/|$)|registration(?:/|$)|signup(?:/|$)|application(?:/|$))',path,re.I))
+                def same_site(a,b):
+                    ah=(urlparse(a).hostname or '').lower().lstrip('www.')
+                    bh=(urlparse(b).hostname or '').lower().lstrip('www.')
+                    ar='.'.join(ah.split('.')[-2:]);br='.'.join(bh.split('.')[-2:])
+                    return bool(ar and br and ar==br)
                 def is_role_specific_external(u):
                     # Aggregator pages can expose a direct external posting that is not on a
                     # conventional ATS. Accept it only when the URL itself is role-specific;
@@ -247,6 +255,8 @@ def target(conn,d,alternative=False):
                     hits=sum(1 for token in title_tokens if token in path)
                     return hits>=2 or (len(title_tokens)==1 and hits==1)
                 source_role_verified=matches_role(text)
+                identity=company_identity(d.get('company'),description)
+                company_page_verified=(not bad_host(host_of(final)) and identity_matches(identity,host_of(final),text))
                 verified_target=final if (is_ats(final) or is_employer_career(final)) and source_role_verified else None
                 target_kind='ATS' if verified_target and is_ats(verified_target) else 'employer career page' if verified_target else None
 
@@ -260,18 +270,43 @@ def target(conn,d,alternative=False):
                         and url in explicit_apply_urls):
                     h=host_of(final)
                     source_h=host_of(url)
-                    identity=company_identity(d.get('company'),description)
                     identity_ok=identity_matches(identity,h,text) or identity_matches(identity,source_h,'')
-                    if not bad_host(h) and not bad_host(source_h) and identity_ok:
+                    if not bad_host(h) and not bad_host(source_h) and identity_ok and is_application_landing(final):
                         verified_target=final
                         target_kind='source-explicit application page'
-                candidate_links=[u for u in links if is_ats(u) or is_employer_career(u) or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))][:10]
+                    elif not bad_host(h) and not bad_host(source_h) and identity_ok:
+                        # A stale source apply URL may redirect to the company homepage.
+                        # Follow only a same-company application link exposed there.
+                        for application_link in links[:30]:
+                            if not is_application_landing(application_link) or not same_site(final,application_link):
+                                continue
+                            try:candidate,body,_=fetch(application_link)
+                            except Exception:continue
+                            ch=host_of(candidate)
+                            if (not bad_host(ch) and is_application_landing(candidate)
+                                    and same_site(final,candidate)
+                                    and identity_matches(identity,ch,body)):
+                                verified_target=candidate
+                                target_kind='verified company application page'
+                                break
+                candidate_links=[u for u in links if is_ats(u) or is_employer_career(u)
+                                 or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))
+                                 or (str(d.get('source') or '')=='business_contract_remotive' and company_page_verified and same_site(final,u) and is_application_landing(u))][:10]
                 for link in candidate_links:
                     if verified_target:break
                     try:candidate,body,_=fetch(link)
                     except Exception:continue
-                    if (is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body):
-                        verified_target=candidate;target_kind='ATS' if is_ats(candidate) else 'verified external role page' if is_role_specific_external(candidate) else 'employer career page'
+                    role_specific_ok=(is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body)
+                    company_application_ok=(str(d.get('source') or '')=='business_contract_remotive'
+                                            and company_page_verified and is_application_landing(candidate)
+                                            and same_site(final,candidate)
+                                            and identity_matches(identity,host_of(candidate),body))
+                    if role_specific_ok or company_application_ok:
+                        verified_target=candidate
+                        if is_ats(candidate):target_kind='ATS'
+                        elif company_application_ok:target_kind='verified company application page'
+                        elif is_role_specific_external(candidate):target_kind='verified external role page'
+                        else:target_kind='employer career page'
                 if verified_target:
                     reason='Public '+target_kind+' corroborates exact company and role'
                     with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(verified_target,reason,d['id']))
