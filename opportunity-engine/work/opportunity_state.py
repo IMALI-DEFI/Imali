@@ -117,6 +117,13 @@ def classify(d, context=None, now=None):
         return auto('classification')
     if d.get('pursuit_status')!='queued':return auto('queue_preparation')
     if d.get('eligibility_status')=='unchecked':return auto('verification')
+    if str(d.get('source') or '')=='business_contract_remotive':
+        if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
+        if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
+        if not d.get('execution_verified'):return auto('verification')
+        if not d.get('tailored_resume'):return auto('resume_preparation')
+        if not d.get('application_package_path'):return auto('application_package')
+        return human('Review the prepared contract application; external submission remains separately controlled','CONTRACT_APPLICATION')
     if lane=='Employment':
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
         if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')

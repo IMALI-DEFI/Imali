@@ -37,6 +37,12 @@ class States(unittest.TestCase):
   r=self.row(contact_url='https://company.com',outreach_contact_email='real@company.com',execution_verified=True,target_quality_status='verified',outreach_status='ready_email',outreach_subject='Subject',outreach_body='Prepared message')
   self.assertEqual(classify(r,now=NOW)['final_approval_type'],'COMMERCIAL_OUTREACH')
   self.assertEqual(classify(r,{'operation':{'approval_status':'approved'}},NOW)['operational_state'],'BLOCKED_EXTERNAL')
+ def test_contract_application_path(self):
+  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',execution_verified=True)
+  r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
+  self.assertEqual(classify(r,now=NOW)['next_machine_action'],'resume_preparation')
+  r['tailored_resume']='resume';r['application_package_path']='/tmp/package'
+  self.assertEqual(classify(r,now=NOW)['final_approval_type'],'CONTRACT_APPLICATION')
  def test_unverified_provider_not_human_selection(self):
   r=self.row();r.update(source='sam_gov',fulfillment_path='subcontractor')
   s=classify(r,{'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':True},'providers':[{'verification_status':'unverified'}]},NOW)

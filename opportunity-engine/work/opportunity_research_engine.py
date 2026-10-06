@@ -187,7 +187,17 @@ def target(conn,d,alternative=False):
     for url in urls:
         try:
             final,text,links=fetch(url);seen.append(final)
-            if d.get('revenue_path')=='employment':
+            if d.get('revenue_path')=='employment' or str(d.get('source') or '')=='business_contract_remotive':
+                # Contract aggregators may inject the employer/apply link client-side.
+                # One bounded rendered read can enrich links, but exact-role corroboration
+                # below is still required before accepting any destination.
+                if str(d.get('source') or '')=='business_contract_remotive' and (urlparse(final).hostname or '').lower().endswith('remotive.com'):
+                    try:
+                        rendered_url,rendered_text,rendered_links=rendered_public_page(url)
+                        if rendered_url:
+                            links=list(dict.fromkeys(list(links)+list(rendered_links)))
+                    except Exception:
+                        pass
                 from company_job_resolver import normalize
                 def matches_role(body):
                     normalized=normalize(body)
