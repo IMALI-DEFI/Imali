@@ -180,8 +180,21 @@ def target(conn,d,alternative=False):
                 d=dict(d);d['source_posted_at']=posted
         except Exception:
             pass
-    urls=re.findall(r'https?://[^\s<>"\')]+',str(d.get('description') or ''))
-    urls=[d.get('contact_url'),d.get('application_url')]+urls+[d.get('url')]
+    description=str(d.get('description') or '')
+    urls=re.findall(r'https?://[^\s<>"\')]+',description)
+
+    # Contract-job feeds sometimes publish the authoritative application target
+    # only inside the source description (for example: "Apply ... https://...").
+    # Treat such a URL as evidence only when the source text explicitly labels it
+    # as an application destination; never synthesize or infer a URL.
+    explicit_apply_urls=[]
+    for match in re.finditer(r'https?://[^\s<>"\')]+',description):
+        candidate=match.group(0).rstrip('.,);]')
+        context=description[max(0,match.start()-140):min(len(description),match.end()+80)]
+        if re.search(r'\bapply\b|application|go here|job posting link',context,re.I):
+            explicit_apply_urls.append(candidate)
+
+    urls=[d.get('contact_url'),d.get('application_url')]+explicit_apply_urls+urls+[d.get('url')]
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
     for url in urls:
@@ -224,6 +237,20 @@ def target(conn,d,alternative=False):
                 source_role_verified=matches_role(text)
                 verified_target=final if (is_ats(final) or is_employer_career(final)) and source_role_verified else None
                 target_kind='ATS' if verified_target and is_ats(verified_target) else 'employer career page' if verified_target else None
+
+                # For the contract feed, a source-explicit application URL can be
+                # authoritative even when the destination is a generic application
+                # landing page rather than an ATS role page. Require all of:
+                # 1) the exact URL appeared next to application language in source text,
+                # 2) the destination is public/fetchable, and
+                # 3) company identity matches the destination host or body.
+                if (not verified_target and str(d.get('source') or '')=='business_contract_remotive'
+                        and url in explicit_apply_urls):
+                    h=host_of(final)
+                    identity=company_identity(d.get('company'),description)
+                    if not bad_host(h) and identity_matches(identity,h,text):
+                        verified_target=final
+                        target_kind='source-explicit application page'
                 candidate_links=[u for u in links if is_ats(u) or is_employer_career(u) or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))][:10]
                 for link in candidate_links:
                     if verified_target:break
