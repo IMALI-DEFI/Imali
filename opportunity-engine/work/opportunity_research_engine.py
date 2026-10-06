@@ -81,7 +81,15 @@ def procurement(conn,d):
     url=d.get('url');public_url(url)
     if not official(url):return 'exhausted','Official government source has not been authenticated',{'source_url':url}
     from sam_notice_reader import read_notice
-    api=read_notice(d) if str(d.get('source','')).startswith('sam_gov') else None
+    is_sam=str(d.get('source','')).startswith('sam_gov')
+    api=read_notice(d) if is_sam else None
+    sam_rate_limited=False
+    if is_sam and not api:
+        try:
+            from sources.sam_gov import rate_limit_active
+            sam_rate_limited=rate_limit_active()
+        except Exception:
+            pass
     if api:
         final,text,links=api['url'],api['text'],api['links']
     else:
@@ -93,6 +101,8 @@ def procurement(conn,d):
             if official(rendered_url) and len(rendered_text)>len(text):final,text,links=rendered_url,rendered_text,rendered_links
         except PermissionError:return 'exhausted','Official document portal requires human verification',{'source_url':url,'blocker_type':'CAPTCHA'}
         except Exception:pass
+    if is_sam and sam_rate_limited and len(text)<1800:
+        return 'retry','SAM notice detail temporarily unavailable during API cooldown; retry scheduled',{'source_url':url,'temporary':'sam_api_cooldown'}
     docs=[{'url':final,'sha256':hashlib.sha256(text.encode()).hexdigest(),'characters':len(text)}]
     # Reuse official attachment URLs retained by the existing discovery cache.
     official_attachments=[]
@@ -152,6 +162,24 @@ def procurement(conn,d):
 def target(conn,d,alternative=False):
     # Candidates must already exist verbatim in source evidence. Never synthesize domains/emails.
     from company_domain_discovery import bad_host,host_of,company_identity,identity_matches
+    # Historical HN rows predate source_posted_at persistence. Backfill the
+    # authoritative item timestamp before spending repeated target-resolution cycles.
+    if d.get('source')=='hackernews' and not d.get('source_posted_at') and str(d.get('source_id') or '').isdigit():
+        try:
+            _,raw,_=fetch('https://hn.algolia.com/api/v1/items/'+str(d['source_id']))
+            item=json.loads(raw)
+            created=item.get('created_at') if isinstance(item,dict) else None
+            posted=datetime.fromisoformat(created.replace('Z','+00:00')) if created else None
+            if posted:
+                age=(datetime.now(timezone.utc)-posted).days
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE developer_opportunities SET source_posted_at=%s,pursuit_status=CASE WHEN %s>180 THEN 'excluded_stale' ELSE pursuit_status END WHERE id=%s",(posted,age,d['id']))
+                conn.commit()
+                if age>180:
+                    return 'progress','Authoritative Hacker News timestamp marks historical posting stale',{'source_posted_at':posted.isoformat(),'age_days':age}
+                d=dict(d);d['source_posted_at']=posted
+        except Exception:
+            pass
     urls=re.findall(r'https?://[^\s<>"\')]+',str(d.get('description') or ''))
     urls=[d.get('contact_url'),d.get('application_url')]+urls+[d.get('url')]
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]

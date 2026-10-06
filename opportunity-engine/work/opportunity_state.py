@@ -59,6 +59,11 @@ def classify(d, context=None, now=None):
     if reward.get('participation_status')=='closed_to_new_entrants': return dispose('CLOSED',{'participation_status':reward['participation_status'],'reason':reward.get('participation_reason')})
     # Staleness policy is source-specific and uses the original posting date, not crawler time.
     posted=date(d.get('source_posted_at'))
+    # Hacker News Who's Hiring inventory is time-sensitive regardless of an older
+    # revenue-path classification. Once the authoritative source timestamp is known,
+    # do not keep recycling postings older than six months.
+    if d.get('source')=='hackernews' and posted and (now-posted).days>180:
+        return dispose('STALE_BEYOND_POLICY',{'source_posted_at':posted.isoformat(),'policy':'Hacker News hiring post older than 180 days'})
     if lane=='Employment' and d.get('pursuit_status')=='excluded_stale' and posted and (now-posted).days>180:
         return dispose('STALE_BEYOND_POLICY',{'source_posted_at':posted.isoformat(),'policy':'employment explicit stale exclusion plus original posting older than 180 days'})
     if lane=='Recovery': return blocked('COMPLIANCE_REVIEW','Authoritative jurisdiction compliance approval required; no outreach or claims permitted')

@@ -20,6 +20,9 @@ class States(unittest.TestCase):
   self.assertEqual(classify(r,c,NOW)['next_machine_action'],'contact_alternative')
   c['attempts']={'contact_alternative':{'reason':'No alternative'}}
   self.assertEqual(classify(r,c,NOW)['operational_state'],'BLOCKED_EXTERNAL')
+ def test_hackernews_stale_disposed_even_if_misrouted(self):
+  r=self.row();r.update(source='hackernews',source_posted_at='2025-01-01',revenue_path='direct_contract')
+  s=classify(r,now=NOW);self.assertEqual(s['disposition_reason'],'STALE_BEYOND_POLICY')
  def test_metadata_not_qualified(self):
   r=self.row();r.update(source='sam_gov',procurement_qualified=True,procurement_bid_ready=True)
   s=classify(r,now=NOW);self.assertEqual(s['next_machine_action'],'procurement_research');self.assertIsNone(s['final_approval_type'])
