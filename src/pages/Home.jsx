@@ -51,49 +51,9 @@ export default function Home() {
 
       <RecentSocialShowcase />
 
-      {/* PRODUCT DEMO */}
+      {/* OFFER */}
       <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
         <div className="mx-auto max-w-6xl px-5 sm:px-6 lg:px-8">
-
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
-              <FaRobot />
-              See IMALI in Action
-            </div>
-
-            <h2 className="mt-5 text-3xl font-black sm:text-4xl md:text-5xl">
-              See What Trading With
-              <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                IMALI Looks Like
-              </span>
-            </h2>
-
-            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-              Take a quick look inside IMALI and see how your trading dashboard
-              brings your account, automation, and market activity together.
-            </p>
-          </div>
-
-          <div className="mx-auto mt-10 max-w-5xl">
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl shadow-cyan-500/10">
-              <video
-                className="block h-auto w-full"
-                controls
-                playsInline
-                preload="metadata"
-              >
-                <source src="/videos/StoryExport.mov" type="video/quicktime" />
-                Your browser does not support video playback.
-              </video>
-            </div>
-
-            <p className="mx-auto mt-4 max-w-2xl text-center text-xs leading-relaxed text-white/35">
-              Product demonstration. Available features and account information
-              can vary by connected service and plan.
-            </p>
-          </div>
-
-          {/* OFFER */}
           <div className="mx-auto mt-12 max-w-3xl rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-7 text-center sm:p-10">
 
             <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">
