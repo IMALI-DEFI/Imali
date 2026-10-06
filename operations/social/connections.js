@@ -78,6 +78,37 @@ function mount(app,{db,authenticateToken,requireAdmin}){
   });res.json({success:outcome.state==='POSTED',data:outcome});
  }));
  router.get('/queue',wrap(async(req,res)=>{const r=await db.query('SELECT id,brand,platform,account_id,state,platform_post_id,published_at,public_url,error,provider_state,created_at FROM social_queue_v1 ORDER BY created_at DESC LIMIT 100');res.json({success:true,automatic_publishing:require('./automation').runtimeStatus().automatic_publishing,items:r.rows});}));
+ const centerModule=require('./center');
+ const publicCenter=centerModule.createCenter({db,getConfig:loadConfig});
+ app.get('/api/public/social/recent',async(req,res)=>{
+  try{
+   res.set('Cache-Control','public, max-age=60, stale-while-revalidate=300');
+   const requested=String(req.query.product||'').toLowerCase();
+   const brand=requested==='sports-jedi'||requested==='sports_jedi'?'sports_jedi':requested==='imali'?'imali':null;
+   if(!brand)return res.status(400).json({success:false,error:'PRODUCT_INVALID'});
+   const limit=Math.min(Math.max(Number.parseInt(req.query.limit,10)||8,1),12);
+   const raw=(await db.query('SELECT * FROM social_queue_v1 WHERE brand=$1 ORDER BY created_at DESC LIMIT 100',[brand])).rows;
+   const queued=raw.map(centerModule.normalize).filter(x=>x.status==='PUBLISHED');
+   const legacy=centerModule.readPackages().filter(x=>x.brand===brand&&x.status==='PUBLISHED');
+   const posts=[...queued,...legacy]
+    .sort((a,b)=>new Date(b.published_at||b.created_at||0)-new Date(a.published_at||a.created_at||0))
+    .slice(0,limit)
+    .map(p=>({
+      id:p.id,platform:p.platform,title:p.title||p.topic||'',caption:p.caption||'',
+      media_url:p.creative?.replace('/api/admin/social/center/assets/','/api/public/social/assets/')||null,
+      media_type:p.type||null,public_url:p.public_url||null,published_at:p.published_at||p.created_at||null
+    }));
+   res.json({success:true,data:{product:brand,posts}});
+  }catch(e){res.status(500).json({success:false,error:'PUBLIC_SOCIAL_FEED_FAILED'});}
+ });
+ app.get('/api/public/social/assets/:brand/:id/:kind',(req,res)=>{
+  const brand=req.params.brand;
+  if(!['imali','sports_jedi'].includes(brand)||!/^[A-Za-z0-9_-]+$/.test(req.params.id)||!['image','video'].includes(req.params.kind))return res.status(404).end();
+  const file=publicCenter.asset(brand,req.params.id,req.params.kind);
+  if(!file)return res.status(404).end();
+  res.set({'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'});
+  res.sendFile(file);
+ });
  app.use('/api/admin/social',authenticateToken,requireAdmin,router);
  app.get('/api/social/callback/:platform',async(req,res)=>{
   res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"});

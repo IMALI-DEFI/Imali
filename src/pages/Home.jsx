@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import RecentSocialShowcase from "../components/RecentSocialShowcase";
 import {
   FaArrowRight,
   FaCheckCircle,
@@ -48,6 +49,7 @@ export default function Home() {
         </div>
       </section>
 
+      <RecentSocialShowcase />
 
       {/* PRODUCT DEMO */}
       <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
