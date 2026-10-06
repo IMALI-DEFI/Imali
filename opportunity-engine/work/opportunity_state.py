@@ -121,6 +121,10 @@ def classify(d, context=None, now=None):
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
         if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
         if not d.get('execution_verified'):return auto('verification')
+        # The first execution guard validates target quality; the final source
+        # verifier independently rejects aggregators/generic destinations.
+        # Do not build or approve a package until both gates pass.
+        if not d.get('execution_source_verified') or d.get('execution_status')!='ready':return auto('target_resolution')
         if not d.get('tailored_resume'):return auto('resume_preparation')
         if not d.get('application_package_path'):return auto('application_package')
         return human('Review the prepared contract application; external submission remains separately controlled','CONTRACT_APPLICATION')
