@@ -257,6 +257,7 @@ def target(conn,d,alternative=False):
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
     stale_explicit_targets=[]
+    unverifiable_explicit_targets=[]
     persisted_explicit_target=None
     if str(d.get('source') or '')=='business_contract_remotive':
         candidate=str(d.get('application_url') or '')
@@ -266,6 +267,18 @@ def target(conn,d,alternative=False):
     for url in urls:
         try:
             final,text,links=fetch(url);seen.append(final)
+            if url==persisted_explicit_target and (len(text.strip())<500 or re.search(r'JavaScript must be enabled',text,re.I)):
+                try:
+                    rendered_url,rendered_text,rendered_links=rendered_public_page(url)
+                    if rendered_url:
+                        final=rendered_url
+                    if len(rendered_text.strip())>len(text.strip()):
+                        text=rendered_text
+                    links=list(dict.fromkeys(list(links)+list(rendered_links)))
+                except Exception:
+                    pass
+                if len(text.strip())<500 or re.search(r'JavaScript must be enabled',text,re.I):
+                    unverifiable_explicit_targets.append({'url':url,'reason':'public page returned no machine-verifiable application content'})
             if d.get('revenue_path')=='employment' or str(d.get('source') or '')=='business_contract_remotive':
                 # Contract aggregators may inject the employer/apply link client-side.
                 # One bounded rendered read can enrich links, but exact-role corroboration
@@ -392,6 +405,8 @@ def target(conn,d,alternative=False):
         except Exception as exc:seen.append(type(exc).__name__)
     if stale_explicit_targets:
         return 'exhausted','Source-explicit application destination is no longer available',{'sources_checked':seen,'stale_application_targets':stale_explicit_targets}
+    if unverifiable_explicit_targets:
+        return 'exhausted','Source-explicit application destination could not be machine-verified; human/browser review required',{'sources_checked':seen,'unverifiable_application_targets':unverifiable_explicit_targets}
     return 'retry','No verified official target in accessible source evidence',{'sources_checked':seen}
 
 def providers(conn,d,verify=False):
