@@ -1,5 +1,5 @@
 // src/pages/EnterpriseDemo.jsx
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   FaChartLine,
@@ -20,6 +20,41 @@ export default function EnterpriseDemo() {
 
   // Enterprise contact email
   const ENTERPRISE_EMAIL = "imalidefi@gmail.com";
+  const API_BASE = (process.env.REACT_APP_API_URL || "https://api.imali-defi.com").replace(/\/$/, "");
+  const [inquiry, setInquiry] = useState({
+    name: "",
+    email: "",
+    organization: "",
+    role: "",
+    use_case: "",
+    message: "",
+    consent: false,
+    website: "",
+  });
+  const [inquiryState, setInquiryState] = useState({ sending: false, error: "", sent: false });
+
+  const updateInquiry = (key) => (event) => {
+    const value = key === "consent" ? event.target.checked : event.target.value;
+    setInquiry((current) => ({ ...current, [key]: value }));
+  };
+
+  const submitInquiry = async (event) => {
+    event.preventDefault();
+    setInquiryState({ sending: true, error: "", sent: false });
+    try {
+      const response = await fetch(API_BASE + "/api/public/opportunities/enterprise-inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inquiry),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Unable to submit your inquiry.");
+      setInquiryState({ sending: false, error: "", sent: true });
+      setInquiry((current) => ({ ...current, message: "", use_case: "", website: "" }));
+    } catch (error) {
+      setInquiryState({ sending: false, error: error.message, sent: false });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
@@ -51,7 +86,7 @@ export default function EnterpriseDemo() {
         <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
           {/* Request Demo - Opens email */}
           <a
-            href={`mailto:${ENTERPRISE_EMAIL}?subject=Enterprise%20Pilot%20Demo%20Request&body=I%27m%20interested%20in%20learning%20more%20about%20IMALI%20Enterprise%20for%20our%20organization.`}
+            href="#enterprise-inquiry"
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-3 font-bold hover:from-blue-700 hover:to-blue-600 transition shadow-lg"
           >
             Request Pilot Demo <FaEnvelope />
@@ -156,7 +191,7 @@ export default function EnterpriseDemo() {
 
           <div className="mt-8">
             <a
-              href={`mailto:${ENTERPRISE_EMAIL}?subject=Enterprise%20Pilot%20Inquiry&body=I%27d%20like%20to%20discuss%20IMALI%20Enterprise%20for%20our%20organization.`}
+              href="#enterprise-inquiry"
               className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 transition font-medium"
             >
               Contact our enterprise team <FaArrowRight />
@@ -176,6 +211,57 @@ export default function EnterpriseDemo() {
         </div>
       </section>
 
+      <section id="enterprise-inquiry" className="max-w-5xl mx-auto px-6 py-16">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 md:p-10">
+          <div className="max-w-3xl">
+            <span className="text-sm font-bold uppercase tracking-wider text-blue-300">Enterprise inquiry</span>
+            <h2 className="mt-2 text-3xl font-extrabold">Tell us what your organization needs</h2>
+            <p className="mt-3 text-slate-300">
+              Your request goes directly into our opportunity workflow so we can prepare a relevant response instead of making you start with a generic email.
+            </p>
+          </div>
+
+          <form onSubmit={submitInquiry} className="mt-8 grid gap-5 md:grid-cols-2">
+            <label className="text-left text-sm font-semibold text-slate-200">
+              Your name
+              <input required maxLength={120} value={inquiry.name} onChange={updateInquiry("name")} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <label className="text-left text-sm font-semibold text-slate-200">
+              Work email
+              <input required type="email" maxLength={254} value={inquiry.email} onChange={updateInquiry("email")} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <label className="text-left text-sm font-semibold text-slate-200">
+              Organization
+              <input required maxLength={180} value={inquiry.organization} onChange={updateInquiry("organization")} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <label className="text-left text-sm font-semibold text-slate-200">
+              Your role <span className="font-normal text-slate-500">(optional)</span>
+              <input maxLength={140} value={inquiry.role} onChange={updateInquiry("role")} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <label className="text-left text-sm font-semibold text-slate-200 md:col-span-2">
+              What are you trying to accomplish?
+              <input required maxLength={220} value={inquiry.use_case} onChange={updateInquiry("use_case")} placeholder="Example: workforce financial-technology pilot for 50 participants" className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <label className="text-left text-sm font-semibold text-slate-200 md:col-span-2">
+              Tell us more
+              <textarea required minLength={20} maxLength={4000} rows={5} value={inquiry.message} onChange={updateInquiry("message")} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-blue-400" />
+            </label>
+            <input tabIndex="-1" autoComplete="off" aria-hidden="true" value={inquiry.website} onChange={updateInquiry("website")} className="hidden" />
+            <label className="flex items-start gap-3 text-left text-sm text-slate-300 md:col-span-2">
+              <input required type="checkbox" checked={inquiry.consent} onChange={updateInquiry("consent")} className="mt-1" />
+              <span>I want IMALI to contact me about this request using the email I provided.</span>
+            </label>
+            <div className="md:col-span-2">
+              <button type="submit" disabled={inquiryState.sending} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-8 py-4 font-bold transition hover:from-blue-700 hover:to-cyan-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {inquiryState.sending ? "Submitting…" : "Submit Enterprise Inquiry"} <FaArrowRight />
+              </button>
+              {inquiryState.sent && <p className="mt-4 text-emerald-300">Thanks — your inquiry was received and added to our review workflow.</p>}
+              {inquiryState.error && <p className="mt-4 text-red-300">{inquiryState.error}</p>}
+            </div>
+          </form>
+        </div>
+      </section>
+
       {/* Final CTA */}
       <section className="max-w-5xl mx-auto px-6 py-20 text-center">
         <div className="rounded-3xl bg-gradient-to-r from-blue-600/10 to-cyan-600/10 border border-white/10 p-12">
@@ -190,7 +276,7 @@ export default function EnterpriseDemo() {
 
           <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href={`mailto:${ENTERPRISE_EMAIL}?subject=Enterprise%20Pilot%20Request&body=I%27m%20interested%20in%20starting%20a%20pilot%20program%20with%20IMALI%20Enterprise.`}
+              href="#enterprise-inquiry"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-8 py-4 font-bold hover:from-blue-700 hover:to-cyan-700 transition shadow-lg"
             >
               Start a Pilot Conversation <FaArrowRight />
