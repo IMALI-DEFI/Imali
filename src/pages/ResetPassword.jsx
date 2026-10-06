@@ -2,10 +2,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
+import { useAuth } from "../context/AuthContext";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { clearAuth } = useAuth();
   
   const token = searchParams.get("token");
   
@@ -62,6 +64,10 @@ export default function ResetPassword() {
 
     try {
       await BotAPI.resetPassword(token, password);
+      // Password changes invalidate any previous session. Clear stale auth
+      // before redirecting so the app cannot bounce back to /dashboard
+      // with an old token/user cached in memory or localStorage.
+      clearAuth();
       setSuccess(true);
     } catch (err) {
       const errorMsg = err.response?.data?.message || 
