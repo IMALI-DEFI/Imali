@@ -181,7 +181,7 @@ def target(conn,d,alternative=False):
         except Exception:
             pass
     description=str(d.get('description') or '')
-    urls=re.findall(r'https?://[^\s<>"\')]+',description)
+    urls=re.findall(r"https?://[^\s<>\"')]+",description)
 
     # Contract-job feeds sometimes publish the authoritative application target
     # only inside the source description (for example: "Apply ... https://...").
@@ -190,6 +190,18 @@ def target(conn,d,alternative=False):
     explicit_apply_urls=[]
     for match in re.finditer(r'https?://[^\s<>"\')]+',description):
         candidate=match.group(0).rstrip('.,);]')
+        context=description[max(0,match.start()-140):min(len(description),match.end()+80)]
+        if re.search(r'\bapply\b|application|go here|job posting link',context,re.I):
+            explicit_apply_urls.append(candidate)
+
+    # Normalize a source-explicit schemeless application URL (for example
+    # build.a.team/apply-ai) to HTTPS. The exact host/path must appear in the
+    # source evidence next to application language; this is normalization only.
+    for match in re.finditer(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}/[^\s<>\"')]+",description,re.I):
+        prefix=description[max(0,match.start()-8):match.start()]
+        if prefix.endswith('://'):
+            continue
+        candidate='https://'+match.group(0).rstrip('.,);]')
         context=description[max(0,match.start()-140):min(len(description),match.end()+80)]
         if re.search(r'\bapply\b|application|go here|job posting link',context,re.I):
             explicit_apply_urls.append(candidate)
@@ -247,8 +259,10 @@ def target(conn,d,alternative=False):
                 if (not verified_target and str(d.get('source') or '')=='business_contract_remotive'
                         and url in explicit_apply_urls):
                     h=host_of(final)
+                    source_h=host_of(url)
                     identity=company_identity(d.get('company'),description)
-                    if not bad_host(h) and identity_matches(identity,h,text):
+                    identity_ok=identity_matches(identity,h,text) or identity_matches(identity,source_h,'')
+                    if not bad_host(h) and not bad_host(source_h) and identity_ok:
                         verified_target=final
                         target_kind='source-explicit application page'
                 candidate_links=[u for u in links if is_ats(u) or is_employer_career(u) or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))][:10]
