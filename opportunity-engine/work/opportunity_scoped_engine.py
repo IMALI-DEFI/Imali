@@ -24,7 +24,7 @@ ALLOWED={
 }
 def main():
     action=sys.argv[1]; ids=json.loads(sys.argv[2]); assert action in ALLOWED and 0<len(ids)<=25
-    os.environ.update(OUTREACH_SEND_ENABLED='false',RFQ_SEND_LIVE='0',APPLICATION_AUTO_SUBMIT='false',CONTACT_MAX_ATTEMPTS='3',CONTACT_FETCH_TIMEOUT_SECONDS='6',CONTACT_MAX_LINKED_PAGES='3',CONTACT_MAX_CONVENTIONAL_PAGES='3')
+    os.environ.update(OUTREACH_SEND_ENABLED='false',RFQ_SEND_LIVE='0',APPLICATION_AUTO_SUBMIT='false',CONTACT_MAX_ATTEMPTS='3',CONTACT_FETCH_TIMEOUT_SECONDS='6',CONTACT_MAX_LINKED_PAGES='5',CONTACT_MAX_CONVENTIONAL_PAGES='5')
     if action=='reward_local_prototype':
         import resource,subprocess
         resource.setrlimit(resource.RLIMIT_FSIZE,(25*1024*1024,25*1024*1024))

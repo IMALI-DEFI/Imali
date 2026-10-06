@@ -80,7 +80,12 @@ def official(url):
 def procurement(conn,d):
     url=d.get('url');public_url(url)
     if not official(url):return 'exhausted','Official government source has not been authenticated',{'source_url':url}
-    final,text,links=fetch(url)
+    from sam_notice_reader import read_notice
+    api=read_notice(d) if str(d.get('source','')).startswith('sam_gov') else None
+    if api:
+        final,text,links=api['url'],api['text'],api['links']
+    else:
+        final,text,links=fetch(url)
     if not official(final):return 'exhausted','Redirect left the official source',{'source_url':url,'redirect':final}
     if len(text)<1800:
         try:
@@ -103,10 +108,28 @@ def procurement(conn,d):
                     links.extend(official_attachments)
                     if item.get('additional_info_link'):links.append(item['additional_info_link'])
         except (ValueError,TypeError):pass
-    for link in [x for x in links if (official(x) and re.search(r'\.pdf|attachment|document|solicitation',x,re.I)) or x in official_attachments][:2]:
+    # Follow a small, deduplicated set of official solicitation/document links.
+    # This stays read-only and bounded while covering SOW/PWS/RFP/RFQ/amendment pages
+    # that are not always exposed as a literal PDF URL.
+    document_pattern=r'\.pdf|attachment|document|solicitation|statement.of.work|performance.work.statement|\bpws\b|\bsow\b|\brfp\b|\brfq\b|amendment|package'
+    document_links=[]
+    for candidate in list(official_attachments)+list(links):
+        if not candidate or candidate in document_links:continue
+        if candidate in official_attachments or (official(candidate) and re.search(document_pattern,candidate,re.I)):
+            document_links.append(candidate)
+        if len(document_links)>=5:break
+    for link in document_links:
         try:
-            dest,extra,_=fetch(link)
-            if official(dest) or (link in official_attachments and urlparse(dest).hostname==urlparse(link).hostname):text+='\n'+extra;docs.append({'url':dest,'sha256':hashlib.sha256(extra.encode()).hexdigest(),'characters':len(extra)})
+            dest,extra,extra_links=fetch(link)
+            same_attachment_host=link in official_attachments and urlparse(dest).hostname==urlparse(link).hostname
+            if official(dest) or same_attachment_host:
+                text+='\n'+extra
+                docs.append({'url':dest,'sha256':hashlib.sha256(extra.encode()).hexdigest(),'characters':len(extra)})
+                # One shallow expansion only, still capped by the five-document budget.
+                for child in extra_links:
+                    if len(document_links)>=5:break
+                    if child not in document_links and official(child) and re.search(document_pattern,child,re.I):
+                        document_links.append(child)
         except Exception:continue
     lines=[x.strip() for x in text.splitlines() if len(x.strip())>20]
     keys={'scope':r'\bscope\b|statement of work|performance work statement', 'eligibility':r'eligible|eligibility|set.aside|citizen|clearance',
@@ -131,7 +154,7 @@ def target(conn,d,alternative=False):
     from company_domain_discovery import bad_host,host_of,company_identity,identity_matches
     urls=re.findall(r'https?://[^\s<>"\')]+',str(d.get('description') or ''))
     urls=[d.get('contact_url'),d.get('application_url')]+urls+[d.get('url')]
-    urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:3]
+    urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
     for url in urls:
         try:
@@ -146,14 +169,22 @@ def target(conn,d,alternative=False):
                 def is_ats(u):
                     parsed=urlparse(u);host=parsed.hostname or ''
                     return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parsed.path.strip('/').split('/'))>=2
-                verified_target=final if is_ats(final) and matches_role(text) else None
-                for link in [u for u in links if is_ats(u)][:2]:
+                def is_employer_career(u):
+                    parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
+                    return (not bad_host(host)) and bool(re.search(r'/jobs?(/|$)|/careers?(/|$)|/positions?(/|$)|/apply(/|$)|jobid=|job_id=',path+'?'+parsed.query,re.I))
+                verified_target=final if (is_ats(final) or is_employer_career(final)) and matches_role(text) else None
+                target_kind='ATS' if verified_target and is_ats(verified_target) else 'employer career page' if verified_target else None
+                candidate_links=[u for u in links if is_ats(u) or is_employer_career(u)][:5]
+                for link in candidate_links:
                     if verified_target:break
-                    candidate,body,_=fetch(link)
-                    if is_ats(candidate) and matches_role(body):verified_target=candidate
+                    try:candidate,body,_=fetch(link)
+                    except Exception:continue
+                    if (is_ats(candidate) or is_employer_career(candidate)) and matches_role(body):
+                        verified_target=candidate;target_kind='ATS' if is_ats(candidate) else 'employer career page'
                 if verified_target:
-                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason='Public ATS page corroborates exact company and role',target_quality_checked_at=now() WHERE id=%s",(verified_target,d['id']))
-                    conn.commit();return 'progress','Public application page corroborates company and role; eligibility/package verification follows',{'source':final,'target':verified_target}
+                    reason='Public '+target_kind+' corroborates exact company and role'
+                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(verified_target,reason,d['id']))
+                    conn.commit();return 'progress','Public application page corroborates exact company and role; eligibility/package verification follows',{'source':final,'target':verified_target,'target_kind':target_kind}
                 continue
             h=host_of(final)
             if bad_host(h):
