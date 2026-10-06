@@ -257,6 +257,12 @@ def target(conn,d,alternative=False):
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
     stale_explicit_targets=[]
+    persisted_explicit_target=None
+    if str(d.get('source') or '')=='business_contract_remotive':
+        candidate=str(d.get('application_url') or '')
+        source_url=str(d.get('url') or '')
+        if candidate and candidate!=source_url and not (urlparse(candidate).hostname or '').lower().endswith('remotive.com'):
+            persisted_explicit_target=candidate
     for url in urls:
         try:
             final,text,links=fetch(url);seen.append(final)
@@ -381,7 +387,7 @@ def target(conn,d,alternative=False):
             conn.commit();return 'progress','Official company source corroborates identity',{'official_url':final,'source_candidates':seen}
         except HTTPError as exc:
             seen.append('HTTPError:'+str(exc.code))
-            if url in explicit_apply_urls and exc.code in (404,410):
+            if (url in explicit_apply_urls or url==persisted_explicit_target) and exc.code in (404,410):
                 stale_explicit_targets.append({'url':url,'status':exc.code})
         except Exception as exc:seen.append(type(exc).__name__)
     if stale_explicit_targets:
