@@ -198,6 +198,26 @@ def is_job_specific_application_url(value):
     )
 
 
+def is_contract_application_url(value):
+    # Strict contract-application gate for first-party join/register flows.
+    if is_job_specific_application_url(value):
+        return True
+    if not value or is_generic_bad_target(value):
+        return False
+    try:
+        parsed=urlparse(value)
+        host=parsed.netloc.lower()
+        path=(parsed.path or '/').lower()
+    except Exception:
+        return False
+    if any(host == d or host.endswith('.'+d) for d in NON_EXECUTABLE_AGGREGATOR_DOMAINS):
+        return False
+    return any(
+        path == hint or path.startswith(hint + '/')
+        for hint in ('/join','/register','/registration','/signup')
+    )
+
+
 def same_or_known_application_source(
     source_url,
     application_url
@@ -370,7 +390,7 @@ def run():
         # ----------------------------------------------------
 
         elif source == "business_contract_remotive":
-            if application_url and is_job_specific_application_url(application_url):
+            if application_url and is_contract_application_url(application_url):
                 ok = True
                 reason = "Verified contract application target passed final verifier."
             elif application_email:
