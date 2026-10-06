@@ -178,6 +178,23 @@ def clean_html(value):
     return value.strip()
 
 
+def source_explicit_application_url(raw_html):
+    """Return only an explicitly labeled source application/job-posting link."""
+    value = str(raw_html or "")
+    for match in re.finditer(
+        r'<a\b[^>]*?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        value,
+        flags=re.I | re.S,
+    ):
+        url = html.unescape(match.group(1)).strip()
+        label = clean_html(match.group(2)).lower()
+        if not url.startswith(("http://", "https://")):
+            continue
+        if re.search(r"\bapply\b|application|original job posting|job posting link|go here", label, re.I):
+            return url
+    return None
+
+
 def business_intent(text, title=""):
     value = (text or "").lower()
     title_value = (title or "").lower()
@@ -322,8 +339,18 @@ def fetch_remotive():
             job.get("company_name") or ""
         ).strip()
 
+        raw_description = str(
+            job.get("description") or ""
+        )
+
         description = clean_html(
-            job.get("description")
+            raw_description
+        )
+
+        explicit_application_url = (
+            source_explicit_application_url(
+                raw_description
+            )
         )
 
         job_type = str(
@@ -376,7 +403,8 @@ def fetch_remotive():
                 url,
 
             "application_url":
-                url,
+                explicit_application_url
+                or url,
 
             "location":
                 job.get(
