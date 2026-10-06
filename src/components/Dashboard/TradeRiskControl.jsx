@@ -29,7 +29,7 @@ export default function TradeRiskControl() {
     try {
       const [riskResponse, statsResponse] = await Promise.allSettled([
         BotAPI.getTradingRiskSettings(),
-        BotAPI.getRealTradingStats(30),
+        BotAPI.getRealTradingStats(),
       ]);
 
       if (riskResponse.status === "fulfilled") {

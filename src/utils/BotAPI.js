@@ -725,7 +725,10 @@ const updateTradingRiskSettings = async (maxTradeUsd) => {
   return result;
 };
 
-const getRealTradingStats = async (days = 30) => unwrap(await api.get(`/api/user/real-trading-stats?days=${days}`));
+const getRealTradingStats = async (days = null) => {
+  const query = days == null ? "" : `?days=${days}`;
+  return unwrap(await api.get(`/api/user/real-trading-stats${query}`));
+};
 const executePaperTrade = async (tradeData) => unwrap(await api.post("/api/trading/paper-trade", tradeData));
 const closePosition = async (positionId) => {
   const r = unwrap(await api.delete(`/api/trading/positions/${positionId}`));
