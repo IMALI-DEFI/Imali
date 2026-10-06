@@ -206,6 +206,53 @@ def target(conn,d,alternative=False):
         if re.search(r'\bapply\b|application|go here|job posting link',context,re.I):
             explicit_apply_urls.append(candidate)
 
+    # Contract feeds can provide an exact application destination in the source
+    # prose. Resolve that evidence before stale stored URLs so a previously saved
+    # homepage/contact page cannot mask the authoritative apply link.
+    if str(d.get('source') or '')=='business_contract_remotive' and explicit_apply_urls:
+        identity=company_identity(d.get('company'),description)
+        def _same_registrable(a,b):
+            ah=(urlparse(a).hostname or '').lower().lstrip('www.')
+            bh=(urlparse(b).hostname or '').lower().lstrip('www.')
+            return bool(ah and bh and '.'.join(ah.split('.')[-2:])=='.'.join(bh.split('.')[-2:]))
+        def _application_landing(u):
+            parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
+            return (not bad_host(host)) and bool(re.search(r'/(?:apply(?:[-/]|$)|join(?:/|$)|register(?:/|$)|registration(?:/|$)|signup(?:/|$)|application(?:/|$))',path,re.I))
+        for source_apply in list(dict.fromkeys(explicit_apply_urls))[:3]:
+            try:
+                final,text,links=fetch(source_apply)
+            except Exception:
+                continue
+            h=host_of(final);source_h=host_of(source_apply)
+            if bad_host(h) or bad_host(source_h) or not _same_registrable(source_apply,final):
+                continue
+            if _application_landing(final):
+                reason='Source-explicit public application destination verified after same-company redirect'
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(final,reason,d['id']))
+                conn.commit()
+                return 'progress','Source-explicit application destination verified; eligibility/package verification follows',{'source_apply':source_apply,'target':final,'target_kind':'source-explicit application page'}
+            # Some explicit apply links now redirect to the company homepage.
+            # Follow only a same-site application/join/register link exposed by
+            # that verified company page.
+            if identity_matches(identity,h,text):
+                for link in links[:30]:
+                    if not _same_registrable(final,link) or not _application_landing(link):
+                        continue
+                    try:
+                        candidate,body,_=fetch(link)
+                    except Exception:
+                        continue
+                    if not _same_registrable(final,candidate) or not _application_landing(candidate):
+                        continue
+                    if not re.search(r'apply|application|register|create (?:an )?account|join',body,re.I):
+                        continue
+                    reason='Source-explicit application route verified through same-company application page'
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(candidate,reason,d['id']))
+                    conn.commit()
+                    return 'progress','Verified company application route found from source-explicit apply evidence; eligibility/package verification follows',{'source_apply':source_apply,'target':candidate,'target_kind':'verified company application page'}
+
     urls=[d.get('contact_url'),d.get('application_url')]+explicit_apply_urls+urls+[d.get('url')]
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
