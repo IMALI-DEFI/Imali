@@ -271,7 +271,13 @@ def target(conn,d,alternative=False):
                     h=host_of(final)
                     source_h=host_of(url)
                     identity_ok=identity_matches(identity,h,text) or identity_matches(identity,source_h,'')
-                    if not bad_host(h) and not bad_host(source_h) and identity_ok and is_application_landing(final):
+                    # A source-explicit application URL may redirect within the
+                    # same registrable company domain (for example build.a.team/apply-ai
+                    # -> a.team/join). The original URL is already evidenced verbatim
+                    # next to application language, so a same-site public redirect to an
+                    # application landing page is sufficient without re-inventing identity.
+                    source_redirect_ok=(same_site(url,final) and is_application_landing(final))
+                    if not bad_host(h) and not bad_host(source_h) and (identity_ok or source_redirect_ok) and is_application_landing(final):
                         verified_target=final
                         target_kind='source-explicit application page'
                     elif not bad_host(h) and not bad_host(source_h) and identity_ok:
@@ -299,8 +305,7 @@ def target(conn,d,alternative=False):
                     role_specific_ok=(is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body)
                     company_application_ok=(str(d.get('source') or '')=='business_contract_remotive'
                                             and company_page_verified and is_application_landing(candidate)
-                                            and same_site(final,candidate)
-                                            and identity_matches(identity,host_of(candidate),body))
+                                            and same_site(final,candidate))
                     if role_specific_ok or company_application_ok:
                         verified_target=candidate
                         if is_ats(candidate):target_kind='ATS'
