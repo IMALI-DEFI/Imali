@@ -13,6 +13,7 @@ const BASE = `SELECT d.*, COALESCE(o.operational_state,'AUTO_PROCESSING') AS ope
 const metrics = {
  retry_backoff:"operational_state='AUTO_PROCESSING' AND next_retry_at>now()",
  autonomous_due:"operational_state='AUTO_PROCESSING' AND (next_retry_at IS NULL OR next_retry_at<=now())",
+ autonomous_eligible:"lane='Commercial' AND operational_state='ACTION_REQUIRED' AND final_approval_type='COMMERCIAL_OUTREACH' AND execution_verified IS TRUE AND target_quality_status='verified' AND outreach_status='ready_email' AND outreach_contact_email IS NOT NULL AND outreach_subject IS NOT NULL AND outreach_body IS NOT NULL AND COALESCE(fulfillment_path,'')<>'subcontractor' AND COALESCE(revenue_path,'')<>'managed_delivery' AND COALESCE(eligibility_status,'') NOT IN ('unchecked','review','ineligible')",
  approved_waiting_execution:"approval_status='approved' AND operational_state='BLOCKED_EXTERNAL'",
  human_eligibility:"operational_state='ACTION_REQUIRED' AND final_approval_type IN ('ELIGIBILITY','GOVERNMENT_ELIGIBILITY')",
  package_document_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type='GOVERNMENT_PACKAGE_DOCUMENTS'",
