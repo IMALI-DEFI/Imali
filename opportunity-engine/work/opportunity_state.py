@@ -33,7 +33,8 @@ def classify(d, context=None, now=None):
         a=(c.get('attempts') or {}).get(action,{})
         if a.get('result')=='credentials_required': return blocked('AUTHENTICATION_REQUIRED',a.get('reason','Credentials required'))
         if a.get('result')=='exhausted':
-            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','target_resolution':'MISSING_APPLICATION_TARGET' if lane=='Employment' else 'CONTACT_UNRESOLVED','provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
+            target_kind='MISSING_APPLICATION_TARGET' if lane=='Employment' or str(d.get('source') or '')=='business_contract_remotive' else 'CONTACT_UNRESOLVED'
+            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
             return blocked(kinds.get(action,'EXTERNAL_NETWORK'),a.get('reason') or 'Preparation could not advance; retry scheduled',a.get('next_retry_at'))
         return dict(base,operational_state='AUTO_PROCESSING',next_machine_action=action,next_retry_at=a.get('next_retry_at') or (old.get('next_retry_at') if old.get('next_machine_action')==action else None) or now)
     def dispose(reason,evidence):

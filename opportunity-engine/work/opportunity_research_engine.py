@@ -256,6 +256,7 @@ def target(conn,d,alternative=False):
     urls=[d.get('contact_url'),d.get('application_url')]+explicit_apply_urls+urls+[d.get('url')]
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
     seen=[]
+    stale_explicit_targets=[]
     for url in urls:
         try:
             final,text,links=fetch(url);seen.append(final)
@@ -378,7 +379,13 @@ def target(conn,d,alternative=False):
                 return 'exhausted',('Official contact form found; review and authorize a manual contact separately' if forms else 'Official source research exhausted; no verified email or alternate contact route'),{'official_url':final,'alternative_contact_urls':forms[:3]}
             with conn.cursor() as cur:cur.execute('UPDATE developer_opportunities SET contact_url=%s WHERE id=%s',(final,d['id']))
             conn.commit();return 'progress','Official company source corroborates identity',{'official_url':final,'source_candidates':seen}
+        except HTTPError as exc:
+            seen.append('HTTPError:'+str(exc.code))
+            if url in explicit_apply_urls and exc.code in (404,410):
+                stale_explicit_targets.append({'url':url,'status':exc.code})
         except Exception as exc:seen.append(type(exc).__name__)
+    if stale_explicit_targets:
+        return 'exhausted','Source-explicit application destination is no longer available',{'sources_checked':seen,'stale_application_targets':stale_explicit_targets}
     return 'retry','No verified official target in accessible source evidence',{'sources_checked':seen}
 
 def providers(conn,d,verify=False):
