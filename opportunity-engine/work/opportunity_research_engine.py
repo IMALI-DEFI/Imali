@@ -203,22 +203,34 @@ def target(conn,d,alternative=False):
                     normalized=normalize(body)
                     company=normalize(d.get('company'));title=normalize(d.get('title'))
                     return bool(company and title) and company in normalized and title in normalized
-                ats_hosts=('greenhouse.io','lever.co','ashbyhq.com','workable.com')
+                ats_hosts=('greenhouse.io','lever.co','ashbyhq.com','workable.com','myworkdayjobs.com','applytojob.com','kula.ai')
                 def is_ats(u):
-                    parsed=urlparse(u);host=parsed.hostname or ''
+                    parsed=urlparse(u);host=(parsed.hostname or '').lower()
                     return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parsed.path.strip('/').split('/'))>=2
                 def is_employer_career(u):
                     parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
                     return (not bad_host(host)) and bool(re.search(r'/jobs?(/|$)|/careers?(/|$)|/positions?(/|$)|/apply(/|$)|jobid=|job_id=',path+'?'+parsed.query,re.I))
-                verified_target=final if (is_ats(final) or is_employer_career(final)) and matches_role(text) else None
+                def is_role_specific_external(u):
+                    # Aggregator pages can expose a direct external posting that is not on a
+                    # conventional ATS. Accept it only when the URL itself is role-specific;
+                    # the destination body must still corroborate exact company + title below.
+                    parsed=urlparse(u);host=(parsed.hostname or '').lower()
+                    if bad_host(host) or host.endswith('remotive.com'):return False
+                    path=normalize((parsed.path or '').replace('-',' ').replace('_',' '))
+                    title_tokens=[x for x in normalize(d.get('title')).split() if len(x)>=5 and x not in {'senior','software','engineer','developer','independent','remote'}]
+                    if not title_tokens:return False
+                    hits=sum(1 for token in title_tokens if token in path)
+                    return hits>=2 or (len(title_tokens)==1 and hits==1)
+                source_role_verified=matches_role(text)
+                verified_target=final if (is_ats(final) or is_employer_career(final)) and source_role_verified else None
                 target_kind='ATS' if verified_target and is_ats(verified_target) else 'employer career page' if verified_target else None
-                candidate_links=[u for u in links if is_ats(u) or is_employer_career(u)][:5]
+                candidate_links=[u for u in links if is_ats(u) or is_employer_career(u) or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))][:10]
                 for link in candidate_links:
                     if verified_target:break
                     try:candidate,body,_=fetch(link)
                     except Exception:continue
-                    if (is_ats(candidate) or is_employer_career(candidate)) and matches_role(body):
-                        verified_target=candidate;target_kind='ATS' if is_ats(candidate) else 'employer career page'
+                    if (is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body):
+                        verified_target=candidate;target_kind='ATS' if is_ats(candidate) else 'verified external role page' if is_role_specific_external(candidate) else 'employer career page'
                 if verified_target:
                     reason='Public '+target_kind+' corroborates exact company and role'
                     with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(verified_target,reason,d['id']))
