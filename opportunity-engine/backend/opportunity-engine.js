@@ -11,7 +11,14 @@ const BASE = `SELECT d.*, COALESCE(o.operational_state,'AUTO_PROCESSING') AS ope
  (SELECT count(*)::int FROM opportunity_provider_candidates pc WHERE pc.opportunity_id=d.id) AS provider_candidates
  FROM developer_opportunities d LEFT JOIN opportunity_operations o ON o.opportunity_id=d.id`;
 const metrics = {
- retry_backoff:"operational_state='AUTO_PROCESSING' AND next_retry_at>now()",total:'TRUE', AUTO_PROCESSING:"operational_state='AUTO_PROCESSING'", ACTION_REQUIRED:"operational_state='ACTION_REQUIRED'",
+ retry_backoff:"operational_state='AUTO_PROCESSING' AND next_retry_at>now()",
+ autonomous_due:"operational_state='AUTO_PROCESSING' AND (next_retry_at IS NULL OR next_retry_at<=now())",
+ approved_waiting_execution:"approval_status='approved' AND operational_state='BLOCKED_EXTERNAL'",
+ human_eligibility:"operational_state='ACTION_REQUIRED' AND final_approval_type IN ('ELIGIBILITY','GOVERNMENT_ELIGIBILITY')",
+ package_document_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type='GOVERNMENT_PACKAGE_DOCUMENTS'",
+ provider_selection_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type='PROVIDER_SELECTION'",
+ provider_quote_blocked:"operational_state='BLOCKED_EXTERNAL' AND provider_stage='Candidates Found' AND blocker_reason ILIKE '%quote%margin%'",
+ total:'TRUE', AUTO_PROCESSING:"operational_state='AUTO_PROCESSING'", ACTION_REQUIRED:"operational_state='ACTION_REQUIRED'",
  BLOCKED_EXTERNAL:"operational_state='BLOCKED_EXTERNAL'", DISPOSED:"operational_state='DISPOSED'", COMPLETED:"operational_state='COMPLETED'",
  commercial_sent:"(outreach_sent_at IS NOT NULL OR outreach_status='sent')",
  applications_submitted:"(application_submitted_at IS NOT NULL OR automation_status='submitted')",
@@ -41,6 +48,12 @@ function filter(q){
  return {where:clauses.length?clauses.join(' AND '):'TRUE',args};
 }
 module.exports=function(pool){
+ router.get('/funnel',async(req,res)=>{
+  execFile('/home/opc/imali-work-agent/venv/bin/python',['/home/opc/imali-work-agent/opportunity_funnel.py'],{timeout:20000,maxBuffer:4*1024*1024},(error,out)=>{
+   if(error)return res.status(503).json({error:'FUNNEL_EVIDENCE_UNAVAILABLE'});
+   try{res.set('Cache-Control','no-store');res.json(JSON.parse(out));}catch{return res.status(503).json({error:'FUNNEL_RESPONSE_INVALID'});}
+  });
+ });
  router.get('/health',async(req,res)=>{
   const call=(file,args)=>new Promise(resolve=>execFile(file,args,{timeout:5000,maxBuffer:64000},(err,out)=>resolve(String(out||'').trim())));
   const unit=async name=>{const schedule=name.endsWith('.timer')?await call('/usr/bin/systemctl',['list-timers','--all','--no-legend','--no-pager',name]):'';const raw=await call('/usr/bin/systemctl',['show',name,'--property=ActiveState,SubState,UnitFileState,NextElapseUSecRealtime,Result']);return {unit:name,next_scheduled:schedule.match(/^\w+ \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w+/)?.[0]||null,...Object.fromEntries(raw.split('\n').filter(x=>x.includes('=')).map(x=>[x.slice(0,x.indexOf('=')),x.slice(x.indexOf('=')+1)]))};};

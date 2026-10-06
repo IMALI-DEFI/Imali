@@ -9,6 +9,10 @@ from opportunity_research_engine import procurement,target,providers,package
 
 SLOW={'procurement_research','provider_research','provider_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
 
+def research_advanced(before, after):
+    completed=json.loads(after['snapshot']) if after else {}
+    return completed.get('research_status')=='researched' and before!=after
+
 def save_attempt(conn,oid,action,result,reason,evidence):
     with conn.cursor() as cur:
         cur.execute('SELECT attempts FROM opportunity_engine_attempts WHERE opportunity_id=%s AND action=%s',(oid,action));r=cur.fetchone();count=(r[0] if r else 0)+1
@@ -52,7 +56,7 @@ def run(lane):
         cur.execute('''SELECT d.*,o.next_machine_action FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id
         WHERE o.operational_state='AUTO_PROCESSING' AND (o.next_retry_at IS NULL OR o.next_retry_at<=now())
         AND (o.next_machine_action=ANY(%s))=%s
-        ORDER BY COALESCE(o.next_retry_at,d.discovered_at::timestamptz),d.pursuit_priority DESC,d.id LIMIT %s''',(list(SLOW),lane=='slow',20 if lane=='fast' else 10))
+        ORDER BY CASE WHEN d.solicitation_due_at BETWEEN now() AND now()+interval '7 days' THEN 0 ELSE 1 END, COALESCE(o.next_retry_at,d.discovered_at::timestamptz),d.pursuit_priority DESC,d.id LIMIT %s''',(list(SLOW),lane=='slow',20 if lane=='fast' else 10))
         rows=cur.fetchall()
         if os.getenv('OPPORTUNITY_CONTROLLED')=='1':
             cur.execute('''SELECT DISTINCT ON(o.lane) d.*,o.next_machine_action FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id
@@ -68,6 +72,14 @@ def run(lane):
              AND NOT EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id AND p.verification_status='verified')
              AND (a.next_retry_at IS NULL OR a.next_retry_at<=now()) ORDER BY d.pursuit_priority DESC LIMIT 5""")
             rows+=cur.fetchall()
+        # Managed-delivery records can appear in both the canonical queue and provider workstream.
+        # Process each opportunity/action once per cycle so retry counters are not inflated.
+        deduped=[];seen=set()
+        for row in rows:
+            key=(row['id'],row['next_machine_action'])
+            if key in seen:continue
+            seen.add(key);deduped.append(row)
+        rows=deduped
         for d in rows:
             if time.monotonic()-start>330:break
             action=d['next_machine_action'];oid=d['id']
@@ -84,6 +96,9 @@ def run(lane):
                     cur.execute('SELECT row_to_json(r)::text AS snapshot FROM reward_opportunity_analysis r WHERE opportunity_id=%s',(oid,));reward_after=cur.fetchone()
                     cur.execute('SELECT row_to_json(p)::text AS snapshot FROM reward_prototypes p WHERE opportunity_id=%s',(oid,));prototype_after=cur.fetchone()
                     changed=changed or reward_before!=reward_after or prototype_before!=prototype_after
+                    if action=='reward_research':
+                        # Failure timestamps are not successful research progress.
+                        changed=research_advanced(reward_before,reward_after)
                     result='progress' if proc.returncode==0 and changed else 'retry'
                     reason='Existing preparation engine completed' if result=='progress' else 'Existing preparation engine did not advance this record'
                     if 'not configured' in proc.stderr or 'authentication' in proc.stderr.lower():result='credentials_required';reason='Required research credential is unavailable'
@@ -92,8 +107,8 @@ def run(lane):
             except Exception as exc:
                 conn.rollback();result='retry';reason='Research failed: '+type(exc).__name__;evidence={'error_type':type(exc).__name__}
             save_attempt(conn,oid,action,result,reason,evidence);stages.append({'id':oid,'action':action,'result':result})
-        if lane=='slow' and os.getenv('OPPORTUNITY_CONTROLLED')!='1' and time.monotonic()-start<280:
-            discovery=subprocess.run([sys.executable,'opportunity_discovery.py',str(cycle)],capture_output=True,text=True,timeout=55)
+        if os.getenv('OPPORTUNITY_CONTROLLED')!='1' and time.monotonic()-start<280:
+            discovery=subprocess.run([sys.executable,'opportunity_replenishment.py'],capture_output=True,text=True,timeout=55)
             stages.append({'action':'discovery','result':'completed' if discovery.returncode==0 else 'retry','output':discovery.stdout[-1000:]})
         reconcile(conn)
         cur.execute("UPDATE opportunity_cycle_runs SET finished_at=now(),runtime_seconds=%s,result=%s,stages=%s WHERE id=%s",(round(time.monotonic()-start,2),'completed_with_retries' if any(s['result'] in ('retry','exhausted','credentials_required') for s in stages) else 'completed',Json(stages),cycle));conn.commit()
