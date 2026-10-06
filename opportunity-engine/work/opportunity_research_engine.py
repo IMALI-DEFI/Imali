@@ -167,8 +167,8 @@ def target(conn,d,alternative=False):
     if d.get('source')=='hackernews' and not d.get('source_posted_at') and str(d.get('source_id') or '').isdigit():
         try:
             _,raw,_=fetch('https://hn.algolia.com/api/v1/items/'+str(d['source_id']))
-            item=json.loads(raw)
-            created=item.get('created_at') if isinstance(item,dict) else None
+            match=re.search(r'"created_at":"([^"]+)"',raw)
+            created=match.group(1) if match else None
             posted=datetime.fromisoformat(created.replace('Z','+00:00')) if created else None
             if posted:
                 age=(datetime.now(timezone.utc)-posted).days
