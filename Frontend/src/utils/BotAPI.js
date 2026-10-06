@@ -71,6 +71,8 @@ const login = async (email, password) => {
   return unwrap(res);
 };
 const logout = () => { clearToken(); localStorage.removeItem("imali_user"); clearCache(); };
+const forgotPassword = async (email) => unwrap(await api.post("/api/auth/forgot-password", { email }));
+const resetPassword = async (token, password) => unwrap(await api.post("/api/auth/reset-password", { token, password }));
 const isAuthenticated = () => !!getToken();
 const getMe = async (skipCache = false) =>
   cachedGet("me", 15000, async () => getData(await api.get("/api/me"))?.user || getData(await api.get("/api/me")), skipCache);
@@ -218,7 +220,7 @@ const getOrganizations = async (skipCache = false) => cachedGet("organizations",
 // ─── EXPORT ─────────────────────────────────────────
 const BotAPI = {
   api, getToken, setToken, clearToken, clearCache, isAuthenticated,
-  login, logout, getMe,
+  login, logout, forgotPassword, resetPassword, getMe,
   getActivationStatus, getTrialStatus, getCardStatus, getCardStatusSafe, hasValidCard, createSetupIntent, confirmCard, changePlan, cancelSubscription, removeCard, getSubscriptionDetails, syncBilling,
   getIntegrationStatus, connectOKX, disconnectOKX, connectAlpaca, disconnectAlpaca, switchExchangeMode, switchOKXToLive, switchAlpacaToLive,
   getExchangeBalance, getPortfolioSummary,

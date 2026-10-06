@@ -38,6 +38,7 @@ import Documentation from "./pages/Documentation";
 // Lazy auth / app pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
@@ -258,6 +259,7 @@ function MainAppRoutes() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/signup/:tier" element={<Signup />} />
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
             {/* BILLING */}

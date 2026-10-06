@@ -6,7 +6,7 @@ import {
   FaCheck, FaLock, FaRobot, FaChartLine, FaWallet, FaCrown,
   FaRocket, FaCoins, FaQuestionCircle, FaStar, FaBuilding,
   FaUsers, FaShieldAlt, FaGift, FaPercentage, FaArrowRight,
-  FaCubes,
+  FaCubes, FaUserCog, FaServer,
 } from "react-icons/fa";
 
 import nftStarter from "../assets/images/nfts/nft-starter.png";
