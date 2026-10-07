@@ -11,7 +11,7 @@ def plan(disposed, credited, workable, history, now=None, target=200):
     latest = max(history.values(), default=None)
     if latest and now - latest < timedelta(hours=1):
         return dict(base, source=None, reason='global_cooldown')
-    sources = ('business_contract_remotive', 'remoteok', 'sam_gov')
+    sources = ('grants_gov', 'sam_gov')
     due = [s for s in sources if s not in history or now-history[s] >= timedelta(hours=6 if s=='sam_gov' else 3)]
     if not due:
         return dict(base, source=None, reason='source_cooldown')

@@ -16,8 +16,9 @@ def government(d):
 def classify(d, context=None, now=None):
     c=context or {}; now=now or datetime.now(timezone.utc)
     old=c.get('operation') or {}; reward=c.get('reward') or {}; research=c.get('research') or {}
-    lane = ('Government' if government(d) else 'Rewards' if d.get('revenue_path')=='reward' else
-            'Recovery' if d.get('revenue_path')=='asset_recovery' else 'Employment' if d.get('revenue_path')=='employment' else 'Commercial')
+    lane = ('Government' if government(d) else 'Capital' if d.get('revenue_path')=='capital_grant' or str(d.get('source') or '')=='grants_gov' else
+            'Rewards' if d.get('revenue_path')=='reward' else 'Recovery' if d.get('revenue_path')=='asset_recovery' else
+            'Employment' if d.get('revenue_path')=='employment' else 'Commercial')
     base=dict(operational_state=None,lane=lane,next_machine_action=None,next_human_action=None,
               blocker_type=None,blocker_reason=None,next_retry_at=None,final_approval_type=None,
               workbench_stage='Discovered' if lane=='Government' else None,provider_stage=None,
@@ -34,13 +35,13 @@ def classify(d, context=None, now=None):
         if a.get('result')=='credentials_required': return blocked('AUTHENTICATION_REQUIRED',a.get('reason','Credentials required'))
         if a.get('result')=='exhausted':
             target_kind='MISSING_APPLICATION_TARGET' if lane=='Employment' or str(d.get('source') or '')=='business_contract_remotive' else 'CONTACT_UNRESOLVED'
-            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
+            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','capital_research':'MISSING_OFFICIAL_DOCUMENT','capital_package':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
             return blocked(kinds.get(action,'EXTERNAL_NETWORK'),a.get('reason') or 'Preparation could not advance; retry scheduled',a.get('next_retry_at'))
         return dict(base,operational_state='AUTO_PROCESSING',next_machine_action=action,next_retry_at=a.get('next_retry_at') or (old.get('next_retry_at') if old.get('next_machine_action')==action else None) or now)
     def dispose(reason,evidence):
         # Restore requests reopen to research; unchanged old evidence cannot immediately re-dispose.
         if old.get('restored_at') and old.get('disposition_reason')==reason:
-            return auto('procurement_research' if lane=='Government' else 'target_resolution')
+            return auto('procurement_research' if lane=='Government' else 'capital_research' if lane=='Capital' else 'target_resolution')
         return dict(base,operational_state='DISPOSED',disposition_reason=reason,disposition_evidence=evidence,workbench_stage='Disposed' if lane=='Government' else None)
 
     # Preserve outcomes irrespective of inconsistent preparation columns.
@@ -54,7 +55,7 @@ def classify(d, context=None, now=None):
     if d.get('source')=='test': return dispose('UNSUPPORTED_SOURCE',{'source':'test','reason':'Explicit test source, not an external opportunity'})
     if c.get('duplicate_of'): return dispose('DUPLICATE',{'duplicate_of':c['duplicate_of'],'source':d.get('source'),'source_id':d.get('source_id')})
     due=date(d.get('solicitation_due_at') or d.get('procurement_deadline'))
-    if lane=='Government' and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
+    if lane in ('Government','Capital','Rewards') and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
     if lane=='Government' and d.get('procurement_stage') in ('award','cancelled','closed'):
         return dispose('CANCELLED' if d['procurement_stage']=='cancelled' else 'CLOSED',{'official_stage':d['procurement_stage'],'source':d.get('url')})
     if lane=='Government' and d.get('revenue_path')=='ignore':
@@ -69,10 +70,34 @@ def classify(d, context=None, now=None):
         return dispose('STALE_BEYOND_POLICY',{'source_posted_at':posted.isoformat(),'policy':'Hacker News hiring post older than 180 days'})
     if lane=='Employment' and d.get('pursuit_status')=='excluded_stale' and posted and (now-posted).days>180:
         return dispose('STALE_BEYOND_POLICY',{'source_posted_at':posted.isoformat(),'policy':'employment explicit stale exclusion plus original posting older than 180 days'})
-    if lane=='Recovery': return blocked('COMPLIANCE_REVIEW','Authoritative jurisdiction compliance approval required; no outreach or claims permitted')
+    verified=date(d.get('last_verified_at'))
+    if lane=='Rewards' and verified and (now-verified).days>30:
+        return dispose('STALE_BEYOND_POLICY',{'last_verified_at':verified.isoformat(),'policy':'reward source not re-verified within 30 days'})
+    if lane=='Recovery': return blocked('COMPLIANCE_REVIEW','Lane suspended: no authoritative jurisdiction is approved and no compliant case-acquisition path is active. Do not acquire or contact owners until that path exists.')
     if d.get('automation_status') in ('captcha_required','anti_bot_required'): return blocked('CAPTCHA','Official site requires human verification')
     if d.get('automation_status') in ('auth_required','login_required','2fa_required'): return blocked('AUTHENTICATION_REQUIRED','Authenticate on the official site; no bypass')
     if d.get('automation_status')=='submission_unconfirmed': return human('Verify whether a prior submission completed before any retry','SUBMISSION_RECONCILIATION')
+
+    if lane=='Capital':
+        base['workbench_stage']='Researching'
+        if not research.get('scope_retrieved') or not research.get('official_verified'):
+            result=auto('capital_research')
+            if result['operational_state']=='BLOCKED_EXTERNAL':
+                result['workbench_stage']='Needs Documents'
+            return result
+        if not research.get('eligibility_verified'):
+            base['workbench_stage']='Qualified'
+            return human('Confirm applicant/entity eligibility against the official Grants.gov applicant categories','CAPITAL_ELIGIBILITY')
+        if not research.get('package_path'):
+            base['workbench_stage']='Package Building'
+            return auto('capital_package')
+        if not (research.get('requirements') or {}).get('package_readiness_verified'):
+            base['workbench_stage']='Package Building'
+            return human('Verify required grant attachments, narrative, budget, and applicant evidence in the prepared package','CAPITAL_PACKAGE_DOCUMENTS')
+        base['workbench_stage']='Final Bid Approval'
+        if old.get('approval_status')=='approved':
+            return blocked('OTHER','Capital application approved; separate explicit external submission authorization required')
+        return human('Review the completed grant application package and official requirements','CAPITAL_APPLICATION')
 
     if lane=='Government':
         base['workbench_stage']='Researching'

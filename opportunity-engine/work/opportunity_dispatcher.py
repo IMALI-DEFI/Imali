@@ -5,9 +5,9 @@ from datetime import datetime,timezone,timedelta
 from psycopg2.extras import RealDictCursor,Json
 from opportunity_store import db,reconcile,snapshot
 from opportunity_scoped_engine import ALLOWED
-from opportunity_research_engine import procurement,target,providers,package
+from opportunity_research_engine import procurement,target,providers,package,capital_research,capital_package
 
-SLOW={'procurement_research','provider_research','provider_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
+SLOW={'procurement_research','capital_research','provider_research','provider_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
 
 def research_advanced(before, after):
     completed=json.loads(after['snapshot']) if after else {}
@@ -24,6 +24,8 @@ def save_attempt(conn,oid,action,result,reason,evidence):
 
 def native(conn,d,action):
     if action=='procurement_research':return procurement(conn,d)
+    if action=='capital_research':return capital_research(conn,d)
+    if action=='capital_package':return capital_package(conn,d)
     if action in ('target_resolution','contact_alternative'):return target(conn,d,action=='contact_alternative')
     if action in ('provider_research','provider_verification'):return providers(conn,d,action=='provider_verification')
     if action=='procurement_package':return package(conn,d)

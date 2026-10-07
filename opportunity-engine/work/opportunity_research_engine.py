@@ -409,6 +409,96 @@ def target(conn,d,alternative=False):
         return 'exhausted','Source-explicit application destination could not be machine-verified; human/browser review required',{'sources_checked':seen,'unverifiable_application_targets':unverifiable_explicit_targets}
     return 'retry','No verified official target in accessible source evidence',{'sources_checked':seen}
 
+
+def capital_research(conn,d):
+    if str(d.get('source') or '')!='grants_gov':
+        return 'exhausted','Capital research requires an official Grants.gov source',{'source':d.get('source')}
+    oid=str(d.get('source_id') or '').strip()
+    if not oid.isdigit():
+        return 'exhausted','Grants.gov opportunity id is missing or invalid',{'source_id':oid}
+    import requests
+    endpoint='https://api.grants.gov/v1/api/fetchOpportunity'
+    public_url(endpoint)
+    try:
+        response=requests.post(endpoint,json={'opportunityId':int(oid)},headers={'User-Agent':'IMALI-Capital-Research/1.0','Content-Type':'application/json'},timeout=10,allow_redirects=False)
+        if 300<=response.status_code<400:
+            return 'retry','Grants.gov detail endpoint redirected unexpectedly',{'status':response.status_code}
+        response.raise_for_status()
+        if len(response.content)>2_000_000:
+            return 'exhausted','Grants.gov detail response exceeded safe retrieval limit',{}
+        payload=response.json()
+    except Exception as exc:
+        return 'retry','Grants.gov detail retrieval failed: '+type(exc).__name__,{'error_type':type(exc).__name__}
+    data=payload.get('data') or {}
+    if not data or str(data.get('id') or '')!=oid:
+        return 'retry','Grants.gov returned no matching opportunity detail',{'source_id':oid}
+    synopsis=data.get('synopsis') or {}
+    applicant_types=[str(x.get('description') or '').strip() for x in (synopsis.get('applicantTypes') or []) if isinstance(x,dict)]
+    instruments=[str(x.get('description') or '').strip() for x in (synopsis.get('fundingInstruments') or []) if isinstance(x,dict)]
+    categories=[str(x.get('description') or '').strip() for x in (synopsis.get('fundingActivityCategories') or []) if isinstance(x,dict)]
+    alns=[str(x.get('alnNumber') or '').strip() for x in (data.get('alns') or []) if isinstance(x,dict)]
+    desc=str(synopsis.get('synopsisDesc') or '').strip()
+    requirements={
+        'opportunity_number':data.get('opportunityNumber'),
+        'title':data.get('opportunityTitle'),
+        'agency':(data.get('agencyDetails') or {}).get('agencyName') or d.get('company'),
+        'applicant_types':applicant_types,
+        'funding_instruments':instruments,
+        'funding_categories':categories,
+        'aln':alns,
+        'cost_sharing':synopsis.get('costSharing'),
+        'award_ceiling':synopsis.get('awardCeiling'),
+        'award_floor':synopsis.get('awardFloor'),
+        'agency_contact_name':synopsis.get('agencyContactName'),
+        'agency_contact_email':synopsis.get('agencyContactEmail'),
+        'response_date':synopsis.get('responseDateDesc') or data.get('originalDueDateDesc'),
+        'posting_date':synopsis.get('postingDate'),
+        'description':desc[:100000],
+        'source_api':endpoint,
+        'eligibility_machine_screen':'official applicant categories captured; applicant-specific attestations still require confirmation',
+        'package_readiness_verified':False,
+    }
+    enough=bool(data.get('opportunityTitle') and applicant_types and (desc or instruments))
+    official_url='https://www.grants.gov/search-results-detail/'+oid
+    docs=[{'url':official_url,'type':'Grants.gov opportunity detail','opportunity_id':oid}]
+    with conn.cursor() as cur:
+        sql=('INSERT INTO opportunity_research(opportunity_id,official_url,official_verified,documents,requirements,scope_retrieved,eligibility_verified,verified_at) '
+             'VALUES(%s,%s,true,%s,%s,%s,false,now()) '
+             'ON CONFLICT(opportunity_id) DO UPDATE SET official_url=EXCLUDED.official_url,official_verified=true,documents=EXCLUDED.documents,'
+             'requirements=EXCLUDED.requirements,scope_retrieved=EXCLUDED.scope_retrieved,verified_at=now(),updated_at=now()')
+        cur.execute(sql,(d['id'],official_url,Json(docs),Json(requirements),enough))
+        ceiling=synopsis.get('awardCeiling')
+        try:
+            ceiling=float(str(ceiling).replace(',','')) if ceiling not in (None,'') else None
+        except (TypeError,ValueError):
+            ceiling=None
+        sql2=('UPDATE developer_opportunities SET company=COALESCE(NULLIF(%s,\'\'),company), '
+              'description=CASE WHEN %s<>\'\' THEN %s ELSE description END, '
+              'estimated_revenue=COALESCE(%s,estimated_revenue), last_verified_at=now(), '
+              'eligibility_status=CASE WHEN eligibility_status=\'ineligible\' THEN eligibility_status ELSE \'review\' END, '
+              'eligibility_reason=%s WHERE id=%s')
+        cur.execute(sql2,(requirements['agency'],desc,desc,ceiling,
+                     'Official Grants.gov applicant categories: '+(', '.join(applicant_types) if applicant_types else 'not exposed'),d['id']))
+    conn.commit()
+    return ('progress' if enough else 'exhausted'),('Official Grants.gov requirements retrieved; applicant-specific eligibility confirmation required' if enough else 'Official grant detail is incomplete'),{'official_url':official_url,'applicant_types':applicant_types,'award_ceiling':ceiling}
+
+def capital_package(conn,d):
+    cur=conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))
+    r=cur.fetchone()
+    if not r or not r['scope_retrieved'] or not r['official_verified']:
+        return 'exhausted','Verified Grants.gov detail is required before package preparation',{}
+    if not r['eligibility_verified']:
+        return 'exhausted','Confirmed applicant eligibility is required before package preparation',{}
+    root=Path('/home/opc/imali-work-agent/capital_packages')/str(d['id'])
+    root.mkdir(parents=True,exist_ok=True)
+    path=root/'grant-package.json'
+    path.write_text(json.dumps({'opportunity':dict(d),'official_research':dict(r),'status':'DRAFT — final application review and explicit submission authorization required'},default=str,indent=2))
+    cur.execute('UPDATE opportunity_research SET package_path=%s,updated_at=now() WHERE opportunity_id=%s',(str(path),d['id']))
+    conn.commit()
+    return 'progress','Capital application evidence package assembled; required attachments still need final review',{'package_path':str(path)}
+
+
 def providers(conn,d,verify=False):
     cur=conn.cursor(cursor_factory=RealDictCursor)
     cur.execute('''SELECT oc.*,s.company,s.website,s.email,s.verification_status,s.service_verification_source,s.capacity_status,s.insured,s.license_verified

@@ -11,7 +11,7 @@ from replenishment_policy import plan
 FIELDS = ('source source_id source_thread_id source_posted_at source_age_days title company '
           'description url application_url application_email budget location score personal_fit '
           'business_value demand_confidence opportunity_type revenue_path fulfillment_path '
-          'business_reason matched_skills imali_proof generated_pitch solicitation_due_at').split()
+          'business_reason matched_skills imali_proof generated_pitch estimated_revenue solicitation_due_at').split()
 
 def insert_new(conn, row):
     values = [Json(row.get(k, [])) if k=='matched_skills' else row.get(k, 0) if k in
@@ -58,6 +58,7 @@ def run(dry_run=False):
         import requests
         from opportunity_research_engine import public_url
         original=requests.get
+        original_post=requests.post
         calls=0
         def bounded(url,**kwargs):
             nonlocal calls
@@ -74,14 +75,30 @@ def run(dry_run=False):
                     chunks.append(part)
                 response._content=b''.join(chunks);response._content_consumed=True
                 return response
+        def bounded_post(url,**kwargs):
+            nonlocal calls
+            public_url(url)
+            calls+=1
+            if calls>6: raise RuntimeError('Discovery request budget exceeded')
+            kwargs.update(timeout=8,stream=True,allow_redirects=False)
+            with original_post(url,**kwargs) as response:
+                if 300<=response.status_code<400: raise RuntimeError('Redirect requires source review')
+                chunks=[];size=0
+                for part in response.iter_content(65536):
+                    size+=len(part)
+                    if size>5_000_000: raise RuntimeError('Discovery byte budget exceeded')
+                    chunks.append(part)
+                response._content=b''.join(chunks);response._content_consumed=True
+                return response
         requests.get=bounded
+        requests.post=bounded_post
         skipped=Counter();new_ids=[]
         try:
-            from sources.business_opportunities import fetch_remotive
-            from sources.remoteok import fetch_remoteok_jobs
+            from sources.grants_gov import fetch_grants_gov
+            from sources.rewards import fetch_reward_opportunities
             from sources.sam_gov import fetch_sam_gov
             from work_agent import process_opportunity
-            sources={'business_contract_remotive':fetch_remotive,'remoteok':fetch_remoteok_jobs,'sam_gov':fetch_sam_gov}
+            sources={'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov,'rewards':fetch_reward_opportunities}
             seen={identity(d) for d in rows}
             existing={(d.get('source'),str(d.get('source_id'))) for d in rows}
             candidates=[]
@@ -91,8 +108,29 @@ def run(dry_run=False):
             for row in fetched:
                 if (row.get('source'),str(row.get('source_id'))) in existing:
                     skipped['duplicate']+=1;continue
-                processed=process_opportunity(row)
-                reason=reject_reason(row,processed,seen)
+                if row.get('source')=='grants_gov':
+                    processed=dict(row)
+                    processed.update(opportunity_type='grant',revenue_path='capital_grant',fulfillment_path='direct',
+                                     score=max(int(row.get('score') or 0),70),personal_fit=max(int(row.get('personal_fit') or 0),60),
+                                     business_value=max(int(row.get('business_value') or 0),80),
+                                     demand_confidence=max(int(row.get('demand_confidence') or 0),90),
+                                     matched_skills=row.get('matched_skills') or [],imali_proof=row.get('imali_proof'),
+                                     generated_pitch=row.get('generated_pitch'))
+                    reason=None
+                elif str(row.get('source') or '').startswith('reward_'):
+                    processed=dict(row)
+                    processed.update(opportunity_type='reward',revenue_path='reward',fulfillment_path='direct',
+                                     score=max(int(row.get('score') or 0),60),personal_fit=max(int(row.get('personal_fit') or 0),50),
+                                     business_value=max(int(row.get('business_value') or 0),70),
+                                     demand_confidence=max(int(row.get('demand_confidence') or 0),90),
+                                     estimated_revenue=float(row.get('reward_value_hint') or 0),
+                                     solicitation_due_at=row.get('reward_deadline_hint'),
+                                     matched_skills=row.get('matched_skills') or [],imali_proof=row.get('imali_proof'),
+                                     generated_pitch=row.get('generated_pitch'))
+                    reason=None
+                else:
+                    processed=process_opportunity(row)
+                    reason=reject_reason(row,processed,seen)
                 if reason: skipped[reason]+=1;continue
                 seen.add(identity(row));candidates.append(processed)
             candidates.sort(key=lambda d:evaluate(d)['rank'],reverse=True)
@@ -112,6 +150,7 @@ def run(dry_run=False):
             return {'run_id':run_id,'result':'failed','error_type':type(exc).__name__,'external_actions':0}
         finally:
             requests.get=original
+            requests.post=original_post
     finally:
         conn.close()
 

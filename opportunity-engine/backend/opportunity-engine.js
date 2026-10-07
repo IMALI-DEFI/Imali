@@ -3,7 +3,7 @@ const express = require('express');
 const {execFile} = require('child_process');
 const router = express.Router();
 const BASE = `SELECT d.*, COALESCE(o.operational_state,'AUTO_PROCESSING') AS operational_state,
- COALESCE(o.lane,CASE WHEN d.source LIKE 'sam_gov%' OR d.source LIKE 'state_local_%' THEN 'Government' WHEN d.revenue_path='employment' THEN 'Employment' WHEN d.revenue_path='reward' THEN 'Rewards' WHEN d.revenue_path='asset_recovery' THEN 'Recovery' ELSE 'Commercial' END) AS lane,
+ COALESCE(o.lane,CASE WHEN d.source LIKE 'sam_gov%' OR d.source LIKE 'state_local_%' THEN 'Government' WHEN d.revenue_path='capital_grant' OR d.opportunity_type='grant' THEN 'Capital' WHEN d.revenue_path='employment' THEN 'Employment' WHEN d.revenue_path='reward' THEN 'Rewards' WHEN d.revenue_path='asset_recovery' THEN 'Recovery' ELSE 'Commercial' END) AS lane,
  COALESCE(o.next_machine_action,CASE WHEN o.opportunity_id IS NULL THEN 'classification' END) AS next_machine_action,
  o.next_human_action,o.blocker_type,o.blocker_reason,o.next_retry_at,o.final_approval_type,o.workbench_stage,o.provider_stage,
  o.completion_type,o.disposition_reason,o.disposition_evidence,o.disposed_at,o.disposed_by,o.previous_state,o.approval_status,
@@ -18,8 +18,8 @@ const metrics = {
  contract_application_pipeline:"source='business_contract_remotive' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  contract_applications_ready:"source='business_contract_remotive' AND operational_state='ACTION_REQUIRED' AND final_approval_type='CONTRACT_APPLICATION'",
  approved_waiting_execution:"approval_status='approved' AND operational_state='BLOCKED_EXTERNAL'",
- human_eligibility:"operational_state='ACTION_REQUIRED' AND final_approval_type IN ('ELIGIBILITY','GOVERNMENT_ELIGIBILITY')",
- package_document_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type='GOVERNMENT_PACKAGE_DOCUMENTS'",
+ human_eligibility:"operational_state='ACTION_REQUIRED' AND final_approval_type IN ('ELIGIBILITY','GOVERNMENT_ELIGIBILITY','CAPITAL_ELIGIBILITY')",
+ package_document_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type IN ('GOVERNMENT_PACKAGE_DOCUMENTS','CAPITAL_PACKAGE_DOCUMENTS')",
  provider_selection_reviews:"operational_state='ACTION_REQUIRED' AND final_approval_type='PROVIDER_SELECTION'",
  provider_quote_blocked:"operational_state='BLOCKED_EXTERNAL' AND provider_stage='Candidates Found' AND blocker_reason ILIKE '%quote%margin%'",
  total:'TRUE', AUTO_PROCESSING:"operational_state='AUTO_PROCESSING'", ACTION_REQUIRED:"operational_state='ACTION_REQUIRED'",
@@ -37,7 +37,15 @@ const metrics = {
  procurement_package_ready:"EXISTS(SELECT 1 FROM opportunity_research r WHERE r.opportunity_id=e.id AND r.package_path IS NOT NULL AND r.eligibility_verified AND r.requirements->>'package_readiness_verified'='true') AND operational_state<>'DISPOSED'",
  procurement_blocked_documents:"lane='Government' AND operational_state='BLOCKED_EXTERNAL' AND blocker_type='MISSING_OFFICIAL_DOCUMENT'",
  subcontractor_final_approvals:"operational_state='ACTION_REQUIRED' AND final_approval_type='PROVIDER_SELECTION'",
- reward_approvals:"operational_state='ACTION_REQUIRED' AND lane='Rewards'"
+ reward_approvals:"operational_state='ACTION_REQUIRED' AND lane='Rewards'",
+ capital_active:"lane='Capital' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ capital_ready:"lane='Capital' AND operational_state='ACTION_REQUIRED' AND final_approval_type='CAPITAL_APPLICATION'",
+ reward_active:"lane='Rewards' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ reward_fresh:"lane='Rewards' AND operational_state NOT IN ('DISPOSED','COMPLETED') AND COALESCE(last_verified_at,discovered_at)>=now()-interval '30 days'",
+ business_action_required:"operational_state='ACTION_REQUIRED' AND lane<>'Employment'",
+ legacy_employment:"lane='Employment' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ fresh_7d:"lane NOT IN ('Employment','Recovery') AND COALESCE(source_posted_at,discovered_at)>=now()-interval '7 days' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ trending:"lane NOT IN ('Employment','Recovery') AND operational_state NOT IN ('DISPOSED','COMPLETED') AND COALESCE(source_posted_at,discovered_at)>=now()-interval '14 days' AND (COALESCE(business_value,0)>=70 OR COALESCE(estimated_revenue,0)>=1000)"
 };
 function filter(q){
  const clauses=[];const args=[];
@@ -90,14 +98,20 @@ module.exports=function(pool){
    count(*) FILTER(WHERE NOT verified OR reviewer_status<>'APPROVED')::int AS compliance_locked FROM recovery_jurisdiction_research`)).rows[0];
    const cycles=(await c.query('SELECT DISTINCT ON(lane) * FROM opportunity_cycle_runs ORDER BY lane,started_at DESC')).rows;
    const candidates=(await c.query('SELECT count(*)::int AS total,count(*) FILTER(WHERE verification_status=\'verified\')::int AS verified FROM opportunity_provider_candidates')).rows[0];
-   await c.query('COMMIT');res.json({success:true,counts,groups,recovery,cycles,candidates,as_of:new Date().toISOString(),estimated_pipeline_label:'POTENTIAL — NOT EARNED (existing model estimates)'});
+   const lane_health={
+    Capital:{status:counts.capital_active>0?'ACTIVE':'REFILLING',reason:'Live Grants.gov discovery; official eligibility and package evidence gates remain enforced.'},
+    Rewards:{status:counts.reward_active>0?'ACTIVE':'REFILLING',reason:'Live Kaggle/Devpost discovery only; stale rewards are disposed when not re-verified.'},
+    Recovery:{status:(recovery.cases>0&&recovery.verified>0)?'ACTIVE':'PAUSED_NO_PATH',reason:(recovery.cases>0&&recovery.verified>0)?'Verified cases and jurisdictions exist.':'No verified jurisdiction plus no enabled live case source; discovery/outreach remains disabled.'},
+    Employment:{status:'LEGACY_ONLY',reason:'Existing inventory remains visible, but employment feeds are removed from primary replenishment.'}
+   };
+   await c.query('COMMIT');res.json({success:true,counts,groups,recovery,cycles,candidates,lane_health,as_of:new Date().toISOString(),estimated_pipeline_label:'POTENTIAL — NOT EARNED (existing model estimates)'});
   }catch(e){await c.query('ROLLBACK');res.status(500).json({error:e.message});}finally{c.release();}
  });
  router.get('/records',async(req,res)=>{
   try{const {where,args}=filter(req.query);const limit=Math.min(100,Math.max(1,Number(req.query.limit)||30));const offset=Math.max(0,Number(req.query.offset)||0);
    const total=(await pool.query(`WITH e AS (${BASE}) SELECT count(*)::int AS total FROM e WHERE ${where}`,args)).rows[0].total;
    const items=(await pool.query(`WITH e AS (${BASE}) SELECT * FROM e WHERE ${where}
-   ORDER BY COALESCE(solicitation_due_at,procurement_deadline) ASC NULLS LAST,estimated_revenue DESC NULLS LAST,
+   ORDER BY COALESCE(source_posted_at,discovered_at) DESC NULLS LAST,COALESCE(solicitation_due_at,procurement_deadline) ASC NULLS LAST,estimated_revenue DESC NULLS LAST,
    (final_approval_type IS NOT NULL) DESC,execution_verified DESC,discovered_at ASC,id ASC LIMIT $${args.length+1} OFFSET $${args.length+2}`,[...args,limit,offset])).rows;
    res.json({success:true,total,displayed:items.length,offset,items});
   }catch(e){res.status(400).json({error:e.message});}
@@ -127,7 +141,7 @@ module.exports=function(pool){
     await c.query(`UPDATE opportunity_operations SET previous_state=to_jsonb(opportunity_operations),operational_state='DISPOSED',disposition_reason='HUMAN_REJECTED',disposition_evidence=$2,disposed_at=now(),disposed_by=$3,next_machine_action=NULL,next_human_action=NULL,next_retry_at=NULL,updated_at=now() WHERE opportunity_id=$1`,[id,{reason:note},actor]);
    }else if(action==='restore'){
     if(o.operational_state!=='DISPOSED'&&o.operational_state!=='BLOCKED_EXTERNAL')throw Error('Only disposed or blocked records can be reopened');
-    await c.query(`UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Government' THEN 'procurement_research' ELSE 'target_resolution' END,next_human_action=NULL,blocker_type=NULL,blocker_reason=NULL,next_retry_at=now(),restored_at=now(),approval_status=NULL,updated_at=now() WHERE opportunity_id=$1`,[id]);
+    await c.query(`UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Government' THEN 'procurement_research' WHEN lane='Capital' THEN 'capital_research' ELSE 'target_resolution' END,next_human_action=NULL,blocker_type=NULL,blocker_reason=NULL,next_retry_at=now(),restored_at=now(),approval_status=NULL,updated_at=now() WHERE opportunity_id=$1`,[id]);
     await c.query("UPDATE opportunity_engine_attempts SET result='retry',attempts=0,next_retry_at=now() WHERE opportunity_id=$1",[id]);
    }else if(action==='edit'){
     if(o.final_approval_type!=='COMMERCIAL_OUTREACH'||o.operational_state!=='ACTION_REQUIRED')throw Error('Only prepared commercial decisions can be edited');
@@ -139,31 +153,31 @@ module.exports=function(pool){
     await c.query("UPDATE developer_opportunities SET automation_status=CASE WHEN automation_status IN ('captcha_required','anti_bot_required','auth_required','login_required','2fa_required') THEN 'pending' ELSE automation_status END WHERE id=$1",[id]);
     await c.query("UPDATE opportunity_engine_attempts SET attempts=0,result='retry',next_retry_at=now() WHERE opportunity_id=$1",[id]);
     if(o.lane==='Rewards')await c.query("UPDATE reward_opportunity_analysis SET participation_status='unknown',participation_reason='Human reported resolved dependency; authoritative recheck required' WHERE opportunity_id=$1 AND submitted_at IS NULL",[id]);
-    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Government' THEN 'procurement_research' ELSE 'target_resolution' END,next_human_action=NULL,next_retry_at=now(),blocker_type=NULL,blocker_reason=NULL,updated_at=now() WHERE opportunity_id=$1",[id]);
+    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Government' THEN 'procurement_research' WHEN lane='Capital' THEN 'capital_research' ELSE 'target_resolution' END,next_human_action=NULL,next_retry_at=now(),blocker_type=NULL,blocker_reason=NULL,updated_at=now() WHERE opportunity_id=$1",[id]);
    }else if(action==='registration_confirm'){
     if(o.blocker_type!=='REGISTRATION_REQUIRED'||!String(note||'').trim())throw Error('Official registration evidence required');
     await c.query("UPDATE developer_opportunities SET procurement_registration_required=false,procurement_reason=concat_ws(E'\n',procurement_reason,$2) WHERE id=$1",[id,'Human-verified registration: '+note]);
     await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action='procurement_package',next_human_action=NULL,next_retry_at=now(),blocker_type=NULL,blocker_reason=NULL,updated_at=now() WHERE opportunity_id=$1",[id]);
    }else if(action==='package_confirm'){
-    if(o.final_approval_type!=='GOVERNMENT_PACKAGE_DOCUMENTS'||!String(note||'').trim())throw Error('Review actual required documents and provide their evidence');
+    if(!['GOVERNMENT_PACKAGE_DOCUMENTS','CAPITAL_PACKAGE_DOCUMENTS'].includes(o.final_approval_type)||!String(note||'').trim())throw Error('Review actual required documents and provide their evidence');
     await c.query("UPDATE opportunity_research SET requirements=requirements || jsonb_build_object('package_readiness_verified',true,'package_document_evidence',$2::text,'package_reviewer',$3::text),updated_at=now() WHERE opportunity_id=$1 AND package_path IS NOT NULL AND eligibility_verified AND scope_retrieved",[id,note,actor]);
-    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action='procurement_package',next_human_action=NULL,next_retry_at=now(),final_approval_type=NULL,updated_at=now() WHERE opportunity_id=$1",[id]);
+    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Capital' THEN 'capital_package' ELSE 'procurement_package' END,next_human_action=NULL,next_retry_at=now(),final_approval_type=NULL,updated_at=now() WHERE opportunity_id=$1",[id]);
    }else if(action==='eligibility_confirm'){
     if(o.final_approval_type==='ELIGIBILITY'){
      if(!String(note||'').trim())throw Error('Eligibility evidence required');
      await c.query("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=$2,eligibility_checked_at=now() WHERE id=$1",[id,'Human-verified eligibility: '+note]);
      await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action='verification',next_human_action=NULL,final_approval_type=NULL,next_retry_at=now(),updated_at=now() WHERE opportunity_id=$1",[id]);
     }else{ 
-    if(o.final_approval_type!=='GOVERNMENT_ELIGIBILITY'||!String(note||'').trim())throw Error('Official eligibility review and evidence are required');
+    if(!['GOVERNMENT_ELIGIBILITY','CAPITAL_ELIGIBILITY'].includes(o.final_approval_type)||!String(note||'').trim())throw Error('Official eligibility review and evidence are required');
     await c.query("UPDATE opportunity_research SET eligibility_verified=true,eligibility_evidence=jsonb_build_object('reviewer',$2::text,'evidence',$3::text,'at',now()) WHERE opportunity_id=$1 AND scope_retrieved AND official_verified",[id,actor,note]);
-    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action='procurement_package',next_human_action=NULL,final_approval_type=NULL,next_retry_at=now(),updated_at=now() WHERE opportunity_id=$1",[id]);
+    await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action=CASE WHEN lane='Capital' THEN 'capital_package' ELSE 'procurement_package' END,next_human_action=NULL,final_approval_type=NULL,next_retry_at=now(),updated_at=now() WHERE opportunity_id=$1",[id]);
     }
    }else if(action==='provider_approve'){
     if(o.final_approval_type!=='PROVIDER_SELECTION')throw Error('Provider verification must finish first');
     const p=await c.query("UPDATE opportunity_provider_candidates SET decision='approved',decided_by=$3,decided_at=now() WHERE opportunity_id=$1 AND id=$2 AND verification_status='verified' RETURNING id",[id,Number(provider_id),actor]);if(!p.rowCount)throw Error('Verified candidate required');
     await c.query("UPDATE opportunity_operations SET operational_state='AUTO_PROCESSING',next_machine_action='procurement_package',next_human_action=NULL,provider_stage='Provider Approved',final_approval_type=NULL,next_retry_at=now(),updated_at=now() WHERE opportunity_id=$1",[id]);
    }else{
-    if(o.operational_state!=='ACTION_REQUIRED'||!['COMMERCIAL_OUTREACH','CONTRACT_APPLICATION','GOVERNMENT_BID','EMPLOYMENT_APPLICATION','REWARD_ENTRY','REWARD_SUBMISSION'].includes(o.final_approval_type))throw Error('This item is not at final approval');
+    if(o.operational_state!=='ACTION_REQUIRED'||!['COMMERCIAL_OUTREACH','CONTRACT_APPLICATION','GOVERNMENT_BID','CAPITAL_APPLICATION','EMPLOYMENT_APPLICATION','REWARD_ENTRY','REWARD_SUBMISSION'].includes(o.final_approval_type))throw Error('This item is not at final approval');
     await c.query("UPDATE opportunity_operations SET approval_status='approved',approved_by=$2,approved_at=now(),operational_state='BLOCKED_EXTERNAL',next_machine_action=NULL,next_human_action=NULL,blocker_type='OTHER',blocker_reason='Preparation approved. Separate explicit external execution authorization required.',updated_at=now() WHERE opportunity_id=$1",[id,actor]);
    }
    await c.query('INSERT INTO human_attention_actions(opportunity_id,issue_type,action,note) VALUES($1,$2,$3,$4)',[id,'canonical_decision',action,String(note||action)]);
