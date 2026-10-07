@@ -58,7 +58,9 @@ def run(lane):
         cur.execute('''SELECT d.*,o.next_machine_action FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id
         WHERE o.operational_state='AUTO_PROCESSING' AND (o.next_retry_at IS NULL OR o.next_retry_at<=now())
         AND (o.next_machine_action=ANY(%s))=%s
-        ORDER BY CASE WHEN d.solicitation_due_at BETWEEN now() AND now()+interval '7 days' THEN 0 ELSE 1 END, COALESCE(o.next_retry_at,d.discovered_at::timestamptz),d.pursuit_priority DESC,d.id LIMIT %s''',(list(SLOW),lane=='slow',20 if lane=='fast' else 10))
+        ORDER BY CASE o.lane WHEN 'Capital' THEN 0 WHEN 'Government' THEN 1 WHEN 'Rewards' THEN 2 WHEN 'Commercial' THEN 3 WHEN 'Subcontractor' THEN 4 WHEN 'Employment' THEN 9 ELSE 5 END,
+        CASE WHEN d.solicitation_due_at BETWEEN now() AND now()+interval '7 days' THEN 0 ELSE 1 END,
+        COALESCE(o.next_retry_at,d.discovered_at::timestamptz),d.pursuit_priority DESC,d.id LIMIT %s''',(list(SLOW),lane=='slow',20 if lane=='fast' else 10))
         rows=cur.fetchall()
         if os.getenv('OPPORTUNITY_CONTROLLED')=='1':
             cur.execute('''SELECT DISTINCT ON(o.lane) d.*,o.next_machine_action FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id

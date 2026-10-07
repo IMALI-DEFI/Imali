@@ -45,7 +45,8 @@ const metrics = {
  business_action_required:"operational_state='ACTION_REQUIRED' AND lane<>'Employment'",
  legacy_employment:"lane='Employment' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  fresh_7d:"lane NOT IN ('Employment','Recovery') AND source_posted_at IS NOT NULL AND source_posted_at>=now()-interval '7 days' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
- trending:"lane NOT IN ('Employment','Recovery') AND operational_state NOT IN ('DISPOSED','COMPLETED') AND source_posted_at IS NOT NULL AND source_posted_at>=now()-interval '14 days' AND (COALESCE(business_value,0)>=70 OR COALESCE(estimated_revenue,0)>=1000)"
+ trending:"lane NOT IN ('Employment','Recovery') AND lower(COALESCE(source,'')) NOT LIKE ALL(ARRAY['remoteok%','business_arbeitnow%','arbeitnow%','business_remotive%','remotive%','telegram_jobs%','hackernews%','business_contract_remotive%']) AND operational_state NOT IN ('DISPOSED','COMPLETED') AND source_posted_at IS NOT NULL AND source_posted_at>=now()-interval '14 days' AND (COALESCE(business_value,0)>=70 OR COALESCE(estimated_revenue,0)>=1000)",
+ business_auto_processing:"operational_state='AUTO_PROCESSING' AND lane NOT IN ('Employment','Recovery') AND lower(COALESCE(source,'')) NOT LIKE ALL(ARRAY['remoteok%','business_arbeitnow%','arbeitnow%','business_remotive%','remotive%','telegram_jobs%','hackernews%','business_contract_remotive%'])"
 };
 function filter(q){
  const clauses=[];const args=[];
