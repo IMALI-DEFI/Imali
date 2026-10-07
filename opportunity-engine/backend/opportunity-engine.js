@@ -44,8 +44,8 @@ const metrics = {
  reward_fresh:"lane='Rewards' AND operational_state NOT IN ('DISPOSED','COMPLETED') AND COALESCE(last_verified_at,discovered_at)>=now()-interval '30 days'",
  business_action_required:"operational_state='ACTION_REQUIRED' AND lane<>'Employment'",
  legacy_employment:"lane='Employment' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
- fresh_7d:"lane NOT IN ('Employment','Recovery') AND COALESCE(source_posted_at,discovered_at)>=now()-interval '7 days' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
- trending:"lane NOT IN ('Employment','Recovery') AND operational_state NOT IN ('DISPOSED','COMPLETED') AND COALESCE(source_posted_at,discovered_at)>=now()-interval '14 days' AND (COALESCE(business_value,0)>=70 OR COALESCE(estimated_revenue,0)>=1000)"
+ fresh_7d:"lane NOT IN ('Employment','Recovery') AND source_posted_at IS NOT NULL AND source_posted_at>=now()-interval '7 days' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ trending:"lane NOT IN ('Employment','Recovery') AND operational_state NOT IN ('DISPOSED','COMPLETED') AND source_posted_at IS NOT NULL AND source_posted_at>=now()-interval '14 days' AND (COALESCE(business_value,0)>=70 OR COALESCE(estimated_revenue,0)>=1000)"
 };
 function filter(q){
  const clauses=[];const args=[];
@@ -100,7 +100,7 @@ module.exports=function(pool){
    const candidates=(await c.query('SELECT count(*)::int AS total,count(*) FILTER(WHERE verification_status=\'verified\')::int AS verified FROM opportunity_provider_candidates')).rows[0];
    const lane_health={
     Capital:{status:counts.capital_active>0?'ACTIVE':'REFILLING',reason:'Live Grants.gov discovery; official eligibility and package evidence gates remain enforced.'},
-    Rewards:{status:counts.reward_active>0?'ACTIVE':'REFILLING',reason:'Live Kaggle/Devpost discovery only; stale rewards are disposed when not re-verified.'},
+    Rewards:{status:'PAUSED_NO_FRESH_SOURCE',reason:'No verified live reward adapter is available: Devpost returned no explicit cash opportunities and Kaggle CLI is unavailable. Historical reward records are disposed when stale.'},
     Recovery:{status:(recovery.cases>0&&recovery.verified>0)?'ACTIVE':'PAUSED_NO_PATH',reason:(recovery.cases>0&&recovery.verified>0)?'Verified cases and jurisdictions exist.':'No verified jurisdiction plus no enabled live case source; discovery/outreach remains disabled.'},
     Employment:{status:'LEGACY_ONLY',reason:'Existing inventory remains visible, but employment feeds are removed from primary replenishment.'}
    };
