@@ -1,3 +1,9 @@
 node_modules/
 .cache/
 *.pack
+
+# Local Netlify folder
+.netlify
+
+opportunity-engine/**/__pycache__/
+*.pyc
