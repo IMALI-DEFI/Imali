@@ -51,6 +51,20 @@ class States(unittest.TestCase):
   r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
   s=classify(r,now=NOW)
   self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','target_resolution'))
+ def test_capital_grant_state_path(self):
+  r=self.row();r.update(source='grants_gov',revenue_path='capital_grant',opportunity_type='grant',solicitation_due_at='2027-01-01')
+  s=classify(r,now=NOW);self.assertEqual((s['lane'],s['next_machine_action']),('Capital','capital_research'))
+  c={'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':False,'requirements':{}}}
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['final_approval_type']),('ACTION_REQUIRED','CAPITAL_ELIGIBILITY'))
+  c['research']['eligibility_verified']=True
+  s=classify(r,c,NOW);self.assertEqual(s['next_machine_action'],'capital_package')
+  c['research']['package_path']='/tmp/grant.json'
+  s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_PACKAGE_DOCUMENTS')
+  c['research']['requirements']={'package_readiness_verified':True}
+  s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_APPLICATION')
+ def test_stale_reward_is_disposed(self):
+  r=self.row();r.update(source='reward_kaggle',revenue_path='reward',last_verified_at=NOW-timedelta(days=31))
+  s=classify(r,now=NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','STALE_BEYOND_POLICY'))
  def test_unverified_provider_not_human_selection(self):
   r=self.row();r.update(source='sam_gov',fulfillment_path='subcontractor')
   s=classify(r,{'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':True},'providers':[{'verification_status':'unverified'}]},NOW)

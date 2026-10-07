@@ -95,10 +95,9 @@ def run(dry_run=False):
         skipped=Counter();new_ids=[]
         try:
             from sources.grants_gov import fetch_grants_gov
-            from sources.rewards import fetch_reward_opportunities
             from sources.sam_gov import fetch_sam_gov
             from work_agent import process_opportunity
-            sources={'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov,'rewards':fetch_reward_opportunities}
+            sources={'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov}
             seen={identity(d) for d in rows}
             existing={(d.get('source'),str(d.get('source_id'))) for d in rows}
             candidates=[]
