@@ -3,7 +3,7 @@ import argparse, hashlib, os, re, smtplib, sqlite3, ssl
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import psycopg2, requests
 from bs4 import BeautifulSoup
 from psycopg2.extras import RealDictCursor
@@ -31,23 +31,55 @@ def _norm(text):
 def validate_contract_destination(row):
     listing=str(row.get("url") or "").strip(); title=str(row.get("title") or "").strip()
     if not listing or not title: return None
+    ua={"User-Agent":"Mozilla/5.0 (compatible; IMALI Opportunity Validator/1.0)"}
+    def same_site(a,b):
+        ah=(urlparse(a).hostname or "").lower().lstrip("www.")
+        bh=(urlparse(b).hostname or "").lower().lstrip("www.")
+        return bool(ah and bh and ".".join(ah.split(".")[-2:])==".".join(bh.split(".")[-2:]))
+    def usable(resp):
+        if resp.status_code!=200 or len(resp.content)<500: return None
+        soup=BeautifulSoup(resp.text,"html.parser")
+        text=" ".join(soup.stripped_strings)
+        if len(text)<180 or text.strip().lower()=="you need to enable javascript to run this app.": return None
+        return soup,text
     try:
-        r=requests.get(listing,timeout=10,allow_redirects=True,headers={"User-Agent":"IMALI-Opportunity-Alert/1.0"})
-        if r.status_code!=200 or len(r.content)<500: return None
-        soup=BeautifulSoup(r.text,"html.parser"); text=" ".join(soup.stripped_strings)
+        r=requests.get(listing,timeout=10,allow_redirects=True,headers=ua)
+        parsed=usable(r)
+        if not parsed: return None
+        soup,text=parsed
         if _norm(title) not in _norm(text): return None
-        apply_url=None
+        source_apply=None
         if "remotive.com/" in r.url:
             for a in soup.find_all("a",href=True):
                 if "apply for this position" in " ".join(a.stripped_strings).lower():
-                    apply_url=urljoin(r.url,a.get("href")); break
-        if not apply_url: apply_url=str(row.get("application_url") or "").strip()
-        if not apply_url: return None
-        ar=requests.get(apply_url,timeout=10,allow_redirects=True,headers={"User-Agent":"IMALI-Opportunity-Alert/1.0"})
-        if ar.status_code!=200 or len(ar.content)<500: return None
-        app_text=" ".join(BeautifulSoup(ar.text,"html.parser").stripped_strings)
-        if len(app_text)<180 or app_text.strip().lower()=="you need to enable javascript to run this app.": return None
-        return {"listing_url":r.url,"apply_url":ar.url}
+                    source_apply=urljoin(r.url,a.get("href")); break
+        candidates=[x for x in (source_apply,str(row.get("application_url") or "").strip()) if x]
+        for apply_url in dict.fromkeys(candidates):
+            try:
+                ar=requests.get(apply_url,timeout=10,allow_redirects=True,headers=ua)
+            except Exception:
+                continue
+            parsed_app=usable(ar)
+            if not parsed_app: continue
+            app_soup,app_text=parsed_app
+            path=(urlparse(ar.url).path or "").lower()
+            if re.search(r"/(apply|register|registration|signup|application)(?:/|$)",path,re.I):
+                return {"listing_url":r.url,"apply_url":ar.url}
+            # A source Apply button can land on the verified company homepage first.
+            # Follow one same-company Apply/Register route; never wander off-domain.
+            for a in app_soup.find_all("a",href=True):
+                label=" ".join(a.stripped_strings).lower()
+                href=urljoin(ar.url,a.get("href"))
+                href_path=(urlparse(href).path or "").lower()
+                if not same_site(ar.url,href): continue
+                if not (re.search(r"apply|register|create account|sign up",label,re.I) or re.search(r"/(apply|register|registration|signup|application)(?:/|$)",href_path,re.I)): continue
+                try:
+                    child=requests.get(href,timeout=10,allow_redirects=True,headers=ua)
+                except Exception:
+                    continue
+                if not same_site(ar.url,child.url) or not usable(child): continue
+                return {"listing_url":r.url,"apply_url":child.url}
+        return None
     except Exception:
         return None
 

@@ -160,6 +160,24 @@ def procurement(conn,d):
     return ('progress' if enough else 'exhausted'),('Official requirements retrieved; eligibility needs confirmation' if enough else 'Public page did not expose complete official scope and submission requirements; documents or authenticated access required'),{'documents':docs}
 
 def target(conn,d,alternative=False):
+    # Contract-feed final approval requires the exact source listing to still exist.
+    # A generic company application page cannot rescue a closed/removed role.
+    if str(d.get('source') or '')=='business_contract_remotive':
+        source_url=str(d.get('url') or '').strip()
+        title=str(d.get('title') or '').strip()
+        if not source_url or not title:
+            return 'exhausted','Exact contract source listing is missing',{'dead_source_listing':True,'source_url':source_url}
+        try:
+            source_final,source_text,_=fetch(source_url)
+        except HTTPError as exc:
+            if exc.code in (404,410):
+                return 'exhausted','Exact contract source listing is no longer available',{'dead_source_listing':True,'status':exc.code,'source_url':source_url}
+            return 'retry','Contract source listing recheck failed: HTTPError',{'status':exc.code,'source_url':source_url}
+        except Exception as exc:
+            return 'retry','Contract source listing recheck failed: '+type(exc).__name__,{'error_type':type(exc).__name__,'source_url':source_url}
+        norm=lambda x: re.sub(r'[^a-z0-9]+',' ',str(x or '').lower()).strip()
+        if norm(title) not in norm(source_text):
+            return 'exhausted','Exact contract source listing no longer identifies this role',{'dead_source_listing':True,'source_url':source_final,'title':title}
     # Candidates must already exist verbatim in source evidence. Never synthesize domains/emails.
     from company_domain_discovery import bad_host,host_of,company_identity,identity_matches
     # Historical HN rows predate source_posted_at persistence. Backfill the
