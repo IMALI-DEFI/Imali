@@ -410,9 +410,77 @@ def target(conn,d,alternative=False):
     return 'retry','No verified official target in accessible source evidence',{'sources_checked':seen}
 
 
+def _web3_capital_research(conn,d):
+    """Verify an official ecosystem funding source, live application path and funding terms."""
+    source_url=str(d.get('url') or '').strip()
+    apply_url=str(d.get('application_url') or '').strip()
+    if not source_url or not apply_url:
+        return 'exhausted','Official Web3 funding source/application path is missing',{'source_url':source_url,'application_url':apply_url}
+    try:
+        final,text,_=fetch(source_url)
+        app_final,app_text,_=fetch(apply_url)
+    except HTTPError as exc:
+        if exc.code in (404,410):
+            return 'exhausted','Official Web3 funding destination is no longer available',{'status':exc.code,'source_url':source_url,'application_url':apply_url,'dead_destination':True}
+        return 'retry','Web3 funding source retrieval failed: HTTPError',{'status':exc.code}
+    except Exception as exc:
+        return 'retry','Web3 funding source retrieval failed: '+type(exc).__name__,{'error_type':type(exc).__name__}
+    if len(text.strip())<500 or len(app_text.strip())<150:
+        return 'exhausted','Official Web3 funding page/application destination has insufficient verifiable content',{'source_url':final,'application_url':app_final,'blank_or_generic':True}
+    source_host=(urlparse(final).hostname or '').lower()
+    trusted_hosts=('solana.org','ethereum.foundation','polygon.technology','arbitrum.foundation')
+    if not any(source_host==h or source_host.endswith('.'+h) for h in trusted_hosts):
+        return 'exhausted','Web3 funding source is not an approved official ecosystem domain',{'source_url':final}
+    funding_type='grant' if d.get('revenue_path')=='capital_grant' else 'equity' if d.get('revenue_path')=='capital_equity' else 'revenue_share'
+    low=(text+' '+app_text).lower()
+    policy_status='verified'
+    policy_reason='Non-dilutive funding path verified from official ecosystem source.'
+    equity_percent=None
+    if funding_type=='equity':
+        matches=[float(x) for x in re.findall(r'(\d+(?:\.\d+)?)\s*%\s*(?:equity|ownership|stake)',low,re.I)]
+        equity_percent=min(matches) if matches else None
+        if equity_percent is None:
+            policy_status='unverified_terms'
+            policy_reason='Equity opportunity does not expose a verifiable ownership percentage; do not advance.'
+        elif equity_percent>10:
+            policy_status='rejected'
+            policy_reason=f'Equity request {equity_percent:g}% exceeds the 10% total equity ceiling.'
+        else:
+            policy_reason=f'Equity request {equity_percent:g}% is within the 10% ceiling; final economics still require approval.'
+    elif funding_type=='revenue_share':
+        if not re.search(r'revenue share|revenue-based|royalty|percentage of revenue',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='Revenue-share terms are not clearly stated on the verified source/application pages.'
+        else:
+            policy_reason='Revenue-share financing terms are disclosed; exact economics still require final approval.'
+    if funding_type!='grant' and re.search(r'(convertible|safe|warrant)',low,re.I) and equity_percent is None:
+        policy_status='unverified_terms'
+        policy_reason='Convertible/SAFE/warrant terms are present without a verifiable <=10% ownership limit.'
+    requirements={
+        'title':d.get('title'),'agency':d.get('company'),'funding_type':funding_type,
+        'equity_percent':equity_percent,'capital_policy_status':policy_status,
+        'capital_policy_reason':policy_reason,'source_url':final,'application_url':app_final,
+        'ecosystem_source':str(d.get('company') or ''),'package_readiness_verified':False,
+        'eligibility_machine_screen':'Official ecosystem source and current application route verified; applicant-specific requirements still need confirmation.'
+    }
+    docs=[{'url':final,'type':'official ecosystem funding source'},{'url':app_final,'type':'current application route'}]
+    with conn.cursor() as cur:
+        sql=('INSERT INTO opportunity_research(opportunity_id,official_url,official_verified,documents,requirements,scope_retrieved,eligibility_verified,verified_at) '
+             'VALUES(%s,%s,true,%s,%s,true,false,now()) '
+             'ON CONFLICT(opportunity_id) DO UPDATE SET official_url=EXCLUDED.official_url,official_verified=true,documents=EXCLUDED.documents,'
+             'requirements=EXCLUDED.requirements,scope_retrieved=true,verified_at=now(),updated_at=now()')
+        cur.execute(sql,(d['id'],final,Json(docs),Json(requirements)))
+        cur.execute("UPDATE developer_opportunities SET application_url=%s,last_verified_at=now(),eligibility_status=CASE WHEN eligibility_status='ineligible' THEN eligibility_status ELSE 'review' END,eligibility_reason=%s WHERE id=%s",
+                    (app_final,policy_reason,d['id']))
+    conn.commit()
+    return 'progress','Official Web3 funding source and application route verified; applicant-specific eligibility confirmation required',{'official_url':final,'application_url':app_final,'capital_policy_status':policy_status,'equity_percent':equity_percent}
+
+
 def capital_research(conn,d):
+    if str(d.get('source') or '')=='web3_funding':
+        return _web3_capital_research(conn,d)
     if str(d.get('source') or '')!='grants_gov':
-        return 'exhausted','Capital research requires an official Grants.gov source',{'source':d.get('source')}
+        return 'exhausted','Capital research requires a verified official funding source',{'source':d.get('source')}
     oid=str(d.get('source_id') or '').strip()
     if not oid.isdigit():
         return 'exhausted','Grants.gov opportunity id is missing or invalid',{'source_id':oid}
@@ -487,16 +555,72 @@ def capital_package(conn,d):
     cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))
     r=cur.fetchone()
     if not r or not r['scope_retrieved'] or not r['official_verified']:
-        return 'exhausted','Verified Grants.gov detail is required before package preparation',{}
+        return 'exhausted','Verified official funding detail is required before package preparation',{}
     if not r['eligibility_verified']:
         return 'exhausted','Confirmed applicant eligibility is required before package preparation',{}
     root=Path('/home/opc/imali-work-agent/capital_packages')/str(d['id'])
     root.mkdir(parents=True,exist_ok=True)
-    path=root/'grant-package.json'
+    path=root/'capital-package.json'
     path.write_text(json.dumps({'opportunity':dict(d),'official_research':dict(r),'status':'DRAFT — final application review and explicit submission authorization required'},default=str,indent=2))
     cur.execute('UPDATE opportunity_research SET package_path=%s,updated_at=now() WHERE opportunity_id=%s',(str(path),d['id']))
     conn.commit()
     return 'progress','Capital application evidence package assembled; required attachments still need final review',{'package_path':str(path)}
+
+
+def licensed_broker_partners(conn,d,verify=False):
+    """Discover current licensed broker candidates from FMCSA public Motus data.
+
+    Read-only public-data research only: no outreach, no shipment arrangement,
+    and no partnership or agency relationship is created by this function.
+    """
+    import requests
+    endpoint='https://data.transportation.gov/resource/nakq-58th.json'
+    public_url(endpoint)
+    params={
+        '$limit':10,
+        '$select':'docket_number,usdot_number,op_auth_type,op_auth_status,bond_file,legal_name,bus_city,bus_state_code,bus_telno',
+        '$where':"op_auth_status='Active' AND bond_file='Y' AND op_auth_type like '%Broker%'",
+    }
+    try:
+        response=requests.get(endpoint,params=params,headers={'User-Agent':'IMALI-Opportunity-Research/1.0'},timeout=10,allow_redirects=False)
+        if 300<=response.status_code<400:
+            return 'retry','FMCSA public broker dataset redirected unexpectedly',{'status':response.status_code}
+        response.raise_for_status()
+        rows=response.json()
+    except Exception as exc:
+        return 'retry','FMCSA public broker dataset retrieval failed: '+type(exc).__name__,{'error_type':type(exc).__name__}
+    if not isinstance(rows,list) or not rows:
+        return 'retry','FMCSA public broker dataset returned no active bonded broker records',{}
+    cur=conn.cursor(cursor_factory=RealDictCursor);found=0
+    sql=("INSERT INTO opportunity_provider_candidates(opportunity_id,source_table,source_id,name,evidence,verification_status,economics) "
+         "VALUES(%s,'fmcsa_motus_broker',%s,%s,%s,%s,%s) "
+         "ON CONFLICT(opportunity_id,source_table,source_id) DO UPDATE SET name=EXCLUDED.name,evidence=EXCLUDED.evidence,verification_status=EXCLUDED.verification_status,updated_at=now()")
+    for row in rows[:10]:
+        docket=str(row.get('docket_number') or '').strip(); usdot=str(row.get('usdot_number') or '').strip()
+        if not docket or not usdot: continue
+        name=str(row.get('legal_name') or '').strip() or ('FMCSA broker '+docket)
+        authority_active=(row.get('op_auth_status')=='Active' and 'Broker' in str(row.get('op_auth_type') or ''))
+        bond_active=(row.get('bond_file')=='Y')
+        evidence={
+            'provider_role':'licensed_broker',
+            'broker_authority_verified':bool(authority_active),
+            'financial_responsibility_verified':bool(bond_active),
+            'docket_number':docket,
+            'usdot_number':usdot,
+            'authority_type':row.get('op_auth_type'),
+            'authority_status':row.get('op_auth_status'),
+            'bond_file':row.get('bond_file'),
+            'city':row.get('bus_city'),'state':row.get('bus_state_code'),'phone':row.get('bus_telno'),
+            'verification_source':endpoint,
+            'verification_note':'Official FMCSA Motus public operating-authority data; partnership/agency terms are not implied.',
+        }
+        status='verified' if authority_active and bond_active else 'unverified'
+        economics={'partner_fee':None,'revenue_share':None,'projected_net_margin':None,'margin_verified':False}
+        cur.execute(sql,(d['id'],docket,name,Json(evidence),status,Json(economics)))
+        found+=1
+    conn.commit()
+    if not found:return 'retry','No usable FMCSA broker candidate records were returned',{}
+    return 'progress','FMCSA licensed broker candidates refreshed; commercial relationship and economics still require evidence',{'candidates':found,'source':endpoint,'external_actions':0}
 
 
 def providers(conn,d,verify=False):

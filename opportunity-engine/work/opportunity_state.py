@@ -13,10 +13,17 @@ def date(value):
 def government(d):
     return str(d.get('source','')).startswith(('sam_gov','state_local_')) or d.get('opportunity_type') == 'procurement'
 
+def brokerable(d):
+    return (d.get('opportunity_type') in ('brokerage','freight_brokerage','logistics_brokerage') or
+            d.get('fulfillment_path') in ('broker','intermediary'))
+
+def freight_broker_candidate(d):
+    return brokerable(d) and (d.get('opportunity_type') in ('freight_brokerage','logistics_brokerage') or str(d.get('source') or '')=='direct_freight')
+
 def classify(d, context=None, now=None):
     c=context or {}; now=now or datetime.now(timezone.utc)
     old=c.get('operation') or {}; reward=c.get('reward') or {}; research=c.get('research') or {}
-    lane = ('Government' if government(d) else 'Capital' if d.get('revenue_path')=='capital_grant' or str(d.get('source') or '')=='grants_gov' else
+    lane = ('Broker / Intermediary' if brokerable(d) else 'Government' if government(d) else 'Capital' if str(d.get('revenue_path') or '').startswith('capital_') or str(d.get('source') or '') in ('grants_gov','web3_funding') else
             'Rewards' if d.get('revenue_path')=='reward' else 'Recovery' if d.get('revenue_path')=='asset_recovery' else
             'Employment' if d.get('revenue_path')=='employment' else 'Commercial')
     base=dict(operational_state=None,lane=lane,next_machine_action=None,next_human_action=None,
@@ -54,11 +61,19 @@ def classify(d, context=None, now=None):
         return dict(base,**{k:old.get(k) for k in base if k in old})
     if d.get('source')=='test': return dispose('UNSUPPORTED_SOURCE',{'source':'test','reason':'Explicit test source, not an external opportunity'})
     if c.get('duplicate_of'): return dispose('DUPLICATE',{'duplicate_of':c['duplicate_of'],'source':d.get('source'),'source_id':d.get('source_id')})
+    target_attempt=(c.get('attempts') or {}).get('target_resolution') or {}
+    if str(d.get('source') or '')=='business_contract_remotive' and target_attempt.get('result')=='exhausted':
+        evidence=target_attempt.get('evidence') or {}
+        reason=str(target_attempt.get('reason') or '')
+        if evidence.get('stale_application_targets') or 'no longer available' in reason.lower():
+            return dispose('DEAD_APPLICATION_TARGET',{'reason':reason,'evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
+        if evidence.get('unverifiable_application_targets') or d.get('target_quality_status')!='verified':
+            return dispose('NO_VERIFIED_APPLICATION_PATH',{'reason':reason or 'No role-specific application destination could be verified','evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
     due=date(d.get('solicitation_due_at') or d.get('procurement_deadline'))
-    if lane in ('Government','Capital','Rewards') and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
-    if lane=='Government' and d.get('procurement_stage') in ('award','cancelled','closed'):
+    if lane in ('Government','Broker / Intermediary','Capital','Rewards') and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
+    if lane in ('Government','Broker / Intermediary') and d.get('procurement_stage') in ('award','cancelled','closed'):
         return dispose('CANCELLED' if d['procurement_stage']=='cancelled' else 'CLOSED',{'official_stage':d['procurement_stage'],'source':d.get('url')})
-    if lane=='Government' and d.get('revenue_path')=='ignore':
+    if lane in ('Government','Broker / Intermediary') and d.get('revenue_path')=='ignore':
         return dispose('OUT_OF_SCOPE',{'reason':'Recorded business classification is ignore; procurement research is not justified','personal_fit':d.get('personal_fit'),'business_value':d.get('business_value'),'demand_confidence':d.get('demand_confidence'),'source':d.get('url')})
     if reward.get('participation_status')=='closed_to_new_entrants': return dispose('CLOSED',{'participation_status':reward['participation_status'],'reason':reward.get('participation_reason')})
     # Staleness policy is source-specific and uses the original posting date, not crawler time.
@@ -80,6 +95,11 @@ def classify(d, context=None, now=None):
 
     if lane=='Capital':
         base['workbench_stage']='Researching'
+        requirements=research.get('requirements') or {}
+        if requirements.get('capital_policy_status')=='rejected':
+            return dispose('CAPITAL_POLICY_REJECTED',{'reason':requirements.get('capital_policy_reason'),'official_url':research.get('official_url'),'funding_type':requirements.get('funding_type')})
+        if requirements.get('capital_policy_status')=='unverified_terms':
+            return dispose('FUNDING_TERMS_UNVERIFIED',{'reason':requirements.get('capital_policy_reason'),'official_url':research.get('official_url'),'funding_type':requirements.get('funding_type')})
         if not research.get('scope_retrieved') or not research.get('official_verified'):
             result=auto('capital_research')
             if result['operational_state']=='BLOCKED_EXTERNAL':
@@ -87,7 +107,7 @@ def classify(d, context=None, now=None):
             return result
         if not research.get('eligibility_verified'):
             base['workbench_stage']='Qualified'
-            return human('Confirm applicant/entity eligibility against the official Grants.gov applicant categories','CAPITAL_ELIGIBILITY')
+            return human('Confirm applicant/entity eligibility against the verified official funding requirements','CAPITAL_ELIGIBILITY')
         if not research.get('package_path'):
             base['workbench_stage']='Package Building'
             return auto('capital_package')
@@ -99,12 +119,33 @@ def classify(d, context=None, now=None):
             return blocked('OTHER','Capital application approved; separate explicit external submission authorization required')
         return human('Review the completed grant application package and official requirements','CAPITAL_APPLICATION')
 
-    if lane=='Government':
+    if lane=='Broker / Intermediary' and not government(d):
+        base['workbench_stage']='Partner Required'
+        p=licensed_broker_partner_step(d,c,base,auto,human,blocked)
+        if p:return p
+        if old.get('approval_status')=='approved':
+            return blocked('OTHER','Broker-partner deal preparation approved; any external shipment arrangement or outreach requires separate explicit authorization through the licensed partner.')
+        return human('Review demand, verified licensed broker partner, documented partner economics, and projected net margin before any external action','BROKER_PARTNER_DEAL')
+
+    if lane in ('Government','Broker / Intermediary'):
         base['workbench_stage']='Researching'
         if not research.get('scope_retrieved') or not research.get('official_verified'):
             result=auto('procurement_research')
             if result['operational_state']=='BLOCKED_EXTERNAL':result['workbench_stage']='Needs Documents'
             return result
+        # Freight brokerage can be tested through a verified licensed brokerage partner.
+        # Do not require the user's own broker authority when the fulfillment path is partner-based.
+        if lane=='Broker / Intermediary' and freight_broker_candidate(d):
+            base['workbench_stage']='Partner Required'
+            p=licensed_broker_partner_step(d,c,base,auto,human,blocked)
+            if p:return p
+        # Freight brokerage must never be treated as a general subcontracting exemption.
+        # Only an explicitly verified licensed partner may handle regulated brokerage.
+        if lane=='Broker / Intermediary':
+            partners=[p for p in (c.get('providers') or []) if p.get('role')=='licensed_freight_broker' and p.get('verification_status')=='verified' and (p.get('compliance') or {}).get('authority_verified') is True and (p.get('compliance') or {}).get('insurance_verified') is True]
+            if not partners:
+                return blocked('REGISTRATION_REQUIRED','Licensed freight broker partner required. Verify active FMCSA authority, financial responsibility, agreement and insurance before offering or arranging freight; discovery and research only.')
+            base['evidence']['broker_execution_model']='licensed_partner_only'
         # Machine extraction precedes the genuine certification/eligibility decision.
         if not research.get('eligibility_verified'):
             return human('Review extracted official eligibility requirements and confirm business registrations/certifications','GOVERNMENT_ELIGIBILITY')
@@ -112,7 +153,7 @@ def classify(d, context=None, now=None):
             base['workbench_stage']='Needs Registration/Auth'
             return blocked('REGISTRATION_REQUIRED','Confirm the required official registration/account')
         base['workbench_stage']='Qualified'
-        if d.get('fulfillment_path')=='subcontractor':
+        if d.get('fulfillment_path') in ('subcontractor','broker','intermediary','referral') or lane=='Broker / Intermediary':
             p=provider_step(d,c,base,auto,human,blocked)
             if p:return p
         if not research.get('package_path'):
@@ -180,6 +221,27 @@ def classify(d, context=None, now=None):
     return human('Review verified contact, fit, and prepared commercial message','COMMERCIAL_OUTREACH')
 
 
+def licensed_broker_partner_step(d,c,base,auto,human,blocked):
+    base['provider_stage']='Needs Licensed Broker Partner'
+    candidates=c.get('providers') or []
+    brokers=[p for p in candidates if str((p.get('evidence') or {}).get('provider_role') or '').lower() in ('licensed_broker','broker_partner')]
+    if not brokers:
+        return auto('licensed_broker_partner_research')
+    base['provider_stage']='Broker Partners Found'
+    verified=[p for p in brokers if p.get('verification_status')=='verified' and bool((p.get('evidence') or {}).get('broker_authority_verified'))]
+    if not verified:
+        return auto('licensed_broker_partner_verification')
+    if not any((p.get('economics') or {}).get('margin_verified') for p in verified):
+        return blocked('OTHER','Licensed broker partner economics are not verified. Partner fee/revenue share and projected net margin must be documented before approval.')
+    approved=[p for p in verified if p.get('decision')=='approved']
+    if not approved:
+        base['provider_stage']='Needs Broker Partner Approval'
+        return human('Select a verified licensed broker partner after reviewing authority evidence and economics','BROKER_PARTNER_SELECTION')
+    base['provider_stage']='Licensed Broker Partner Approved'
+    base['workbench_stage']='Partner Ready'
+    return None
+
+
 def provider_step(d,c,base,auto,human,blocked):
     base['provider_stage']='Needs Provider'; base['workbench_stage']='Needs Provider'
     candidates=c.get('providers') or []
@@ -188,7 +250,8 @@ def provider_step(d,c,base,auto,human,blocked):
     if not any(p.get('verification_status')=='verified' for p in candidates):return auto('provider_verification')
     if not any((p.get('economics') or {}).get('margin_verified') for p in candidates):return blocked('OTHER','Provider quote and margin evidence required; external provider contact needs explicit authorization')
     if not any(p.get('decision')=='approved' for p in candidates):
-        base['lane']='Subcontractor';base['provider_stage']='Needs Provider Approval'
+        if base.get('lane')!='Broker / Intermediary': base['lane']='Subcontractor'
+        base['provider_stage']='Needs Provider Approval'
         return human('Select a verified provider candidate after reviewing evidence and economics','PROVIDER_SELECTION')
     base['provider_stage']='Provider Approved'
     return None

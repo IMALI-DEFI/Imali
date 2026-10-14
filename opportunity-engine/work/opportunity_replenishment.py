@@ -1,5 +1,5 @@
 """Discovery only: existing sources, durable cooldowns, insert-only deduplication."""
-import json, io, contextlib, sys
+import json, io, contextlib, sys, os
 from collections import Counter
 from datetime import datetime, timezone
 from psycopg2.extras import Json
@@ -47,7 +47,10 @@ def run(dry_run=False):
                     if source and when>history.get(source,datetime.min.replace(tzinfo=timezone.utc)):
                         history[source]=when
         cur.execute('SELECT COALESCE(sum(cardinality(new_ids)),0) FROM opportunity_replenishment_runs')
-        decision=plan(disposed,cur.fetchone()[0],workable,history)
+        available_sources=['web3_funding','grants_gov','sam_gov']
+        if os.getenv('DIRECT_FREIGHT_API_TOKEN') and os.getenv('DIRECT_FREIGHT_USER_TOKEN'):
+            available_sources.append('direct_freight')
+        decision=plan(disposed,cur.fetchone()[0],workable,history,available_sources=available_sources)
         if dry_run or not decision['source']:
             return dict(decision,result='dry_run' if dry_run else 'skipped',external_actions=0)
         source_name=decision['source']
@@ -95,9 +98,11 @@ def run(dry_run=False):
         skipped=Counter();new_ids=[]
         try:
             from sources.grants_gov import fetch_grants_gov
+            from sources.web3_funding import fetch_web3_funding
             from sources.sam_gov import fetch_sam_gov
+            from sources.freight_loadboards import fetch_direct_freight
             from work_agent import process_opportunity
-            sources={'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov}
+            sources={'web3_funding':fetch_web3_funding,'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov,'direct_freight':fetch_direct_freight}
             seen={identity(d) for d in rows}
             existing={(d.get('source'),str(d.get('source_id'))) for d in rows}
             candidates=[]
@@ -107,7 +112,16 @@ def run(dry_run=False):
             for row in fetched:
                 if (row.get('source'),str(row.get('source_id'))) in existing:
                     skipped['duplicate']+=1;continue
-                if row.get('source')=='grants_gov':
+                if row.get('source')=='web3_funding':
+                    processed=dict(row)
+                    processed.update(score=max(int(row.get('score') or 0),75),
+                                     personal_fit=max(int(row.get('personal_fit') or 0),70),
+                                     business_value=max(int(row.get('business_value') or 0),85),
+                                     demand_confidence=max(int(row.get('demand_confidence') or 0),85),
+                                     matched_skills=row.get('matched_skills') or [],imali_proof=row.get('imali_proof'),
+                                     generated_pitch=row.get('generated_pitch'))
+                    reason=None
+                elif row.get('source')=='grants_gov':
                     processed=dict(row)
                     processed.update(opportunity_type='grant',revenue_path='capital_grant',fulfillment_path='direct',
                                      score=max(int(row.get('score') or 0),70),personal_fit=max(int(row.get('personal_fit') or 0),60),
@@ -115,6 +129,13 @@ def run(dry_run=False):
                                      demand_confidence=max(int(row.get('demand_confidence') or 0),90),
                                      matched_skills=row.get('matched_skills') or [],imali_proof=row.get('imali_proof'),
                                      generated_pitch=row.get('generated_pitch'))
+                    reason=None
+                elif row.get('source')=='direct_freight':
+                    processed=process_opportunity(row)
+                    processed.update(opportunity_type='freight_brokerage',revenue_path='managed_delivery',fulfillment_path='subcontractor',
+                                     score=max(int(processed.get('score') or 0),65),personal_fit=max(int(processed.get('personal_fit') or 0),50),
+                                     business_value=max(int(processed.get('business_value') or 0),80),demand_confidence=max(int(processed.get('demand_confidence') or 0),85),
+                                     business_reason=row.get('business_reason'))
                     reason=None
                 elif str(row.get('source') or '').startswith('reward_'):
                     processed=dict(row)
