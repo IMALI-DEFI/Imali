@@ -229,7 +229,7 @@ def target(conn,d,alternative=False):
             if _application_landing(final):
                 reason='Source-explicit public application destination verified after same-company redirect'
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(final,reason,d['id']))
+                    cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(final,reason,d['id']))
                 conn.commit()
                 return 'progress','Source-explicit application destination verified; eligibility/package verification follows',{'source_apply':source_apply,'target':final,'target_kind':'source-explicit application page'}
             # Some explicit apply links now redirect to the company homepage.
@@ -249,7 +249,7 @@ def target(conn,d,alternative=False):
                         continue
                     reason='Source-explicit application route verified through same-company application page'
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(candidate,reason,d['id']))
+                        cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(candidate,reason,d['id']))
                     conn.commit()
                     return 'progress','Verified company application route found from source-explicit apply evidence; eligibility/package verification follows',{'source_apply':source_apply,'target':candidate,'target_kind':'verified company application page'}
 
@@ -381,7 +381,7 @@ def target(conn,d,alternative=False):
                         else:target_kind='employer career page'
                 if verified_target:
                     reason='Public '+target_kind+' corroborates exact company and role'
-                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now() WHERE id=%s",(verified_target,reason,d['id']))
+                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(verified_target,reason,d['id']))
                     conn.commit();return 'progress','Public application page corroborates exact company and role; eligibility/package verification follows',{'source':final,'target':verified_target,'target_kind':target_kind}
                 continue
             h=host_of(final)

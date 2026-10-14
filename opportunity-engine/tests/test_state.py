@@ -46,6 +46,11 @@ class States(unittest.TestCase):
   self.assertEqual(classify(r,now=NOW)['next_machine_action'],'resume_preparation')
   r['tailored_resume']='resume';r['application_package_path']='/tmp/package'
   self.assertEqual(classify(r,now=NOW)['final_approval_type'],'CONTRACT_APPLICATION')
+ def test_contract_stale_source_rechecks_before_approval(self):
+  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',execution_verified=True,execution_source_verified=True,execution_status='ready',tailored_resume='resume',application_package_path='/tmp/package',last_verified_at=NOW-timedelta(days=8))
+  r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
+  s=classify(r,now=NOW)
+  self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','target_resolution'))
  def test_contract_final_source_guard_precedes_package(self):
   r=self.row(application_url='https://remotive.com/remote-jobs/example',target_quality_status='verified',execution_verified=True,execution_source_verified=False,execution_status='blocked',tailored_resume='resume')
   r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
