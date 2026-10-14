@@ -23,7 +23,8 @@ def _apply_links(base,soup):
         if not href or href.startswith(("#","javascript:","mailto:")): continue
         u=urljoin(base,href)
         if urlparse(u).scheme not in ("http","https"): continue
-        if re.search(r"\bapply\b|application",label+" "+u,re.I): out.append(u)
+        direct=(label.startswith("apply") or label.startswith("application") or "grant-application" in u.lower() or "application-form" in u.lower())
+        if direct and not re.search(r"audit-program|stylus-sprint",u,re.I): out.append(u)
     return list(dict.fromkeys(out))
 
 def _fetch(url):
@@ -54,8 +55,31 @@ def fetch_web3_funding():
                 if "no rfp items available" in low: continue
                 for i,u in enumerate(links[:5],1): rows.append(_row(f"ethereum-rfp-{i}",f"Ethereum Foundation ESP RFP {i}",eco,text,final,u))
             elif eco=="Arbitrum":
-                if "inactive" in low and "active" not in re.sub(r"inactive","",low): continue
-                for i,u in enumerate(links[:5],1): rows.append(_row(f"arbitrum-funding-{i}",f"Arbitrum ecosystem funding program {i}",eco,text,final,u))
+                seen=set()
+                for a in soup.find_all("a",href=True):
+                    label=" ".join(a.stripped_strings).strip().lower()
+                    href=urljoin(final,str(a.get("href") or "").strip())
+                    direct=(label.startswith("apply") or label.startswith("application") or "grant-application" in href.lower() or "application-form" in href.lower())
+                    if not direct or re.search(r"audit-program|stylus-sprint",href,re.I):
+                        continue
+                    card=None; node=a
+                    for _ in range(6):
+                        node=node.parent if node else None
+                        if not node: break
+                        card_text=" ".join(node.stripped_strings)
+                        if len(card_text)<=1200 and re.search(r"\b(?:Active|Inactive)\b",card_text):
+                            card=node; break
+                    if not card:
+                        continue
+                    card_text=" ".join(card.stripped_strings)
+                    if not card_text.startswith("Active ") or card_text.startswith("Inactive "):
+                        continue
+                    heads=[h.get_text(" ",strip=True) for h in card.find_all(["h1","h2","h3","h4","h5","h6"]) if h.get_text(" ",strip=True)]
+                    title=heads[0] if heads else re.sub(r"^Active\s+","",card_text).split(" Managed by ")[0][:120]
+                    key=re.sub(r"[^a-z0-9]+","-",title.lower()).strip("-")
+                    if not key or key in seen: continue
+                    seen.add(key)
+                    rows.append(_row("arbitrum-"+key,title,eco,card_text,final,href))
             elif eco=="Polygon":
                 year=str(datetime.now(timezone.utc).year)
                 if year not in text or not re.search(r"\b(live|applications? open|apply now)\b",text,re.I): continue
