@@ -47,7 +47,7 @@ class States(unittest.TestCase):
   r['tailored_resume']='resume';r['application_package_path']='/tmp/package'
   self.assertEqual(classify(r,now=NOW)['final_approval_type'],'CONTRACT_APPLICATION')
  def test_contract_stale_source_rechecks_before_approval(self):
-  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',execution_verified=True,execution_source_verified=True,execution_status='ready',tailored_resume='resume',application_package_path='/tmp/package',last_verified_at=NOW-timedelta(days=8))
+  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',execution_verified=True,execution_source_verified=True,execution_status='ready',tailored_resume='resume',application_package_path='/tmp/package',last_verified_at=NOW-timedelta(days=2))
   r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
   s=classify(r,now=NOW)
   self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','target_resolution'))
@@ -60,11 +60,11 @@ class States(unittest.TestCase):
   r=self.row();r.update(source='grants_gov',revenue_path='capital_grant',opportunity_type='grant',solicitation_due_at='2027-01-01')
   s=classify(r,now=NOW);self.assertEqual((s['lane'],s['next_machine_action']),('Capital','capital_research'))
   c={'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':False,'requirements':{}}}
-  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['final_approval_type']),('ACTION_REQUIRED','CAPITAL_ELIGIBILITY'))
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','capital_eligibility'))
   c['research']['eligibility_verified']=True
   s=classify(r,c,NOW);self.assertEqual(s['next_machine_action'],'capital_package')
   c['research']['package_path']='/tmp/grant.json'
-  s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_PACKAGE_DOCUMENTS')
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','capital_package_review'))
   c['research']['requirements']={'package_readiness_verified':True}
   s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_APPLICATION')
  def test_capital_unknown_equity_terms_are_disposed(self):
@@ -74,6 +74,16 @@ class States(unittest.TestCase):
                  'official_url':'https://example.com/funding'}}
   s=classify(r,c,NOW)
   self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','FUNDING_TERMS_UNVERIFIED'))
+ def test_capital_equity_over_cap_is_disposed(self):
+  r=self.row();r.update(source='web3_funding',revenue_path='capital_equity',opportunity_type='web3_seed_funding')
+  c={'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':False,'requirements':{'capital_policy_status':'rejected','capital_policy_reason':'Equity request 12% exceeds the 10% cap','funding_type':'equity'}}}
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','CAPITAL_POLICY_REJECTED'))
+ def test_contract_dead_target_is_disposed(self):
+  r=self.row(application_url='https://company.invalid/app',target_quality_status='unverified')
+  r.update(source='business_contract_remotive',revenue_path='direct_contract')
+  c={'attempts':{'target_resolution':{'result':'exhausted','reason':'Source-explicit application destination is no longer available','evidence':{'stale_application_targets':[{'status':404}]}}}}
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','DEAD_APPLICATION_TARGET'))
+
  def test_stale_reward_is_disposed(self):
   r=self.row();r.update(source='reward_kaggle',revenue_path='reward',last_verified_at=NOW-timedelta(days=31))
   s=classify(r,now=NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','STALE_BEYOND_POLICY'))

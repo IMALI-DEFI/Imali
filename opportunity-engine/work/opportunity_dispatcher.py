@@ -5,9 +5,9 @@ from datetime import datetime,timezone,timedelta
 from psycopg2.extras import RealDictCursor,Json
 from opportunity_store import db,reconcile,snapshot
 from opportunity_scoped_engine import ALLOWED
-from opportunity_research_engine import procurement,target,providers,package,capital_research,capital_package
+from opportunity_research_engine import procurement,target,providers,package,capital_research,capital_eligibility,capital_package,capital_package_review,licensed_broker_partners
 
-SLOW={'procurement_research','capital_research','provider_research','provider_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
+SLOW={'procurement_research','capital_research','capital_eligibility','capital_package_review','provider_research','provider_verification','licensed_broker_partner_research','licensed_broker_partner_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
 
 def research_advanced(before, after):
     completed=json.loads(after['snapshot']) if after else {}
@@ -25,9 +25,12 @@ def save_attempt(conn,oid,action,result,reason,evidence):
 def native(conn,d,action):
     if action=='procurement_research':return procurement(conn,d)
     if action=='capital_research':return capital_research(conn,d)
+    if action=='capital_eligibility':return capital_eligibility(conn,d)
     if action=='capital_package':return capital_package(conn,d)
+    if action=='capital_package_review':return capital_package_review(conn,d)
     if action in ('target_resolution','contact_alternative'):return target(conn,d,action=='contact_alternative')
     if action in ('provider_research','provider_verification'):return providers(conn,d,action=='provider_verification')
+    if action in ('licensed_broker_partner_research','licensed_broker_partner_verification'):return licensed_broker_partners(conn,d,action=='licensed_broker_partner_verification')
     if action=='procurement_package':return package(conn,d)
     if action=='queue_preparation':
         from pursuit_engine import build_pursuit,calculate_priority
@@ -74,6 +77,15 @@ def run(lane):
              LEFT JOIN opportunity_engine_attempts a ON a.opportunity_id=d.id AND a.action=CASE WHEN EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id) THEN 'provider_verification' ELSE 'provider_research' END
              WHERE (d.revenue_path='managed_delivery' OR d.fulfillment_path='subcontractor') AND o.operational_state NOT IN ('DISPOSED','COMPLETED')
              AND NOT EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id AND p.verification_status='verified')
+             AND (a.next_retry_at IS NULL OR a.next_retry_at<=now()) ORDER BY d.pursuit_priority DESC LIMIT 5""")
+            rows+=cur.fetchall()
+        # Freight broker-partner preparation uses verified public FMCSA authority data.
+        if lane=='slow' or os.getenv('OPPORTUNITY_CONTROLLED')=='1':
+            cur.execute("""SELECT d.*,CASE WHEN EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id AND p.source_table='fmcsa_motus_broker') THEN 'licensed_broker_partner_verification' ELSE 'licensed_broker_partner_research' END AS next_machine_action
+             FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id
+             LEFT JOIN opportunity_engine_attempts a ON a.opportunity_id=d.id AND a.action=CASE WHEN EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id AND p.source_table='fmcsa_motus_broker') THEN 'licensed_broker_partner_verification' ELSE 'licensed_broker_partner_research' END
+             WHERE o.lane='Broker / Intermediary' AND o.operational_state NOT IN ('DISPOSED','COMPLETED')
+             AND NOT EXISTS(SELECT 1 FROM opportunity_provider_candidates p WHERE p.opportunity_id=d.id AND p.source_table='fmcsa_motus_broker' AND p.verification_status='verified')
              AND (a.next_retry_at IS NULL OR a.next_retry_at<=now()) ORDER BY d.pursuit_priority DESC LIMIT 5""")
             rows+=cur.fetchall()
         # Managed-delivery records can appear in both the canonical queue and provider workstream.

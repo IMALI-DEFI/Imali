@@ -708,6 +708,113 @@ def capital_research(conn,d):
     conn.commit()
     return ('progress' if enough else 'exhausted'),('Official Grants.gov requirements retrieved; applicant-specific eligibility confirmation required' if enough else 'Official grant detail is incomplete'),{'official_url':official_url,'applicant_types':applicant_types,'award_ceiling':ceiling}
 
+def capital_eligibility(conn,d):
+    """Machine-screen funding eligibility. Human review is reserved for final approval or true external facts."""
+    cur=conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))
+    r=cur.fetchone()
+    if not r or not r.get('official_verified') or not r.get('scope_retrieved'):
+        return 'retry','Verified official funding requirements are required before eligibility screening',{}
+    requirements=dict(r.get('requirements') or {})
+    source=str(d.get('source') or '')
+    if source=='web3_funding':
+        ecosystem=str(requirements.get('ecosystem_source') or d.get('company') or '').lower().replace(' ecosystem','').strip()
+        requirements['ecosystem']=ecosystem
+        official_url=str(r.get('official_url') or d.get('url') or '')
+        application_url=str(requirements.get('application_url') or d.get('application_url') or '')
+        try:
+            _,official_text,_=fetch(official_url)
+            _,application_text,_=fetch(application_url)
+        except Exception as exc:
+            return 'retry','Web3 eligibility page recheck failed: '+type(exc).__name__,{'error_type':type(exc).__name__}
+        text=(official_text+' '+application_text).lower()
+        if re.search(r'applications? (?:are )?closed|not accepting applications|program complete|submissions? closed',text,re.I):
+            requirements['eligibility_machine_status']='closed'
+            requirements['eligibility_machine_reason']='Verified funding/application page indicates the program is closed.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=false,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+            conn.commit()
+            return 'progress',requirements['eligibility_machine_reason'],{'ecosystem':ecosystem,'status':'closed'}
+        configured={x.strip().lower() for x in os.getenv('CAPITAL_PROJECT_TECH','polygon,ethereum,evm,web3,defi,blockchain,decentralized').split(',') if x.strip()}
+        exact_fit=ecosystem in configured
+        general_fit=ecosystem in ('web3','ethereum','polygon')
+        if exact_fit or general_fit:
+            requirements['eligibility_machine_status']='verified'
+            requirements['eligibility_machine_reason']='Project technology profile matches the verified ecosystem funding source.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=true,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+            cur.execute("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=%s WHERE id=%s",(requirements['eligibility_machine_reason'],d['id']))
+            conn.commit()
+            return 'progress',requirements['eligibility_machine_reason'],{'ecosystem':ecosystem,'status':'verified'}
+        requirements['eligibility_machine_status']='not_aligned'
+        requirements['eligibility_machine_reason']='Current project technology profile does not evidence '+ecosystem.title()+' deployment/integration; strict policy avoids pursuing ecosystem-specific funding without fit.'
+        cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=false,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+        conn.commit()
+        return 'progress',requirements['eligibility_machine_reason'],{'ecosystem':ecosystem,'status':'not_aligned'}
+
+    if source=='grants_gov':
+        applicant_types=[str(x).strip() for x in (requirements.get('applicant_types') or []) if str(x).strip()]
+        if any(re.search(r'unrestricted|open to any',x,re.I) for x in applicant_types):
+            requirements['eligibility_machine_status']='verified'
+            requirements['eligibility_machine_reason']='Official applicant categories are unrestricted/open.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=true,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+            cur.execute("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=%s WHERE id=%s",(requirements['eligibility_machine_reason'],d['id']))
+            conn.commit()
+            return 'progress',requirements['eligibility_machine_reason'],{'status':'verified'}
+        profile=[x.strip().lower() for x in os.getenv('CAPITAL_APPLICANT_TYPES','').split(',') if x.strip()]
+        if not profile:
+            return 'retry','Capital applicant profile is not configured; one-time entity/applicant-category evidence is required before federal grant eligibility can be automated',{'applicant_types':applicant_types,'required_profile':'CAPITAL_APPLICANT_TYPES'}
+        normalized=' | '.join(applicant_types).lower()
+        if any(x in normalized for x in profile):
+            requirements['eligibility_machine_status']='verified'
+            requirements['eligibility_machine_reason']='Configured applicant profile matches an official Grants.gov applicant category.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=true,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+            cur.execute("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=%s WHERE id=%s",(requirements['eligibility_machine_reason'],d['id']))
+            conn.commit()
+            return 'progress',requirements['eligibility_machine_reason'],{'status':'verified','matched_profile':profile}
+        requirements['eligibility_machine_status']='not_aligned'
+        requirements['eligibility_machine_reason']='Configured applicant profile does not match the official Grants.gov applicant categories.'
+        cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=false,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+        conn.commit()
+        return 'progress',requirements['eligibility_machine_reason'],{'status':'not_aligned','profile':profile,'applicant_types':applicant_types}
+
+    return 'exhausted','Unsupported Capital source for machine eligibility screening',{'source':source}
+
+
+def capital_package_review(conn,d):
+    """Machine review of a prepared funding package before final human approval."""
+    cur=conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))
+    r=cur.fetchone()
+    if not r or not r.get('eligibility_verified'):
+        return 'retry','Verified eligibility is required before package review',{}
+    package_path=str(r.get('package_path') or '')
+    if not package_path or not Path(package_path).exists():
+        return 'retry','Prepared funding package is missing',{'package_path':package_path}
+    requirements=dict(r.get('requirements') or {})
+    source=str(d.get('source') or '')
+    if source=='web3_funding':
+        application_url=str(requirements.get('application_url') or d.get('application_url') or '')
+        try:
+            _,app_text,_=fetch(application_url)
+        except Exception as exc:
+            return 'retry','Funding application route could not be revalidated during package review: '+type(exc).__name__,{'error_type':type(exc).__name__}
+        low=app_text.lower()
+        missing=[]
+        if re.search(r'pitch deck|deck upload|upload.*deck',low,re.I):
+            missing.append('pitch deck')
+        if re.search(r'whitepaper|white paper',low,re.I):
+            missing.append('whitepaper')
+        if re.search(r'github|repository',low,re.I) and not re.search(r'github\.com/',str(d.get('description') or '')+' '+str(d.get('imali_proof') or ''),re.I):
+            missing.append('public code/repository evidence')
+        if missing:
+            return 'retry','Application requires external project evidence not present in the prepared package: '+', '.join(missing),{'missing_external_documents':missing,'application_url':application_url}
+        requirements['package_readiness_verified']=True
+        requirements['package_review']='Machine review passed: verified source, eligibility, live application route, and no detected missing external upload requirement.'
+        cur.execute('UPDATE opportunity_research SET requirements=%s,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+        conn.commit()
+        return 'progress',requirements['package_review'],{'package_path':package_path,'application_url':application_url}
+    return 'retry','Federal grant package still requires authoritative attachment/readiness evidence before final approval',{'package_path':package_path}
+
+
 def capital_package(conn,d):
     cur=conn.cursor(cursor_factory=RealDictCursor)
     cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))

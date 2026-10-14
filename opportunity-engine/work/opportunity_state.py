@@ -42,7 +42,10 @@ def classify(d, context=None, now=None):
         if a.get('result')=='credentials_required': return blocked('AUTHENTICATION_REQUIRED',a.get('reason','Credentials required'))
         if a.get('result')=='exhausted':
             target_kind='MISSING_APPLICATION_TARGET' if lane=='Employment' or str(d.get('source') or '')=='business_contract_remotive' else 'CONTACT_UNRESOLVED'
-            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','capital_research':'MISSING_OFFICIAL_DOCUMENT','capital_package':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
+            kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','capital_research':'MISSING_OFFICIAL_DOCUMENT',
+                   'capital_eligibility':'CAPITAL_PROFILE_REQUIRED','capital_package':'MISSING_OFFICIAL_DOCUMENT',
+                   'capital_package_review':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,
+                   'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
             return blocked(kinds.get(action,'EXTERNAL_NETWORK'),a.get('reason') or 'Preparation could not advance; retry scheduled',a.get('next_retry_at'))
         return dict(base,operational_state='AUTO_PROCESSING',next_machine_action=action,next_retry_at=a.get('next_retry_at') or (old.get('next_retry_at') if old.get('next_machine_action')==action else None) or now)
     def dispose(reason,evidence):
@@ -105,15 +108,19 @@ def classify(d, context=None, now=None):
             if result['operational_state']=='BLOCKED_EXTERNAL':
                 result['workbench_stage']='Needs Documents'
             return result
+        if requirements.get('eligibility_machine_status')=='not_aligned':
+            return dispose('TECH_STACK_MISMATCH',{'reason':requirements.get('eligibility_machine_reason'),'official_url':research.get('official_url'),'ecosystem':requirements.get('ecosystem')})
+        if requirements.get('eligibility_machine_status')=='closed':
+            return dispose('CLOSED',{'reason':requirements.get('eligibility_machine_reason'),'official_url':research.get('official_url')})
         if not research.get('eligibility_verified'):
             base['workbench_stage']='Qualified'
-            return human('Confirm applicant/entity eligibility against the verified official funding requirements','CAPITAL_ELIGIBILITY')
+            return auto('capital_eligibility')
         if not research.get('package_path'):
             base['workbench_stage']='Package Building'
             return auto('capital_package')
         if not (research.get('requirements') or {}).get('package_readiness_verified'):
             base['workbench_stage']='Package Building'
-            return human('Verify required grant attachments, narrative, budget, and applicant evidence in the prepared package','CAPITAL_PACKAGE_DOCUMENTS')
+            return auto('capital_package_review')
         base['workbench_stage']='Final Bid Approval'
         if old.get('approval_status')=='approved':
             return blocked('OTHER','Capital application approved; separate explicit external submission authorization required')
@@ -188,9 +195,10 @@ def classify(d, context=None, now=None):
     if d.get('eligibility_status')=='unchecked':return auto('verification')
     if str(d.get('source') or '')=='business_contract_remotive':
         target_fresh=date(d.get('last_verified_at'))
-        if not target_fresh or now-target_fresh>timedelta(days=7):return auto('target_resolution')
+        if not target_fresh or now-target_fresh>timedelta(days=1):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
-        if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
+        if d.get('eligibility_status')=='ineligible':return dispose('INELIGIBLE',{'reason':d.get('eligibility_reason'),'source':d.get('url')})
+        if d.get('eligibility_status')=='review':return auto('verification')
         if not d.get('execution_verified'):return auto('verification')
         # The first execution guard validates target quality; the final source
         # verifier independently rejects aggregators/generic destinations.

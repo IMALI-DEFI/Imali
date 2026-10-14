@@ -3,7 +3,7 @@ const express = require('express');
 const {execFile} = require('child_process');
 const router = express.Router();
 const BASE = `SELECT d.*, COALESCE(o.operational_state,'AUTO_PROCESSING') AS operational_state,
- COALESCE(o.lane,CASE WHEN d.source LIKE 'sam_gov%' OR d.source LIKE 'state_local_%' THEN 'Government' WHEN d.revenue_path='capital_grant' OR d.opportunity_type='grant' THEN 'Capital' WHEN d.revenue_path='employment' THEN 'Employment' WHEN d.revenue_path='reward' THEN 'Rewards' WHEN d.revenue_path='asset_recovery' THEN 'Recovery' ELSE 'Commercial' END) AS lane,
+ COALESCE(o.lane,CASE WHEN d.opportunity_type IN ('brokerage','freight_brokerage','logistics_brokerage') OR d.fulfillment_path IN ('broker','intermediary') THEN 'Broker / Intermediary' WHEN d.source LIKE 'sam_gov%' OR d.source LIKE 'state_local_%' THEN 'Government' WHEN d.revenue_path LIKE 'capital_%' OR d.opportunity_type='grant' OR d.source='web3_funding' THEN 'Capital' WHEN d.revenue_path='employment' THEN 'Employment' WHEN d.revenue_path='reward' THEN 'Rewards' WHEN d.revenue_path='asset_recovery' THEN 'Recovery' ELSE 'Commercial' END) AS lane,
  COALESCE(o.next_machine_action,CASE WHEN o.opportunity_id IS NULL THEN 'classification' END) AS next_machine_action,
  o.next_human_action,o.blocker_type,o.blocker_reason,o.next_retry_at,o.final_approval_type,o.workbench_stage,o.provider_stage,
  o.completion_type,o.disposition_reason,o.disposition_evidence,o.disposed_at,o.disposed_by,o.previous_state,o.approval_status,
@@ -30,6 +30,12 @@ const metrics = {
  reward_submissions:"EXISTS(SELECT 1 FROM reward_opportunity_analysis r WHERE r.opportunity_id=e.id AND r.submitted_at IS NOT NULL)",
  won:"(pipeline_stage='won' OR pursuit_status='won' OR response_status='won')",
  actual_revenue:'actual_revenue>0',estimated_pipeline:"operational_state NOT IN ('DISPOSED','COMPLETED') AND estimated_revenue>0",
+ broker_active:"lane='Broker / Intermediary' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ broker_needs_provider:"lane='Broker / Intermediary' AND provider_stage IN ('Needs Provider','Searching') AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ broker_provider_ready:"lane='Broker / Intermediary' AND provider_stage IN ('Candidates Found','Needs Provider Approval','Provider Approved','Package Ready','Final Approval','Broker Partners Found','Needs Broker Partner Approval','Licensed Broker Partner Approved') AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ broker_partner_candidates:"lane='Broker / Intermediary' AND provider_stage IN ('Broker Partners Found','Needs Broker Partner Approval','Licensed Broker Partner Approved') AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ broker_partner_economics_needed:"lane='Broker / Intermediary' AND operational_state='BLOCKED_EXTERNAL' AND blocker_reason ILIKE '%broker partner economics%'",
+ broker_partner_ready:"lane='Broker / Intermediary' AND provider_stage='Licensed Broker Partner Approved' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  managed_delivery:"revenue_path='managed_delivery'",needs_provider:"provider_stage='Needs Provider' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  provider_candidates_found:'provider_candidates>0',commercial_final_approvals:"operational_state='ACTION_REQUIRED' AND final_approval_type='COMMERCIAL_OUTREACH'",
  government_final_bid_approvals:"operational_state='ACTION_REQUIRED' AND final_approval_type='GOVERNMENT_BID'",
@@ -40,6 +46,12 @@ const metrics = {
  reward_approvals:"operational_state='ACTION_REQUIRED' AND lane='Rewards'",
  capital_active:"lane='Capital' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  capital_ready:"lane='Capital' AND operational_state='ACTION_REQUIRED' AND final_approval_type='CAPITAL_APPLICATION'",
+ capital_seed_active:"lane='Capital' AND source='web3_funding' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ capital_nondilutive_active:"lane='Capital' AND revenue_path='capital_grant' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ capital_revenue_share_active:"lane='Capital' AND revenue_path='capital_revenue_share' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
+ capital_equity_within_cap:"lane='Capital' AND revenue_path='capital_equity' AND operational_state NOT IN ('DISPOSED','COMPLETED') AND EXISTS(SELECT 1 FROM opportunity_research r WHERE r.opportunity_id=e.id AND r.requirements->>'capital_policy_status'='verified' AND NULLIF(r.requirements->>'equity_percent','')::numeric<=10)",
+ capital_machine_processing:"lane='Capital' AND operational_state='AUTO_PROCESSING'",
+ capital_profile_blocked:"lane='Capital' AND operational_state='BLOCKED_EXTERNAL' AND blocker_type='CAPITAL_PROFILE_REQUIRED'",
  reward_active:"lane='Rewards' AND operational_state NOT IN ('DISPOSED','COMPLETED')",
  reward_fresh:"lane='Rewards' AND operational_state NOT IN ('DISPOSED','COMPLETED') AND COALESCE(last_verified_at,discovered_at)>=now()-interval '30 days'",
  business_action_required:"operational_state='ACTION_REQUIRED' AND lane<>'Employment'",
@@ -77,7 +89,14 @@ module.exports=function(pool){
     call('/usr/bin/df',['-h','/'])]);
    const fs=require('fs');const env=fs.readFileSync('/home/opc/imali-work-agent/.env','utf8');const outbound={};
    for(const key of ['OUTREACH_SEND_ENABLED','RFQ_SEND_LIVE','APPLICATION_AUTO_SUBMIT'])outbound[key]=env.match(new RegExp('^'+key+'=(.*)$','m'))?.[1]||'UNAVAILABLE';
-   const diskRaw=await call('/usr/bin/df',['-Pk','/']);const parts=diskRaw.split('\n').pop().trim().split(/\s+/);const usedPercent=Number(String(parts[4]).replace('%',''));const freeBytes=Number(parts[3])*1024;res.json({timers,services,disk,outbound,resource_guard:{status:usedPercent<89&&freeBytes>=3221225472?'passed':'blocked',used_percent:usedPercent,free_bytes:freeBytes,max_disk_percent:89,min_free_bytes:3221225472}});
+   const hasEnv=(key)=>Boolean((env.match(new RegExp('^'+key+'=(.*)$','m'))?.[1]||'').trim());
+   const freight_sources={
+    direct_freight:{status:hasEnv('DIRECT_FREIGHT_API_TOKEN')&&hasEnv('DIRECT_FREIGHT_USER_TOKEN')?'READY':'CREDENTIALS_REQUIRED'},
+    dat:{status:(hasEnv('DAT_API_KEY')||hasEnv('DAT_CLIENT_ID'))?'INTEGRATION_REQUIRED':'CREDENTIALS_REQUIRED'},
+    truckstop:{status:(hasEnv('TRUCKSTOP_CLIENT_ID')&&hasEnv('TRUCKSTOP_USERNAME'))?'INTEGRATION_REQUIRED':'CREDENTIALS_REQUIRED'},
+    sam_gov:{status:'ACTIVE'}
+   };
+   const diskRaw=await call('/usr/bin/df',['-Pk','/']);const parts=diskRaw.split('\n').pop().trim().split(/\s+/);const usedPercent=Number(String(parts[4]).replace('%',''));const freeBytes=Number(parts[3])*1024;res.json({timers,services,disk,outbound,freight_sources,resource_guard:{status:usedPercent<89&&freeBytes>=3221225472?'passed':'blocked',used_percent:usedPercent,free_bytes:freeBytes,max_disk_percent:89,min_free_bytes:3221225472}});
   }catch(e){res.status(500).json({error:'Health inspection unavailable'});}
  });
  router.get('/summary',async(req,res)=>{
@@ -100,9 +119,10 @@ module.exports=function(pool){
    const cycles=(await c.query('SELECT DISTINCT ON(lane) * FROM opportunity_cycle_runs ORDER BY lane,started_at DESC')).rows;
    const candidates=(await c.query('SELECT count(*)::int AS total,count(*) FILTER(WHERE verification_status=\'verified\')::int AS verified FROM opportunity_provider_candidates')).rows[0];
    const lane_health={
-    Capital:{status:counts.capital_active>0?'ACTIVE':'REFILLING',reason:'Live Grants.gov discovery; official eligibility and package evidence gates remain enforced.'},
+    Capital:{status:counts.capital_active>0?'ACTIVE':'REFILLING',reason:'Seed/capital discovery prioritizes non-dilutive grants and Web3 ecosystem funding, then revenue-share, then verified equity at or below the 10% total cap. Dead, closed, generic and unverifiable application paths are rejected before final approval.'},
     Rewards:{status:'PAUSED_NO_FRESH_SOURCE',reason:'No verified live reward adapter is available: Devpost returned no explicit cash opportunities and Kaggle CLI is unavailable. Historical reward records are disposed when stale.'},
     Recovery:{status:(recovery.cases>0&&recovery.verified>0)?'ACTIVE':'PAUSED_NO_PATH',reason:(recovery.cases>0&&recovery.verified>0)?'Verified cases and jurisdictions exist.':'No verified jurisdiction plus no enabled live case source; discovery/outreach remains disabled.'},
+    'Broker / Intermediary':{status:counts.broker_active>0?'ACTIVE':'DISCOVERING',reason:'Matches freight/logistics demand to FMCSA-verified licensed broker partners. Authority and bond evidence can be machine-checked; partnership terms, economics, and final external action remain separate gates.'},
     Employment:{status:'LEGACY_ONLY',reason:'Existing inventory remains visible, but employment feeds are removed from primary replenishment.'}
    };
    await c.query('COMMIT');res.json({success:true,counts,groups,recovery,cycles,candidates,lane_health,as_of:new Date().toISOString(),estimated_pipeline_label:'POTENTIAL — NOT EARNED (existing model estimates)'});

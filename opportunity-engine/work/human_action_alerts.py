@@ -52,7 +52,7 @@ def validate_contract_destination(row):
         return None
 
 def collect():
-    sql="""SELECT d.id,d.title,d.company,o.lane,o.operational_state,o.next_human_action,
+    sql="""SELECT d.id,d.title,d.company,d.source,o.lane,o.operational_state,o.next_human_action,
            o.blocker_type,o.blocker_reason,o.final_approval_type,o.approval_status,
            d.estimated_revenue,d.estimated_margin,d.margin_percent,d.business_value,
            d.personal_fit,d.demand_confidence,d.pursuit_priority,
@@ -85,8 +85,11 @@ def collect():
             if not live: continue
             listing_url=live["listing_url"]; action_url=live["apply_url"]
         upside=[]
-        if money(r["estimated_revenue"]): upside.append("potential value "+money(r["estimated_revenue"]))
-        if money(r["estimated_margin"]): upside.append("modeled margin "+money(r["estimated_margin"]))
+        contract_rate=(r.get("source")=="business_contract_remotive")
+        if money(r["estimated_revenue"]):
+            upside.append(("listed rate ceiling "+money(r["estimated_revenue"])+" / hour (not total contract value)") if contract_rate else "potential value "+money(r["estimated_revenue"]))
+        if money(r["estimated_margin"]):
+            upside.append(("modeled hourly gross margin "+money(r["estimated_margin"])) if contract_rate else "modeled margin "+money(r["estimated_margin"]))
         elif r["margin_percent"] is not None:
             try:
                 if float(r["margin_percent"])>0: upside.append(f"modeled margin {float(r['margin_percent']):.0f}%")

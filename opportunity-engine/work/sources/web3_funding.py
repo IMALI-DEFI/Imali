@@ -22,9 +22,14 @@ def _apply_links(base,soup):
         label=" ".join(a.stripped_strings).lower()
         if not href or href.startswith(("#","javascript:","mailto:")): continue
         u=urljoin(base,href)
-        if urlparse(u).scheme not in ("http","https"): continue
+        parsed=urlparse(u)
+        if parsed.scheme not in ("http","https"): continue
+        host=(parsed.hostname or "").lower()
         direct=(label.startswith("apply") or label.startswith("application") or "grant-application" in u.lower() or "application-form" in u.lower())
-        if direct and not re.search(r"audit-program|stylus-sprint",u,re.I): out.append(u)
+        form_host=host in ("tally.so","airtable.com","www.airtable.com","typeform.com","www.typeform.com","forms.gle")
+        official_apply=(host.endswith("solana.org") or host.endswith("ethereum.foundation") or host.endswith("polygon.technology") or host.endswith("arbitrum.foundation"))
+        if direct and (form_host or official_apply) and not re.search(r"audit-program|stylus-sprint",u,re.I): out.append(u)
+
     return list(dict.fromkeys(out))
 
 def _fetch(url):
@@ -32,6 +37,19 @@ def _fetch(url):
     r.raise_for_status()
     if len(r.content)>2_000_000: raise ValueError("funding page too large")
     return r.url,BeautifulSoup(r.text,"html.parser")
+
+def _application_open(url):
+    try:
+        final,soup=_fetch(url)
+        text=_text(soup).strip()
+    except Exception:
+        return False
+    if len(text)<80:
+        return False
+    low=text.lower()
+    if re.search(r'applications? (?:are )?closed|not accepting applications|program complete|submissions? closed|form (?:is )?closed|no longer accepting',low,re.I):
+        return False
+    return True
 
 def _row(source_id,title,ecosystem,description,url,application_url,funding_type="grant",equity_percent=None):
     revenue_path="capital_grant" if funding_type in ("grant","prize","stipend") else "capital_equity" if funding_type=="equity" else "capital_revenue_share"
@@ -53,7 +71,7 @@ def fetch_web3_funding():
             final,soup=_fetch(cfg["url"]); text=_text(soup); low=text.lower(); links=_apply_links(final,soup); eco=cfg["ecosystem"]
             if eco=="Ethereum":
                 if "no rfp items available" in low: continue
-                for i,u in enumerate(links[:5],1): rows.append(_row(f"ethereum-rfp-{i}",f"Ethereum Foundation ESP RFP {i}",eco,text,final,u))
+                for i,u in enumerate([u for u in links if _application_open(u)][:5],1): rows.append(_row(f"ethereum-rfp-{i}",f"Ethereum Foundation ESP RFP {i}",eco,text,final,u))
             elif eco=="Arbitrum":
                 seen=set()
                 for a in soup.find_all("a",href=True):
@@ -74,19 +92,23 @@ def fetch_web3_funding():
                     card_text=" ".join(card.stripped_strings)
                     if not card_text.startswith("Active ") or card_text.startswith("Inactive "):
                         continue
+                    if not _application_open(href):
+                        continue
                     heads=[h.get_text(" ",strip=True) for h in card.find_all(["h1","h2","h3","h4","h5","h6"]) if h.get_text(" ",strip=True)]
                     title=heads[0] if heads else re.sub(r"^Active\s+","",card_text).split(" Managed by ")[0][:120]
                     key=re.sub(r"[^a-z0-9]+","-",title.lower()).strip("-")
                     if not key or key in seen: continue
                     seen.add(key)
                     rows.append(_row("arbitrum-"+key,title,eco,card_text,final,href))
+
             elif eco=="Polygon":
                 year=str(datetime.now(timezone.utc).year)
                 if year not in text or not re.search(r"\b(live|applications? open|apply now)\b",text,re.I): continue
-                for i,u in enumerate(links[:6],1): rows.append(_row(f"polygon-funding-{i}",f"Polygon ecosystem grant program {i}",eco,text,final,u))
+                for i,u in enumerate([u for u in links if _application_open(u)][:6],1): rows.append(_row(f"polygon-funding-{i}",f"Polygon ecosystem grant program {i}",eco,text,final,u))
             elif eco=="Solana":
                 if "applications are reviewed on a rolling basis" not in low and "all funding applicants" not in low: continue
                 candidates=[u for u in links if "grant" in u.lower() or "apply" in u.lower() or "application" in u.lower()]
+                candidates=[u for u in candidates if _application_open(u)]
                 if candidates: rows.append(_row("solana-standard-grant","Solana Foundation standard grant",eco,text,final,candidates[0],"grant"))
         except Exception:
             continue
