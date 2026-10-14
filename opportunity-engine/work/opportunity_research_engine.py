@@ -409,7 +409,7 @@ def target(conn,d,alternative=False):
                 ats_hosts=('greenhouse.io','lever.co','ashbyhq.com','workable.com','myworkdayjobs.com','applytojob.com','kula.ai')
                 def is_ats(u):
                     parsed=urlparse(u);host=(parsed.hostname or '').lower();path=(parsed.path or '').lower()
-                    machine_file=bool(re.search(r'/(?:llms|robots)\.txt$|/sitemap(?:[-_.].*)?\.xml$|\.(?:xml|json|txt|rss|atom)$',path,re.I))
+                    machine_file=bool(re.search(r'/(?:llms|robots)\.txt$|/sitemap(?:[-_.].*)?\.xml$|\.(?:xml|json|txt|rss|atom|md|markdown|csv)$',path,re.I))
                     if machine_file:return False
                     parts=[x for x in path.strip('/').split('/') if x]
                     return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parts)>=2

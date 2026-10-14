@@ -1,5 +1,7 @@
 """Pure canonical classification. No networking, writes, or inferred external success."""
 from datetime import datetime, timezone, timedelta
+import re
+from urllib.parse import urlparse
 
 STATES = ('AUTO_PROCESSING','ACTION_REQUIRED','BLOCKED_EXTERNAL','DISPOSED','COMPLETED')
 
@@ -9,6 +11,11 @@ def date(value):
         try: value = datetime.fromisoformat(value.replace('Z','+00:00'))
         except ValueError: return None
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+def invalid_application_url(value):
+    if not value:return False
+    path=(urlparse(str(value)).path or '').lower()
+    return bool(re.search(r'/(?:llms|robots)\.txt$|/sitemap(?:[-_.].*)?\.xml$|\.(?:xml|json|txt|rss|atom|md|markdown|csv)$',path,re.I))
 
 def government(d):
     return str(d.get('source','')).startswith(('sam_gov','state_local_')) or d.get('opportunity_type') == 'procurement'
@@ -65,12 +72,12 @@ def classify(d, context=None, now=None):
     if d.get('source')=='test': return dispose('UNSUPPORTED_SOURCE',{'source':'test','reason':'Explicit test source, not an external opportunity'})
     if c.get('duplicate_of'): return dispose('DUPLICATE',{'duplicate_of':c['duplicate_of'],'source':d.get('source'),'source_id':d.get('source_id')})
     target_attempt=(c.get('attempts') or {}).get('target_resolution') or {}
-    if str(d.get('source') or '')=='business_contract_remotive' and target_attempt.get('result')=='exhausted':
+    if (str(d.get('source') or '')=='business_contract_remotive' or lane=='Employment') and target_attempt.get('result')=='exhausted':
         evidence=target_attempt.get('evidence') or {}
         reason=str(target_attempt.get('reason') or '')
         if evidence.get('stale_application_targets') or 'no longer available' in reason.lower():
             return dispose('DEAD_APPLICATION_TARGET',{'reason':reason,'evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
-        if evidence.get('unverifiable_application_targets') or d.get('target_quality_status')!='verified':
+        if evidence.get('unverifiable_application_targets') or d.get('target_quality_status')!='verified' or invalid_application_url(d.get('application_url')):
             return dispose('NO_VERIFIED_APPLICATION_PATH',{'reason':reason or 'No role-specific application destination could be verified','evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
     due=date(d.get('solicitation_due_at') or d.get('procurement_deadline'))
     if lane in ('Government','Broker / Intermediary','Capital','Rewards') and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
@@ -227,6 +234,7 @@ def classify(d, context=None, now=None):
     if d.get('pursuit_status')!='queued':return auto('queue_preparation')
     if d.get('eligibility_status')=='unchecked':return auto('verification')
     if str(d.get('source') or '')=='business_contract_remotive':
+        if invalid_application_url(d.get('application_url')):return auto('target_resolution')
         target_fresh=date(d.get('last_verified_at'))
         if not target_fresh or now-target_fresh>timedelta(days=1):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
@@ -241,6 +249,7 @@ def classify(d, context=None, now=None):
         if not d.get('application_package_path'):return auto('application_package')
         return human('Review the prepared contract application; external submission remains separately controlled','CONTRACT_APPLICATION')
     if lane=='Employment':
+        if invalid_application_url(d.get('application_url')):return auto('target_resolution')
         target_checks=[date(d.get('target_quality_checked_at')),date(d.get('last_verified_at'))]
         target_checks=[x for x in target_checks if x]
         target_fresh=max(target_checks) if target_checks else None
