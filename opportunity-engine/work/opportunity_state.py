@@ -94,11 +94,31 @@ def classify(d, context=None, now=None):
     if lane=='Recovery': return blocked('COMPLIANCE_REVIEW','Lane suspended: no authoritative jurisdiction is approved and no compliant case-acquisition path is active. Do not acquire or contact owners until that path exists.')
     if d.get('automation_status') in ('captcha_required','anti_bot_required'): return blocked('CAPTCHA','Official site requires human verification')
     if d.get('automation_status') in ('auth_required','login_required','2fa_required'): return blocked('AUTHENTICATION_REQUIRED','Authenticate on the official site; no bypass')
+    if d.get('automation_status')=='registration_required': return blocked('REGISTRATION_REQUIRED','Complete the official platform registration/onboarding step; no automated account creation or credential handling')
     if d.get('automation_status')=='submission_unconfirmed': return human('Verify whether a prior submission completed before any retry','SUBMISSION_RECONCILIATION')
 
     if lane=='Capital':
         base['workbench_stage']='Researching'
         requirements=research.get('requirements') or {}
+        capital_attempt=(c.get('attempts') or {}).get('capital_research') or {}
+        if capital_attempt.get('result')=='exhausted':
+            reason=str(capital_attempt.get('reason') or '')
+            low=reason.lower()
+            machine_dead=(
+                'no longer shows the expected active program terms' in low or
+                'no longer available' in low or
+                'insufficient verifiable content' in low or
+                'not an approved official domain' in low or
+                'application route is not corroborated' in low or
+                'current application route' in low and 'missing' in low
+            )
+            if machine_dead:
+                return dispose('NO_VERIFIED_ACTIVE_FUNDING_PATH',{
+                    'reason':reason,
+                    'evidence':capital_attempt.get('evidence') or {},
+                    'source':d.get('url'),
+                    'application_url':d.get('application_url')
+                })
         if requirements.get('capital_policy_status')=='rejected':
             return dispose('CAPITAL_POLICY_REJECTED',{'reason':requirements.get('capital_policy_reason'),'official_url':research.get('official_url'),'funding_type':requirements.get('funding_type')})
         if requirements.get('capital_policy_status')=='unverified_terms':
@@ -124,9 +144,19 @@ def classify(d, context=None, now=None):
             base['workbench_stage']='Package Building'
             return auto('capital_package_review')
         base['workbench_stage']='Final Bid Approval'
+        funding_type=str(requirements.get('funding_type') or 'funding').lower()
+        cash_equivalent=requirements.get('cash_equivalent')
         if old.get('approval_status')=='approved':
-            return blocked('OTHER','Capital application approved; separate explicit external submission authorization required')
-        return human('Review the completed grant application package and official requirements','CAPITAL_APPLICATION')
+            return blocked('OTHER','Capital application/campaign approved; separate explicit external submission or launch authorization required')
+        if funding_type=='crowdfunding':
+            return human('Review the prepared crowdfunding campaign plan, funding target, platform terms, rewards/preorder structure, and launch economics','CAPITAL_APPLICATION')
+        if funding_type=='credits':
+            return human('Review the verified startup-credit application; this reduces operating costs but is not cash for advertising','CAPITAL_APPLICATION')
+        if funding_type=='equity':
+            return human('Review investor terms, valuation, dilution, rights, and advertising runway; total equity must remain at or below 10%','CAPITAL_APPLICATION')
+        if funding_type=='revenue_share':
+            return human('Review revenue-share financing terms, repayment cap, revenue percentage, duration, and expected advertising runway','CAPITAL_APPLICATION')
+        return human('Review the completed funding application package and verified official requirements','CAPITAL_APPLICATION')
 
     if lane=='Broker / Intermediary' and not government(d):
         base['workbench_stage']='Partner Required'
@@ -214,7 +244,7 @@ def classify(d, context=None, now=None):
         target_checks=[date(d.get('target_quality_checked_at')),date(d.get('last_verified_at'))]
         target_checks=[x for x in target_checks if x]
         target_fresh=max(target_checks) if target_checks else None
-        if not target_fresh or now-target_fresh>timedelta(days=14):return auto('target_resolution')
+        if not target_fresh or now-target_fresh>timedelta(days=3):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
         if d.get('eligibility_status')=='ineligible':return dispose('INELIGIBLE',{'reason':d.get('eligibility_reason'),'source':d.get('url')})
         if d.get('eligibility_status')=='review':return auto('verification')

@@ -17,7 +17,7 @@ DB=os.getenv("WORK_AGENT_DB_DSN","dbname=imali user=sniperuser host=localhost")
 DASH=os.getenv("HUMAN_ALERT_DASHBOARD_URL","https://imali-defi.com/admin/work-agent")
 NS="canonical-v3"
 FINAL_APPROVALS={"COMMERCIAL_OUTREACH","CONTRACT_APPLICATION","GOVERNMENT_BID","CAPITAL_APPLICATION","EMPLOYMENT_APPLICATION","REWARD_ENTRY","REWARD_SUBMISSION"}
-EXTERNAL_TYPES={"CAPTCHA","AUTHENTICATION_REQUIRED","REGISTRATION_REQUIRED"}
+EXTERNAL_TYPES={"CAPTCHA","AUTHENTICATION_REQUIRED","REGISTRATION_REQUIRED","APPLICANT_PROFILE_REQUIRED"}
 EXTERNAL_WORDS=("captcha","login","2fa","two-factor","registration","credential","account access","submission reconciliation","ambiguous submission")
 
 def money(v):
@@ -89,8 +89,10 @@ def collect():
            d.estimated_revenue,d.estimated_margin,d.margin_percent,d.business_value,
            d.personal_fit,d.demand_confidence,d.pursuit_priority,
            COALESCE(d.solicitation_due_at,d.procurement_deadline) AS deadline,
-           d.url,d.application_url,d.contact_url,d.outreach_contact_email,d.business_reason
+           d.url,d.application_url,d.contact_url,d.outreach_contact_email,d.business_reason,
+           r.requirements AS capital_requirements
            FROM developer_opportunities d JOIN opportunity_operations o ON o.opportunity_id=d.id
+           LEFT JOIN opportunity_research r ON r.opportunity_id=d.id
            WHERE (o.operational_state='ACTION_REQUIRED' AND o.final_approval_type IS NOT NULL)
               OR o.operational_state='BLOCKED_EXTERNAL'
            ORDER BY CASE WHEN o.lane='Employment' THEN 1 ELSE 0 END,
@@ -141,6 +143,18 @@ def format_item(i):
            f"What you need to do: {i['why']}",
            f"Why it may be lucrative: {i['lucrative']}"]
     if i["value_reason"]: lines.append("Why the engine likes it: "+i["value_reason"][:700])
+    capital=i.get("capital_requirements") or {}
+    if i.get("lane")=="Capital" and capital:
+        structure=str(capital.get("funding_type") or "funding").replace("_"," ").title()
+        cash_flag=capital.get("cash_equivalent")
+        if cash_flag is True:
+            lines.append("Funding structure: "+structure+" · cash/cash-equivalent")
+        elif cash_flag is False:
+            lines.append("Funding structure: "+structure+" · non-cash benefit")
+        else:
+            lines.append("Funding structure: "+structure)
+        if capital.get("equity_percent") is not None:
+            lines.append("Equity requested: "+str(capital.get("equity_percent"))+"% (policy ceiling: 10% total)")
     if i["deadline"]: lines.append("Deadline: "+str(i["deadline"]))
     lines.append("Review in Opportunity Control Center: "+DASH)
     if i.get("listing_url"): lines.append("Verified live listing: "+str(i["listing_url"]))

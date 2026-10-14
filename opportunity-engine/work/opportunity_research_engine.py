@@ -245,31 +245,124 @@ def target(conn,d,alternative=False):
             if bad_host(h) or bad_host(source_h) or not _same_registrable(source_apply,final):
                 continue
             if _application_landing(final):
-                reason='Source-explicit public application destination verified after same-company redirect'
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(final,reason,d['id']))
-                conn.commit()
-                return 'progress','Source-explicit application destination verified; eligibility/package verification follows',{'source_apply':source_apply,'target':final,'target_kind':'source-explicit application page'}
+                title_text=str(d.get('title') or '').lower()
+                role_specific=bool(title_text and title_text in text.lower())
+                if not role_specific:
+                    # Generic join/register pages may expose the real onboarding target only after JS render.
+                    try:
+                        rendered_url,rendered_text,rendered_links=rendered_public_page(final)
+                        if rendered_url: final=rendered_url
+                        if len(rendered_text.strip())>len(text.strip()): text=rendered_text
+                        links=list(dict.fromkeys(list(links)+list(rendered_links)))
+                    except Exception:
+                        pass
+                    registration_target=None
+                    registration_body=''
+                    registration_links=sorted(list(links), key=lambda u: 0 if ((urlparse(u).hostname or '').lower().startswith('onboarding.') or 'onboarding' in (urlparse(u).path or '').lower() or '/builder' in (urlparse(u).path or '').lower()) else 1)
+                    for link in registration_links[:40]:
+                        if not _same_registrable(final,link):
+                            continue
+                        parsed=urlparse(link)
+                        registration_like=(parsed.hostname or '').lower().startswith('onboarding.') or bool(re.search(r'/(?:join|register|registration|signup|onboarding|builder)(?:/|$|\?)',parsed.path+'?'+parsed.query,re.I))
+                        if not registration_like:
+                            continue
+                        try:
+                            candidate,body,_=fetch(link)
+                            if len(body.strip())<180:
+                                try:
+                                    rendered_url,rendered_body,_=rendered_public_page(link)
+                                    if rendered_url:candidate=rendered_url
+                                    if len(rendered_body.strip())>len(body.strip()):body=rendered_body
+                                except Exception:pass
+                        except Exception:
+                            continue
+                        if re.search(r'create (?:an )?account|email|password|onboarding|sign ?up|continue',body,re.I):
+                            registration_target=candidate
+                            registration_body=body
+                            break
+                    if registration_target:
+                        reason='Verified official platform registration/onboarding is required before a role-specific application can be reached'
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status='registration_required' WHERE id=%s",(registration_target,reason,d['id']))
+                        conn.commit()
+                        return 'progress','Official platform registration is a real external prerequisite; role-specific final approval is not yet ready',{'source_apply':source_apply,'target':registration_target,'target_kind':'platform registration/onboarding','external_requirement':'registration'}
+                if role_specific:
+                    reason='Source-explicit role-specific application destination verified after same-company redirect'
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status=CASE WHEN automation_status='registration_required' THEN NULL ELSE automation_status END WHERE id=%s",(final,reason,d['id']))
+                    conn.commit()
+                    return 'progress','Role-specific application destination verified; eligibility/package verification follows',{'source_apply':source_apply,'target':final,'target_kind':'source-explicit role-specific application page'}
             # Some explicit apply links now redirect to the company homepage.
             # Follow only a same-site application/join/register link exposed by
             # that verified company page.
             if identity_matches(identity,h,text):
-                for link in links[:30]:
-                    if not _same_registrable(final,link) or not _application_landing(link):
+                for link in sorted(links[:30], key=lambda u: 0 if ((urlparse(u).hostname or '').lower().startswith('onboarding.') or 'onboarding' in (urlparse(u).path or '').lower() or '/builder' in (urlparse(u).path or '').lower()) else 1):
+                    if not _same_registrable(final,link):
+                        continue
+                    parsed_link=urlparse(link)
+                    registration_link=(parsed_link.hostname or '').lower().startswith('onboarding.') or bool(re.search(r'/(?:join|register|registration|signup|onboarding|builder)(?:/|$|\?)',parsed_link.path+'?'+parsed_link.query,re.I))
+                    if not (_application_landing(link) or registration_link):
                         continue
                     try:
-                        candidate,body,_=fetch(link)
+                        candidate,body,candidate_links=fetch(link)
+                        if len(body.strip())<180 and registration_link:
+                            try:
+                                rendered_url,rendered_body,rendered_links=rendered_public_page(link)
+                                if rendered_url:candidate=rendered_url
+                                if len(rendered_body.strip())>len(body.strip()):body=rendered_body
+                                candidate_links=list(dict.fromkeys(list(candidate_links)+list(rendered_links)))
+                            except Exception:pass
                     except Exception:
                         continue
-                    if not _same_registrable(final,candidate) or not _application_landing(candidate):
+                    parsed_candidate=urlparse(candidate)
+                    candidate_registration=(parsed_candidate.hostname or '').lower().startswith('onboarding.') or bool(re.search(r'/(?:join|register|registration|signup|onboarding|builder)(?:/|$|\?)',parsed_candidate.path+'?'+parsed_candidate.query,re.I))
+                    if not _same_registrable(final,candidate) or not (_application_landing(candidate) or candidate_registration):
                         continue
-                    if not re.search(r'apply|application|register|create (?:an )?account|join',body,re.I):
-                        continue
-                    reason='Source-explicit application route verified through same-company application page'
-                    with conn.cursor() as cur:
-                        cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(candidate,reason,d['id']))
-                    conn.commit()
-                    return 'progress','Verified company application route found from source-explicit apply evidence; eligibility/package verification follows',{'source_apply':source_apply,'target':candidate,'target_kind':'verified company application page'}
+                    title_text=str(d.get('title') or '').lower()
+                    role_specific=bool(title_text and title_text in body.lower())
+                    if role_specific:
+                        reason='Source-explicit role-specific application route verified through same-company page'
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status=CASE WHEN automation_status='registration_required' THEN NULL ELSE automation_status END WHERE id=%s",(candidate,reason,d['id']))
+                        conn.commit()
+                        return 'progress','Verified role-specific company application route found from source-explicit evidence; eligibility/package verification follows',{'source_apply':source_apply,'target':candidate,'target_kind':'verified role-specific company application page'}
+                    # Generic join/register pages are prerequisites, not final role applications.
+                    registration_target=None
+                    if candidate_registration and re.search(r'create (?:an )?account|email|password|onboarding|sign ?up|continue',body,re.I):
+                        registration_target=candidate
+                    for child in ([] if registration_target else candidate_links[:40]):
+                        if not _same_registrable(candidate,child):
+                            continue
+                        parsed=urlparse(child)
+                        registration_like=(parsed.hostname or '').lower().startswith('onboarding.') or bool(re.search(r'/(?:join|register|registration|signup|onboarding|builder)(?:/|$|\?)',parsed.path+'?'+parsed.query,re.I))
+                        if not registration_like:
+                            continue
+                        try:
+                            reg_url,reg_body,_=fetch(child)
+                            if len(reg_body.strip())<180:
+                                try:
+                                    rendered_url,rendered_body,_=rendered_public_page(child)
+                                    if rendered_url:reg_url=rendered_url
+                                    if len(rendered_body.strip())>len(reg_body.strip()):reg_body=rendered_body
+                                except Exception:pass
+                        except Exception:
+                            continue
+                        if re.search(r'create (?:an )?account|email|password|onboarding|sign ?up|continue',reg_body,re.I):
+                            registration_target=reg_url
+                            break
+                    if registration_target:
+                        reason='Verified official platform registration/onboarding is required before a role-specific application can be reached'
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status='registration_required' WHERE id=%s",(registration_target,reason,d['id']))
+                        conn.commit()
+                        return 'progress','Official platform registration is a real external prerequisite; role-specific final approval is not yet ready',{'source_apply':source_apply,'target':registration_target,'target_kind':'platform registration/onboarding','external_requirement':'registration'}
+                    # If the generic page itself is clearly account onboarding, surface that directly.
+                    if re.search(r'create (?:an )?account|sign ?up|join (?:the )?(?:network|team)|password',body,re.I):
+                        reason='Verified official platform registration is required before a role-specific application can be reached'
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status='registration_required' WHERE id=%s",(candidate,reason,d['id']))
+                        conn.commit()
+                        return 'progress','Official platform registration is a real external prerequisite; role-specific final approval is not yet ready',{'source_apply':source_apply,'target':candidate,'target_kind':'platform registration/onboarding','external_requirement':'registration'}
 
     urls=[d.get('contact_url'),d.get('application_url')]+explicit_apply_urls+urls+[d.get('url')]
     urls=list(dict.fromkeys(u.rstrip('.,);]') for u in urls if u))[:6]
@@ -315,8 +408,11 @@ def target(conn,d,alternative=False):
                     return bool(company and title) and company in normalized and title in normalized
                 ats_hosts=('greenhouse.io','lever.co','ashbyhq.com','workable.com','myworkdayjobs.com','applytojob.com','kula.ai')
                 def is_ats(u):
-                    parsed=urlparse(u);host=(parsed.hostname or '').lower()
-                    return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parsed.path.strip('/').split('/'))>=2
+                    parsed=urlparse(u);host=(parsed.hostname or '').lower();path=(parsed.path or '').lower()
+                    machine_file=bool(re.search(r'/(?:llms|robots)\.txt$|/sitemap(?:[-_.].*)?\.xml$|\.(?:xml|json|txt|rss|atom)$',path,re.I))
+                    if machine_file:return False
+                    parts=[x for x in path.strip('/').split('/') if x]
+                    return any(host==h or host.endswith('.'+h) for h in ats_hosts) and len(parts)>=2
                 def is_employer_career(u):
                     parsed=urlparse(u);host=(parsed.hostname or '').lower();path=parsed.path.lower()
                     return (not bad_host(host)) and bool(re.search(r'/jobs?(/|$)|/careers?(/|$)|/positions?(/|$)|/apply(/|$)|jobid=|job_id=',path+'?'+parsed.query,re.I))
@@ -383,23 +479,40 @@ def target(conn,d,alternative=False):
                 candidate_links=[u for u in links if is_ats(u) or is_employer_career(u)
                                  or (str(d.get('source') or '')=='business_contract_remotive' and source_role_verified and is_role_specific_external(u))
                                  or (str(d.get('source') or '')=='business_contract_remotive' and company_page_verified and same_site(final,u) and is_application_landing(u))][:10]
+                registration_required=False
                 for link in candidate_links:
                     if verified_target:break
-                    try:candidate,body,_=fetch(link)
+                    try:
+                        candidate,body,_=fetch(link)
+                        if len(body.strip())<180 and str(d.get('source') or '')=='business_contract_remotive':
+                            try:
+                                rendered_url,rendered_body,_=rendered_public_page(link)
+                                if rendered_url:candidate=rendered_url
+                                if len(rendered_body.strip())>len(body.strip()):body=rendered_body
+                            except Exception:pass
                     except Exception:continue
                     role_specific_ok=(is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body)
                     company_application_ok=(str(d.get('source') or '')=='business_contract_remotive'
                                             and company_page_verified and is_application_landing(candidate)
                                             and same_site(final,candidate))
-                    if role_specific_ok or company_application_ok:
+                    generic_onboarding=(company_application_ok and not matches_role(body)
+                                        and bool(re.search(r'create (?:an )?account|sign ?up|onboarding|join (?:the )?(?:network|team)|password',body+' '+candidate,re.I)))
+                    if role_specific_ok or generic_onboarding:
                         verified_target=candidate
+                        registration_required=generic_onboarding
                         if is_ats(candidate):target_kind='ATS'
-                        elif company_application_ok:target_kind='verified company application page'
+                        elif generic_onboarding:target_kind='platform registration/onboarding'
                         elif is_role_specific_external(candidate):target_kind='verified external role page'
                         else:target_kind='employer career page'
                 if verified_target:
+                    if registration_required:
+                        reason='Verified official platform registration/onboarding is required before a role-specific application can be reached'
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status='registration_required' WHERE id=%s",(verified_target,reason,d['id']))
+                        conn.commit()
+                        return 'progress','Official platform registration is a real external prerequisite; role-specific final approval is not yet ready',{'source':final,'target':verified_target,'target_kind':target_kind,'external_requirement':'registration'}
                     reason='Public '+target_kind+' corroborates exact company and role'
-                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now() WHERE id=%s",(verified_target,reason,d['id']))
+                    with conn.cursor() as cur:cur.execute("UPDATE developer_opportunities SET application_url=%s,target_quality_status='verified',target_quality_reason=%s,target_quality_checked_at=now(),last_verified_at=now(),automation_status=CASE WHEN automation_status='registration_required' THEN NULL ELSE automation_status END WHERE id=%s",(verified_target,reason,d['id']))
                     conn.commit();return 'progress','Public application page corroborates exact company and role; eligibility/package verification follows',{'source':final,'target':verified_target,'target_kind':target_kind}
                 continue
             h=host_of(final)
