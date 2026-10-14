@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import RecentSocialShowcase from "../components/RecentSocialShowcase";
+import MultiServiceDemo from "../components/demo/MultiServiceDemo";
 import {
   FaArrowRight,
   FaCheckCircle,
@@ -68,6 +69,11 @@ export default function Home() {
           <p className="mt-3 text-xs text-white/50">Simulation only. No real-money orders.</p>
         </div>
       </section>
+
+      <div className="mx-auto max-w-6xl px-5 pb-10 sm:px-6 lg:px-8">
+        <MultiServiceDemo preview />
+        <div className="mt-4 text-center"><Link to="/trade-demo" className="inline-flex rounded-xl bg-emerald-400 px-7 py-4 font-black text-slate-950 hover:bg-emerald-300">Open the full interactive demo →</Link></div>
+      </div>
 
       <RecentSocialShowcase />
 
