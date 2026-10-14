@@ -410,6 +410,162 @@ def target(conn,d,alternative=False):
     return 'retry','No verified official target in accessible source evidence',{'sources_checked':seen}
 
 
+def _same_registrable(a,b):
+    ah=(urlparse(a).hostname or '').lower().lstrip('www.')
+    bh=(urlparse(b).hostname or '').lower().lstrip('www.')
+    return bool(ah and bh and '.'.join(ah.split('.')[-2:])=='.'.join(bh.split('.')[-2:]))
+
+def _capital_pathway_research(conn,d):
+    """Verify a current official financing pathway and enforce the user's capital policy."""
+    source_url=str(d.get('url') or '').strip()
+    apply_url=str(d.get('application_url') or '').strip()
+    if not source_url or not apply_url:
+        return 'exhausted','Capital pathway is missing an official source or application route',{'source_url':source_url,'application_url':apply_url}
+
+    allowed=('kickstarter.com','indiegogo.com','amazon.com','aws.amazon.com','microsoft.com','tedcomd.com')
+    source_id=str(d.get('source_id') or '')
+
+    def read_public(url):
+        try:
+            final,text,links=fetch(url)
+            if len(text.strip())>=180:
+                return final,text,links
+        except HTTPError as exc:
+            if exc.code in (404,410):
+                raise
+        except Exception:
+            pass
+        # Some official startup/funding portals reject simple HTTP clients while
+        # remaining publicly viewable. A bounded browser read is still read-only.
+        return rendered_public_page(url)
+
+    try:
+        final,text,links=read_public(source_url)
+        source_host=(urlparse(final).hostname or '').lower()
+        if not any(source_host==h or source_host.endswith('.'+h) for h in allowed):
+            return 'exhausted','Capital pathway source is not an approved official domain',{'source_url':final}
+
+        low_source=text.lower()
+        expected={
+            'kickstarter-crowdfunding':('crowdfunding','without giving up equity'),
+            'indiegogo-crowdfunding':('crowdfunding','launch your project'),
+            'aws-activate-founders':('aws activate','credit'),
+            'microsoft-founders-hub':('founders hub','credit'),
+            'tedco-seed-funds':('seed funds','application status','open'),
+        }.get(source_id,())
+        if expected and not all(x in low_source for x in expected):
+            return 'exhausted','Official financing page no longer shows the expected active program terms',{'source_url':final,'expected_markers':list(expected)}
+
+        # TEDCO links its actual application portal from the official fund page.
+        # Resolve that public link instead of treating the descriptive page as an
+        # application destination.
+        if source_id=='tedco-seed-funds':
+            portal=[u for u in links if 'tfaforms.net' in (urlparse(u).hostname or '').lower() or re.search(r'apply',u,re.I)]
+            if portal:
+                apply_url=portal[0]
+
+        linked=_same_registrable(final,apply_url)
+        if not linked:
+            for link in links:
+                if link==apply_url or _same_registrable(link,apply_url):
+                    linked=True
+                    break
+        if not linked:
+            return 'exhausted','Application route is not corroborated by the official financing page',{'source_url':final,'application_url':apply_url}
+
+        app_final,app_text,_=read_public(apply_url)
+    except HTTPError as exc:
+        if exc.code in (404,410):
+            return 'exhausted','Official capital pathway or application route is no longer available',{'status':exc.code,'source_url':source_url,'application_url':apply_url,'dead_destination':True}
+        return 'retry','Capital pathway retrieval failed: HTTPError',{'status':exc.code}
+    except PermissionError:
+        return 'exhausted','Official capital pathway requires human verification before the application can be inspected',{'source_url':source_url,'application_url':apply_url,'blocker_type':'CAPTCHA'}
+    except Exception as exc:
+        return 'retry','Capital pathway retrieval failed: '+type(exc).__name__,{'error_type':type(exc).__name__}
+
+    if len(text.strip())<300 or len(app_text.strip())<120:
+        return 'exhausted','Capital pathway/application page has insufficient verifiable content',{'source_url':final,'application_url':app_final,'blank_or_generic':True}
+
+    revenue_path=str(d.get('revenue_path') or '')
+    funding_type={
+        'capital_crowdfunding':'crowdfunding',
+        'capital_credits':'credits',
+        'capital_equity':'equity',
+        'capital_revenue_share':'revenue_share',
+        'capital_accelerator':'accelerator',
+        'capital_grant':'grant',
+    }.get(revenue_path,'other')
+    low=(text+' '+app_text).lower()
+    policy_status='verified'
+    policy_reason=''
+    equity_percent=None
+    cash_equivalent=True
+
+    if funding_type=='crowdfunding':
+        if 'crowdfunding' not in low or not re.search(r'pledge|backer|reward|project',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='Crowdfunding model could not be verified from the official pages.'
+        elif re.search(r'equity crowdfunding|securities offering',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='The official pages may involve securities/equity rather than reward crowdfunding; do not advance automatically.'
+        else:
+            policy_reason='Non-equity reward/preorder crowdfunding pathway verified from official creator pages.'
+    elif funding_type=='credits':
+        cash_equivalent=False
+        if not re.search(r'credit',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='Startup credit benefit could not be verified from the official pages.'
+        else:
+            policy_reason='Non-dilutive startup credits verified. This reduces operating costs but is not cash for advertising.'
+    elif funding_type=='accelerator':
+        if not re.search(r'no.?equity|zero.?equity|non.?dilutive',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='Accelerator equity terms are not clearly non-dilutive.'
+        else:
+            policy_reason='No-equity/non-dilutive accelerator terms verified from the official program page.'
+    elif funding_type=='equity':
+        matches=[float(x) for x in re.findall(r'(\d+(?:\.\d+)?)\s*%\s*(?:equity|ownership|stake)',low,re.I)]
+        equity_percent=min(matches) if matches else None
+        if equity_percent is None:
+            policy_status='unverified_terms'
+            policy_reason='Seed investment is open, but the official pages do not disclose an exact ownership percentage; the <=10% total-equity ceiling cannot be verified.'
+        elif equity_percent>10:
+            policy_status='rejected'
+            policy_reason=f'Equity request {equity_percent:g}% exceeds the 10% total-equity ceiling.'
+        else:
+            policy_reason=f'Equity request {equity_percent:g}% is within the 10% ceiling; final valuation and rights still require approval.'
+    elif funding_type=='revenue_share':
+        if not re.search(r'revenue share|revenue-based|royalty|percentage of revenue',low,re.I):
+            policy_status='unverified_terms'
+            policy_reason='Revenue-share economics are not disclosed clearly enough to evaluate.'
+        else:
+            policy_reason='Revenue-share financing terms are disclosed; exact repayment economics still require final approval.'
+    elif funding_type=='grant':
+        policy_reason='Non-dilutive grant pathway verified.'
+    else:
+        policy_status='unverified_terms'
+        policy_reason='Funding structure is not sufficiently classified to advance.'
+
+    requirements={
+        'title':d.get('title'),'agency':d.get('company'),'funding_type':funding_type,
+        'equity_percent':equity_percent,'cash_equivalent':cash_equivalent,
+        'capital_policy_status':policy_status,'capital_policy_reason':policy_reason,
+        'source_url':final,'application_url':app_final,'package_readiness_verified':False,
+        'eligibility_machine_screen':'Official financing source and live application route verified; applicant-specific account/entity requirements may still need confirmation.'
+    }
+    docs=[{'url':final,'type':'official capital pathway'},{'url':app_final,'type':'current application route'}]
+    with conn.cursor() as cur:
+        sql=('INSERT INTO opportunity_research(opportunity_id,official_url,official_verified,documents,requirements,scope_retrieved,eligibility_verified,verified_at) '
+             'VALUES(%s,%s,true,%s,%s,true,false,now()) '
+             'ON CONFLICT(opportunity_id) DO UPDATE SET official_url=EXCLUDED.official_url,official_verified=true,documents=EXCLUDED.documents,'
+             'requirements=EXCLUDED.requirements,scope_retrieved=true,verified_at=now(),updated_at=now()')
+        cur.execute(sql,(d['id'],final,Json(docs),Json(requirements)))
+        cur.execute("UPDATE developer_opportunities SET application_url=%s,last_verified_at=now(),eligibility_status=CASE WHEN eligibility_status='ineligible' THEN eligibility_status ELSE 'review' END,eligibility_reason=%s WHERE id=%s",
+                    (app_final,policy_reason,d['id']))
+    conn.commit()
+    return 'progress','Official capital pathway and current application route verified',{'official_url':final,'application_url':app_final,'capital_policy_status':policy_status,'funding_type':funding_type,'equity_percent':equity_percent,'cash_equivalent':cash_equivalent}
+
+
 def _web3_capital_research(conn,d):
     """Verify an official ecosystem funding source, live application path and funding terms."""
     source_url=str(d.get('url') or '').strip()
@@ -477,6 +633,8 @@ def _web3_capital_research(conn,d):
 
 
 def capital_research(conn,d):
+    if str(d.get('source') or '')=='capital_pathway':
+        return _capital_pathway_research(conn,d)
     if str(d.get('source') or '')=='web3_funding':
         return _web3_capital_research(conn,d)
     if str(d.get('source') or '')!='grants_gov':

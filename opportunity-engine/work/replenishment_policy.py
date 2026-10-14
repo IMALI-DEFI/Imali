@@ -8,13 +8,17 @@ def plan(disposed, credited, workable, history, now=None, target=200, available_
     base = dict(replacement_debt=debt, workable=workable, needed=need, limit=min(25, need))
     if not need:
         return dict(base, source=None, reason='inventory_satisfied')
-    sources = tuple(available_sources or ('web3_funding', 'grants_gov', 'sam_gov'))
+    sources = tuple(available_sources or ('capital_pathway', 'web3_funding', 'grants_gov', 'sam_gov'))
     # A retired source must never hold the active discovery rotation in cooldown.
     active_history = {s: history[s] for s in sources if s in history}
     latest = max(active_history.values(), default=None)
     if latest and now - latest < timedelta(hours=1):
         return dict(base, source=None, reason='global_cooldown')
-    due = [s for s in sources if s not in history or now-history[s] >= timedelta(hours=6 if s in ('sam_gov','direct_freight') else 3)]
+    def cooldown_hours(source):
+        if source=='capital_pathway': return 24
+        if source in ('sam_gov','direct_freight'): return 6
+        return 3
+    due = [s for s in sources if s not in history or now-history[s] >= timedelta(hours=cooldown_hours(s))]
     if not due:
         return dict(base, source=None, reason='source_cooldown')
     source = min(due, key=lambda s: history.get(s, datetime.min.replace(tzinfo=timezone.utc)))

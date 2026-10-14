@@ -67,6 +67,13 @@ class States(unittest.TestCase):
   s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_PACKAGE_DOCUMENTS')
   c['research']['requirements']={'package_readiness_verified':True}
   s=classify(r,c,NOW);self.assertEqual(s['final_approval_type'],'CAPITAL_APPLICATION')
+ def test_capital_unknown_equity_terms_are_disposed(self):
+  r=self.row();r.update(source='capital_pathway',revenue_path='capital_equity',opportunity_type='seed_investment')
+  c={'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':False,
+                 'requirements':{'capital_policy_status':'unverified_terms','capital_policy_reason':'Equity percentage not disclosed','funding_type':'equity'},
+                 'official_url':'https://example.com/funding'}}
+  s=classify(r,c,NOW)
+  self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','FUNDING_TERMS_UNVERIFIED'))
  def test_stale_reward_is_disposed(self):
   r=self.row();r.update(source='reward_kaggle',revenue_path='reward',last_verified_at=NOW-timedelta(days=31))
   s=classify(r,now=NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','STALE_BEYOND_POLICY'))

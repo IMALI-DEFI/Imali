@@ -47,7 +47,7 @@ def run(dry_run=False):
                     if source and when>history.get(source,datetime.min.replace(tzinfo=timezone.utc)):
                         history[source]=when
         cur.execute('SELECT COALESCE(sum(cardinality(new_ids)),0) FROM opportunity_replenishment_runs')
-        available_sources=['web3_funding','grants_gov','sam_gov']
+        available_sources=['capital_pathway','web3_funding','grants_gov','sam_gov']
         if os.getenv('DIRECT_FREIGHT_API_TOKEN') and os.getenv('DIRECT_FREIGHT_USER_TOKEN'):
             available_sources.append('direct_freight')
         decision=plan(disposed,cur.fetchone()[0],workable,history,available_sources=available_sources)
@@ -99,10 +99,11 @@ def run(dry_run=False):
         try:
             from sources.grants_gov import fetch_grants_gov
             from sources.web3_funding import fetch_web3_funding
+            from sources.capital_pathways import fetch_capital_pathways
             from sources.sam_gov import fetch_sam_gov
             from sources.freight_loadboards import fetch_direct_freight
             from work_agent import process_opportunity
-            sources={'web3_funding':fetch_web3_funding,'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov,'direct_freight':fetch_direct_freight}
+            sources={'capital_pathway':fetch_capital_pathways,'web3_funding':fetch_web3_funding,'grants_gov':fetch_grants_gov,'sam_gov':fetch_sam_gov,'direct_freight':fetch_direct_freight}
             seen={identity(d) for d in rows}
             existing={(d.get('source'),str(d.get('source_id'))) for d in rows}
             candidates=[]
@@ -112,7 +113,16 @@ def run(dry_run=False):
             for row in fetched:
                 if (row.get('source'),str(row.get('source_id'))) in existing:
                     skipped['duplicate']+=1;continue
-                if row.get('source')=='web3_funding':
+                if row.get('source')=='capital_pathway':
+                    processed=dict(row)
+                    processed.update(score=max(int(row.get('score') or 0),70),
+                                     personal_fit=max(int(row.get('personal_fit') or 0),65),
+                                     business_value=max(int(row.get('business_value') or 0),70),
+                                     demand_confidence=max(int(row.get('demand_confidence') or 0),85),
+                                     matched_skills=row.get('matched_skills') or [],imali_proof=row.get('imali_proof'),
+                                     generated_pitch=row.get('generated_pitch'))
+                    reason=None
+                elif row.get('source')=='web3_funding':
                     processed=dict(row)
                     processed.update(score=max(int(row.get('score') or 0),75),
                                      personal_fit=max(int(row.get('personal_fit') or 0),70),
