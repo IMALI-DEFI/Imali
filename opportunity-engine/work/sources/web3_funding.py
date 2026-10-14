@@ -25,11 +25,10 @@ def _apply_links(base,soup):
         parsed=urlparse(u)
         if parsed.scheme not in ("http","https"): continue
         host=(parsed.hostname or "").lower()
-        direct=(label.startswith("apply") or label.startswith("application") or "grant-application" in u.lower() or "application-form" in u.lower())
-        form_host=host in ("tally.so","airtable.com","www.airtable.com","typeform.com","www.typeform.com","forms.gle")
-        official_apply=(host.endswith("solana.org") or host.endswith("ethereum.foundation") or host.endswith("polygon.technology") or host.endswith("arbitrum.foundation"))
-        if direct and (form_host or official_apply) and not re.search(r"audit-program|stylus-sprint",u,re.I): out.append(u)
-
+        form_host=host in ("tally.so","airtable.com","www.airtable.com","typeform.com","www.typeform.com","forms.gle","share.hsforms.com")
+        official_apply=(host.endswith("solana.org") or host.endswith("ethereum.foundation") or host.endswith("polygon.technology") or host.endswith("arbitrum.foundation")) and re.search(r"/(apply|application)(?:/|$|\?)",parsed.path+"?"+parsed.query,re.I)
+        explicit_label=bool(re.search(r"\bapply\b|application",label,re.I))
+        if explicit_label and (form_host or official_apply): out.append(u)
     return list(dict.fromkeys(out))
 
 def _fetch(url):
@@ -44,6 +43,21 @@ def _application_open(url):
         text=_text(soup).strip()
     except Exception:
         return False
+    if len(text)<80:
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as pw:
+                browser=pw.chromium.launch(headless=True)
+                page=browser.new_page()
+                try:
+                    page.goto(url,wait_until='domcontentloaded',timeout=12000)
+                    try: page.wait_for_load_state('networkidle',timeout=4000)
+                    except Exception: pass
+                    text=page.locator('body').inner_text(timeout=2000).strip()
+                finally:
+                    browser.close()
+        except Exception:
+            return False
     if len(text)<80:
         return False
     low=text.lower()
@@ -73,43 +87,25 @@ def fetch_web3_funding():
                 if "no rfp items available" in low: continue
                 for i,u in enumerate([u for u in links if _application_open(u)][:5],1): rows.append(_row(f"ethereum-rfp-{i}",f"Ethereum Foundation ESP RFP {i}",eco,text,final,u))
             elif eco=="Arbitrum":
-                seen=set()
-                for a in soup.find_all("a",href=True):
-                    label=" ".join(a.stripped_strings).strip().lower()
-                    href=urljoin(final,str(a.get("href") or "").strip())
-                    direct=(label.startswith("apply") or label.startswith("application") or "grant-application" in href.lower() or "application-form" in href.lower())
-                    if not direct or re.search(r"audit-program|stylus-sprint",href,re.I):
-                        continue
-                    card=None; node=a
-                    for _ in range(6):
-                        node=node.parent if node else None
-                        if not node: break
-                        card_text=" ".join(node.stripped_strings)
-                        if len(card_text)<=1200 and re.search(r"\b(?:Active|Inactive)\b",card_text):
-                            card=node; break
-                    if not card:
-                        continue
-                    card_text=" ".join(card.stripped_strings)
-                    if not card_text.startswith("Active ") or card_text.startswith("Inactive "):
-                        continue
-                    if not _application_open(href):
-                        continue
-                    heads=[h.get_text(" ",strip=True) for h in card.find_all(["h1","h2","h3","h4","h5","h6"]) if h.get_text(" ",strip=True)]
-                    title=heads[0] if heads else re.sub(r"^Active\s+","",card_text).split(" Managed by ")[0][:120]
-                    key=re.sub(r"[^a-z0-9]+","-",title.lower()).strip("-")
-                    if not key or key in seen: continue
-                    seen.add(key)
-                    rows.append(_row("arbitrum-"+key,title,eco,card_text,final,href))
-
+                # Directory-level links have produced stale/closed forms. Do not
+                # emit a funding lead until an individual program is explicitly
+                # proven open from its own current official page.
+                continue
             elif eco=="Polygon":
                 year=str(datetime.now(timezone.utc).year)
                 if year not in text or not re.search(r"\b(live|applications? open|apply now)\b",text,re.I): continue
                 for i,u in enumerate([u for u in links if _application_open(u)][:6],1): rows.append(_row(f"polygon-funding-{i}",f"Polygon ecosystem grant program {i}",eco,text,final,u))
             elif eco=="Solana":
                 if "applications are reviewed on a rolling basis" not in low and "all funding applicants" not in low: continue
-                candidates=[u for u in links if "grant" in u.lower() or "apply" in u.lower() or "application" in u.lower()]
-                candidates=[u for u in candidates if _application_open(u)]
-                if candidates: rows.append(_row("solana-standard-grant","Solana Foundation standard grant",eco,text,final,candidates[0],"grant"))
+                candidates=[]
+                for a in soup.find_all("a",href=True):
+                    label=" ".join(a.stripped_strings).strip().lower()
+                    href=urljoin(final,a.get("href"))
+                    if label=="foundation grants" or "share.hsforms.com" in href:
+                        candidates.append(href)
+                candidates=list(dict.fromkeys(u for u in candidates if _application_open(u)))
+                if candidates:
+                    rows.append(_row("solana-standard-grant","Solana Foundation standard grant",eco,text,final,candidates[0],"grant"))
         except Exception:
             continue
     return rows
