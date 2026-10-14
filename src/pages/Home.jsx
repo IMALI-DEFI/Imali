@@ -49,6 +49,26 @@ export default function Home() {
         </div>
       </section>
 
+      {/* INTERACTIVE TRADE DEMO — public, no deposits required */}
+      <section aria-labelledby="trade-demo-title" className="relative border-y border-emerald-400/15 bg-gradient-to-r from-emerald-500/10 via-slate-900 to-cyan-500/10 py-12 sm:py-16">
+        <div className="mx-auto max-w-5xl px-5 text-center sm:px-6">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-400">Explore before you connect</p>
+          <h2 id="trade-demo-title" className="mt-3 text-3xl font-black sm:text-4xl">Try the Interactive Trade Demo</h2>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-white/70">
+            Preview IMALI's trading dashboard and explore its controls without depositing money or placing real trades.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {["Spot", "DEX", "Stocks", "Futures", "Options"].map((market) => (
+              <span key={market} className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85">{market}</span>
+            ))}
+          </div>
+          <Link to="/trade-demo" className="mt-8 inline-flex items-center justify-center gap-3 rounded-2xl bg-emerald-400 px-8 py-4 text-lg font-extrabold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300">
+            Open Free Trade Demo <FaArrowRight aria-hidden="true" />
+          </Link>
+          <p className="mt-3 text-xs text-white/50">Simulation only. No real-money orders.</p>
+        </div>
+      </section>
+
       <RecentSocialShowcase />
 
       {/* OFFER */}
