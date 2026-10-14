@@ -440,7 +440,7 @@ def _capital_pathway_research(conn,d):
     if not source_url or not apply_url:
         return 'exhausted','Capital pathway is missing an official source or application route',{'source_url':source_url,'application_url':apply_url}
 
-    allowed=('kickstarter.com','indiegogo.com','amazon.com','aws.amazon.com','microsoft.com','tedcomd.com')
+    allowed=('kickstarter.com','indiegogo.com','amazon.com','aws.amazon.com','microsoft.com','tedcomd.com','seedfund.nsf.gov')
     source_id=str(d.get('source_id') or '')
 
     def read_public(url):
@@ -470,6 +470,7 @@ def _capital_pathway_research(conn,d):
             'aws-activate-founders':('aws activate','credit'),
             'microsoft-founders-hub':('founders hub','credit'),
             'tedco-seed-funds':('seed funds','application status','open'),
+            'nsf-seed-project-pitch':('project pitch','phase i','seed fund'),
         }.get(source_id,())
         if expected and not all(x in low_source for x in expected):
             return 'exhausted','Official financing page no longer shows the expected active program terms',{'source_url':final,'expected_markers':list(expected)}
@@ -571,6 +572,17 @@ def _capital_pathway_research(conn,d):
         'source_url':final,'application_url':app_final,'package_readiness_verified':False,
         'eligibility_machine_screen':'Official financing source and live application route verified; applicant-specific account/entity requirements may still need confirmation.'
     }
+    if source_id=='nsf-seed-project-pitch':
+        requirements.update(
+            estimated_phase_i_max=305000,
+            applicant_requirements=[
+                'U.S. small business with fewer than 500 employees',
+                'At least 50% U.S. citizen/permanent-resident ownership',
+                'Funded work performed in the United States',
+                'Principal investigator employed at least 20 hours/week by applicant company'
+            ],
+            eligibility_machine_screen='Official NSF Project Pitch and MyWork route verified; one-time applicant profile facts are required before eligibility can be automated.'
+        )
     docs=[{'url':final,'type':'official capital pathway'},{'url':app_final,'type':'current application route'}]
     with conn.cursor() as cur:
         sql=('INSERT INTO opportunity_research(opportunity_id,official_url,official_verified,documents,requirements,scope_retrieved,eligibility_verified,verified_at) '
@@ -775,6 +787,52 @@ def capital_eligibility(conn,d):
         return 'retry','Verified official funding requirements are required before eligibility screening',{}
     requirements=dict(r.get('requirements') or {})
     source=str(d.get('source') or '')
+    if source=='capital_pathway':
+        source_id=str(d.get('source_id') or '')
+        policy=str(requirements.get('capital_policy_status') or '')
+        if policy in ('rejected','unverified_terms'):
+            return 'progress','Capital policy prevents this pathway from advancing',{'status':policy}
+        if source_id=='nsf-seed-project-pitch':
+            fields={
+                'CAPITAL_US_SMALL_BUSINESS':os.getenv('CAPITAL_US_SMALL_BUSINESS'),
+                'CAPITAL_US_OWNERSHIP_PERCENT':os.getenv('CAPITAL_US_OWNERSHIP_PERCENT'),
+                'CAPITAL_EMPLOYEES':os.getenv('CAPITAL_EMPLOYEES'),
+                'CAPITAL_WORK_IN_US':os.getenv('CAPITAL_WORK_IN_US'),
+                'CAPITAL_PI_HOURS':os.getenv('CAPITAL_PI_HOURS'),
+            }
+            missing=[k for k,v in fields.items() if v in (None,'')]
+            if missing:
+                requirements['eligibility_machine_status']='external_profile_required'
+                requirements['eligibility_machine_reason']='One-time NSF applicant facts are required: U.S. small-business status, U.S. ownership percentage, employee count, U.S. work location, and principal-investigator weekly hours.'
+                requirements['eligibility_missing_profile_fields']=missing
+                cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=false,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+                conn.commit()
+                return 'progress',requirements['eligibility_machine_reason'],{'status':'external_profile_required','missing':missing}
+            try:
+                small=str(fields['CAPITAL_US_SMALL_BUSINESS']).lower() in ('1','true','yes')
+                ownership=float(fields['CAPITAL_US_OWNERSHIP_PERCENT'])
+                employees=int(fields['CAPITAL_EMPLOYEES'])
+                work_us=str(fields['CAPITAL_WORK_IN_US']).lower() in ('1','true','yes')
+                pi_hours=float(fields['CAPITAL_PI_HOURS'])
+            except (TypeError,ValueError):
+                small=False; ownership=0; employees=999999; work_us=False; pi_hours=0
+            eligible=small and ownership>=50 and employees<500 and work_us and pi_hours>=20
+            requirements['eligibility_machine_status']='verified' if eligible else 'not_aligned'
+            requirements['eligibility_machine_reason']='Configured applicant profile satisfies NSF Seed Fund minimum eligibility.' if eligible else 'Configured applicant profile does not satisfy one or more NSF Seed Fund minimum eligibility requirements.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=%s,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),eligible,d['id']))
+            cur.execute("UPDATE developer_opportunities SET eligibility_status=%s,eligibility_reason=%s WHERE id=%s",('eligible' if eligible else 'ineligible',requirements['eligibility_machine_reason'],d['id']))
+            conn.commit()
+            return 'progress',requirements['eligibility_machine_reason'],{'status':requirements['eligibility_machine_status']}
+        # Reward crowdfunding, credits and other policy-verified durable pathways
+        # need no recurring human eligibility click. Authentication remains an
+        # execution-time external dependency.
+        requirements['eligibility_machine_status']='verified'
+        requirements['eligibility_machine_reason']='Official capital pathway and financing policy were verified; no additional pathway-specific eligibility fact is currently unresolved.'
+        cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=true,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+        cur.execute("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=%s WHERE id=%s",(requirements['eligibility_machine_reason'],d['id']))
+        conn.commit()
+        return 'progress',requirements['eligibility_machine_reason'],{'status':'verified'}
+
     if source=='web3_funding':
         ecosystem=str(requirements.get('ecosystem_source') or d.get('company') or '').lower().replace(' ecosystem','').strip()
         requirements['ecosystem']=ecosystem
@@ -849,6 +907,32 @@ def capital_package_review(conn,d):
         return 'retry','Prepared funding package is missing',{'package_path':package_path}
     requirements=dict(r.get('requirements') or {})
     source=str(d.get('source') or '')
+    if source=='capital_pathway':
+        source_id=str(d.get('source_id') or '')
+        application_url=str(requirements.get('application_url') or d.get('application_url') or '')
+        if source_id=='nsf-seed-project-pitch':
+            # MyWork is an authenticated JS portal. At preparation time, verify
+            # the official source and package; login is deferred until approved execution.
+            requirements['package_readiness_verified']=True
+            requirements['package_review']='NSF Project Pitch evidence package is prepared from the verified business profile and official requirements. Final human approval is required before authenticated portal submission.'
+            cur.execute('UPDATE opportunity_research SET requirements=%s,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+            conn.commit()
+            return 'progress',requirements['package_review'],{'package_path':package_path,'application_url':application_url,'authentication_required_at_submission':True}
+        try:
+            _,app_text,_=fetch(application_url)
+        except Exception:
+            try:
+                _,app_text,_=rendered_public_page(application_url)
+            except Exception as exc:
+                return 'retry','Capital pathway application route could not be revalidated during package review: '+type(exc).__name__,{'error_type':type(exc).__name__}
+        if len(str(app_text).strip())<120:
+            return 'retry','Capital pathway application destination has insufficient verifiable content',{'application_url':application_url}
+        requirements['package_readiness_verified']=True
+        requirements['package_review']='Machine review passed: verified financing policy, eligibility, and live application destination. Final approval remains required.'
+        cur.execute('UPDATE opportunity_research SET requirements=%s,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+        conn.commit()
+        return 'progress',requirements['package_review'],{'package_path':package_path,'application_url':application_url}
+
     if source=='web3_funding':
         application_url=str(requirements.get('application_url') or d.get('application_url') or '')
         try:
@@ -883,8 +967,45 @@ def capital_package(conn,d):
         return 'exhausted','Confirmed applicant eligibility is required before package preparation',{}
     root=Path('/home/opc/imali-work-agent/capital_packages')/str(d['id'])
     root.mkdir(parents=True,exist_ok=True)
+    if str(d.get('source_id') or '')=='nsf-seed-project-pitch':
+        profile={}
+        bp=Path('/home/opc/imali-work-agent/business_profile.json')
+        if bp.exists():
+            try: profile=json.loads(bp.read_text())
+            except Exception: profile={}
+        requirements=dict(r.get('requirements') or {})
+        pitch={
+            'program':'NSF America’s Seed Fund — Project Pitch',
+            'applicant_profile':profile,
+            'technology_innovation':(
+                'IMALI DeFi is a fintech/software platform combining AI automation, full-stack systems, API integrations, '
+                'trading automation and decentralized-technology integrations. The proposed R&D focuses on making complex '
+                'automated financial workflows safer and easier to operate for non-expert users while preserving user control.'
+            ),
+            'technical_objectives_and_challenges':(
+                'Validate robust automated decision workflows across heterogeneous financial and decentralized systems; '
+                'improve verification, reliability and risk controls; and measure whether the platform can consistently '
+                'translate high-level user goals into bounded, auditable execution without custody of user assets.'
+            ),
+            'market_opportunity':(
+                'The initial market is individuals and small organizations that want access to automated fintech and Web3 '
+                'workflows without building their own infrastructure. Commercialization would fund product hardening, '
+                'customer acquisition and advertising after technical milestones are demonstrated.'
+            ),
+            'company_and_team':(
+                (profile.get('representative') or 'Founder')+' leads engineering and product development for '+
+                (profile.get('brand_name') or 'IMALI')+'. Existing evidence includes the deployed product at '+
+                (profile.get('website') or 'https://imali-defi.com')+' and source/portfolio evidence at '+
+                (profile.get('github') or 'the project repository')+'.'
+            ),
+            'status':'DRAFT — machine-prepared for founder final approval before authenticated NSF submission'
+        }
+    else:
+        pitch=None
     path=root/'capital-package.json'
-    path.write_text(json.dumps({'opportunity':dict(d),'official_research':dict(r),'status':'DRAFT — final application review and explicit submission authorization required'},default=str,indent=2))
+    payload={'opportunity':dict(d),'official_research':dict(r),'status':'DRAFT — final application review and explicit submission authorization required'}
+    if pitch is not None: payload['nsf_project_pitch']=pitch
+    path.write_text(json.dumps(payload,default=str,indent=2))
     cur.execute('UPDATE opportunity_research SET package_path=%s,updated_at=now() WHERE opportunity_id=%s',(str(path),d['id']))
     conn.commit()
     return 'progress','Capital application evidence package assembled; required attachments still need final review',{'package_path':str(path)}

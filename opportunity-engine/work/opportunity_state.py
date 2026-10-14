@@ -112,6 +112,8 @@ def classify(d, context=None, now=None):
             return dispose('TECH_STACK_MISMATCH',{'reason':requirements.get('eligibility_machine_reason'),'official_url':research.get('official_url'),'ecosystem':requirements.get('ecosystem')})
         if requirements.get('eligibility_machine_status')=='closed':
             return dispose('CLOSED',{'reason':requirements.get('eligibility_machine_reason'),'official_url':research.get('official_url')})
+        if requirements.get('eligibility_machine_status')=='external_profile_required':
+            return blocked('APPLICANT_PROFILE_REQUIRED',requirements.get('eligibility_machine_reason') or 'One-time applicant profile evidence is required before Capital eligibility can be automated.')
         if not research.get('eligibility_verified'):
             base['workbench_stage']='Qualified'
             return auto('capital_eligibility')

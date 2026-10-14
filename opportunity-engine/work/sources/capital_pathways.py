@@ -10,6 +10,18 @@ from datetime import datetime, timezone
 
 PROGRAMS=(
     {
+        "source_id":"nsf-seed-project-pitch",
+        "title":"NSF America’s Seed Fund — Project Pitch",
+        "company":"U.S. National Science Foundation",
+        "url":"https://seedfund.nsf.gov/project-pitch/",
+        "application_url":"https://nsfgov.my.site.com/mywork/s/login/?ec=302&startURL=%2Fmywork%2Fs%2F",
+        "revenue_path":"capital_grant",
+        "opportunity_type":"startup_seed_funding",
+        "business_value":98,
+        "reason":"Non-dilutive technology seed funding. Phase I can provide up to $305,000 for high-risk R&D and commercialization without surrendering equity.",
+        "estimated_revenue":305000,
+    },
+    {
         "source_id":"kickstarter-crowdfunding",
         "title":"Kickstarter reward crowdfunding",
         "company":"Kickstarter",
@@ -90,6 +102,7 @@ def fetch_capital_pathways():
             "fulfillment_path":"direct",
             "business_reason":p["reason"],
             "matched_skills":["startup","technology","software"],
+            "estimated_revenue":p.get("estimated_revenue"),
             "solicitation_due_at":None,
         })
     return rows
