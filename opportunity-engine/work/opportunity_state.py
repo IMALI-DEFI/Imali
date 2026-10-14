@@ -44,8 +44,8 @@ def classify(d, context=None, now=None):
             target_kind='MISSING_APPLICATION_TARGET' if lane=='Employment' or str(d.get('source') or '')=='business_contract_remotive' else 'CONTACT_UNRESOLVED'
             kinds={'procurement_research':'MISSING_OFFICIAL_DOCUMENT','capital_research':'MISSING_OFFICIAL_DOCUMENT',
                    'capital_eligibility':'CAPITAL_PROFILE_REQUIRED','capital_package':'MISSING_OFFICIAL_DOCUMENT',
-                   'capital_package_review':'MISSING_OFFICIAL_DOCUMENT','target_resolution':target_kind,
-                   'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
+                   'capital_package_review':'MISSING_OFFICIAL_DOCUMENT','government_eligibility':'GOVERNMENT_PROFILE_REQUIRED',
+                   'target_resolution':target_kind,'provider_research':'OTHER','contact_discovery':'CONTACT_UNRESOLVED'}
             return blocked(kinds.get(action,'EXTERNAL_NETWORK'),a.get('reason') or 'Preparation could not advance; retry scheduled',a.get('next_retry_at'))
         return dict(base,operational_state='AUTO_PROCESSING',next_machine_action=action,next_retry_at=a.get('next_retry_at') or (old.get('next_retry_at') if old.get('next_machine_action')==action else None) or now)
     def dispose(reason,evidence):
@@ -155,7 +155,7 @@ def classify(d, context=None, now=None):
             base['evidence']['broker_execution_model']='licensed_partner_only'
         # Machine extraction precedes the genuine certification/eligibility decision.
         if not research.get('eligibility_verified'):
-            return human('Review extracted official eligibility requirements and confirm business registrations/certifications','GOVERNMENT_ELIGIBILITY')
+            return auto('government_eligibility')
         if d.get('procurement_registration_required'):
             base['workbench_stage']='Needs Registration/Auth'
             return blocked('REGISTRATION_REQUIRED','Confirm the required official registration/account')
@@ -189,7 +189,8 @@ def classify(d, context=None, now=None):
         return human('Review local prototype quality and authorize final submission separately','REWARD_SUBMISSION')
 
     if not d.get('revenue_path') or d.get('revenue_path')=='ignore':
-        if (c.get('attempts') or {}).get('classification',{}).get('result')=='progress':return human('Choose a business pursuit path after completed relevance analysis: '+str(d.get('business_reason') or ''),'BUSINESS_FIT')
+        if (c.get('attempts') or {}).get('classification',{}).get('result')=='progress':
+            return dispose('NO_LOGICAL_REVENUE_PATH',{'reason':d.get('business_reason') or 'Completed classification produced no actionable revenue path','source':d.get('url')})
         return auto('classification')
     if d.get('pursuit_status')!='queued':return auto('queue_preparation')
     if d.get('eligibility_status')=='unchecked':return auto('verification')
@@ -213,7 +214,8 @@ def classify(d, context=None, now=None):
         target_fresh=max(target_checks) if target_checks else None
         if not target_fresh or now-target_fresh>timedelta(days=14):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
-        if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
+        if d.get('eligibility_status')=='ineligible':return dispose('INELIGIBLE',{'reason':d.get('eligibility_reason'),'source':d.get('url')})
+        if d.get('eligibility_status')=='review':return auto('verification')
         if not d.get('tailored_resume'):return auto('resume_preparation')
         if not d.get('application_package_path'):return auto('application_package')
         if not d.get('execution_verified'):return auto('verification')
@@ -227,7 +229,8 @@ def classify(d, context=None, now=None):
             if not alt or alt.get('result')=='retry':return auto('contact_alternative')
             return blocked('CONTACT_UNRESOLVED',alt.get('reason') or 'Bounded contact discovery exhausted; no verified alternative destination',alt.get('next_retry_at'))
         result=auto('contact_discovery'); result['next_retry_at']=ca.get('next_retry_at') or result['next_retry_at']; return result
-    if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
+    if d.get('eligibility_status')=='ineligible':return dispose('INELIGIBLE',{'reason':d.get('eligibility_reason'),'source':d.get('url')})
+    if d.get('eligibility_status')=='review':return auto('verification')
     if not d.get('execution_verified') or d.get('target_quality_status')!='verified':return auto('verification')
     if d.get('outreach_status')!='ready_email' or not d.get('outreach_body') or not d.get('outreach_subject'):return auto('outreach_preparation')
     # A commercial introductory message does not promise delivery; provider work is independently visible.

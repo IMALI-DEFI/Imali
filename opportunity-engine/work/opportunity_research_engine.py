@@ -708,6 +708,46 @@ def capital_research(conn,d):
     conn.commit()
     return ('progress' if enough else 'exhausted'),('Official Grants.gov requirements retrieved; applicant-specific eligibility confirmation required' if enough else 'Official grant detail is incomplete'),{'official_url':official_url,'applicant_types':applicant_types,'award_ceiling':ceiling}
 
+def government_eligibility(conn,d):
+    """Machine-screen procurement eligibility; unresolved business qualifications become external profile blockers."""
+    cur=conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM opportunity_research WHERE opportunity_id=%s',(d['id'],))
+    r=cur.fetchone()
+    if not r or not r.get('official_verified') or not r.get('scope_retrieved'):
+        return 'retry','Verified official solicitation requirements are required before eligibility screening',{}
+    requirements=dict(r.get('requirements') or {})
+    lines=[]
+    for key in ('eligibility','set_aside','required_registrations'):
+        value=requirements.get(key) or []
+        lines.extend(value if isinstance(value,list) else [str(value)])
+    text=' '.join(str(x) for x in lines).lower()
+    if not text.strip():
+        return 'retry','Official solicitation did not expose enough eligibility language for machine verification',{}
+    needed=[]
+    patterns={
+        '8a':r'8\s*\(a\)',
+        'wosb':r'women[- ]owned|woman[- ]owned|wosb',
+        'sdvosb':r'service[- ]disabled veteran|sdvosb',
+        'hubzone':r'hubzone',
+        'small_business':r'small business',
+        'us_citizen':r'u\.s\. citizen|united states citizen',
+        'security_clearance':r'security clearance|secret clearance|top secret',
+    }
+    for key,pattern in patterns.items():
+        if re.search(pattern,text,re.I): needed.append(key)
+    configured={x.strip().lower() for x in os.getenv('GOVERNMENT_QUALIFICATIONS','').split(',') if x.strip()}
+    if needed:
+        missing=[x for x in needed if x not in configured]
+        if missing:
+            return 'retry','Government qualification profile lacks verified evidence for: '+', '.join(missing),{'required_qualifications':needed,'missing':missing}
+    requirements['eligibility_machine_status']='verified'
+    requirements['eligibility_machine_reason']='Official procurement eligibility requirements were machine-screened against configured business qualifications.'
+    cur.execute('UPDATE opportunity_research SET requirements=%s,eligibility_verified=true,updated_at=now() WHERE opportunity_id=%s',(Json(requirements),d['id']))
+    cur.execute("UPDATE developer_opportunities SET eligibility_status='eligible',eligibility_reason=%s WHERE id=%s",(requirements['eligibility_machine_reason'],d['id']))
+    conn.commit()
+    return 'progress',requirements['eligibility_machine_reason'],{'required_qualifications':needed,'configured_matches':sorted(configured.intersection(needed))}
+
+
 def capital_eligibility(conn,d):
     """Machine-screen funding eligibility. Human review is reserved for final approval or true external facts."""
     cur=conn.cursor(cursor_factory=RealDictCursor)

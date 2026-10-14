@@ -5,9 +5,9 @@ from datetime import datetime,timezone,timedelta
 from psycopg2.extras import RealDictCursor,Json
 from opportunity_store import db,reconcile,snapshot
 from opportunity_scoped_engine import ALLOWED
-from opportunity_research_engine import procurement,target,providers,package,capital_research,capital_eligibility,capital_package,capital_package_review,licensed_broker_partners
+from opportunity_research_engine import procurement,target,providers,package,government_eligibility,capital_research,capital_eligibility,capital_package,capital_package_review,licensed_broker_partners
 
-SLOW={'procurement_research','capital_research','capital_eligibility','capital_package_review','provider_research','provider_verification','licensed_broker_partner_research','licensed_broker_partner_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
+SLOW={'procurement_research','government_eligibility','capital_research','capital_eligibility','capital_package_review','provider_research','provider_verification','licensed_broker_partner_research','licensed_broker_partner_verification','reward_enrichment','reward_fit','reward_research','reward_participation','reward_prototype_plan','reward_local_prototype','reward_quality'}
 
 def research_advanced(before, after):
     completed=json.loads(after['snapshot']) if after else {}
@@ -24,6 +24,7 @@ def save_attempt(conn,oid,action,result,reason,evidence):
 
 def native(conn,d,action):
     if action=='procurement_research':return procurement(conn,d)
+    if action=='government_eligibility':return government_eligibility(conn,d)
     if action=='capital_research':return capital_research(conn,d)
     if action=='capital_eligibility':return capital_eligibility(conn,d)
     if action=='capital_package':return capital_package(conn,d)

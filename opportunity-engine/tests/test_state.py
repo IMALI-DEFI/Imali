@@ -23,9 +23,20 @@ class States(unittest.TestCase):
  def test_hackernews_stale_disposed_even_if_misrouted(self):
   r=self.row();r.update(source='hackernews',source_posted_at='2025-01-01',revenue_path='direct_contract')
   s=classify(r,now=NOW);self.assertEqual(s['disposition_reason'],'STALE_BEYOND_POLICY')
+ def test_business_fit_no_path_disposes(self):
+  r=self.row();r.update(revenue_path='ignore',business_reason='No viable revenue path after classification')
+  c={'attempts':{'classification':{'result':'progress'}}}
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['disposition_reason']),('DISPOSED','NO_LOGICAL_REVENUE_PATH'))
+ def test_review_eligibility_stays_machine_owned(self):
+  r=self.row(contact_url='https://company.com',outreach_contact_email='real@company.com');r['eligibility_status']='review'
+  s=classify(r,now=NOW);self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','verification'))
  def test_government_ignore_disposes_before_research(self):
   r=self.row();r.update(source='sam_gov',revenue_path='ignore',personal_fit=10,business_value=20,demand_confidence=30)
   s=classify(r,now=NOW);self.assertEqual(s['operational_state'],'DISPOSED');self.assertEqual(s['disposition_reason'],'OUT_OF_SCOPE')
+ def test_government_eligibility_is_machine_owned(self):
+  r=self.row();r.update(source='sam_gov',revenue_path='managed_delivery',fulfillment_path='direct')
+  c={'research':{'scope_retrieved':True,'official_verified':True,'eligibility_verified':False,'requirements':{'eligibility':['Small business set-aside']}}}
+  s=classify(r,c,NOW);self.assertEqual((s['operational_state'],s['next_machine_action']),('AUTO_PROCESSING','government_eligibility'))
  def test_metadata_not_qualified(self):
   r=self.row();r.update(source='sam_gov',procurement_qualified=True,procurement_bid_ready=True)
   s=classify(r,now=NOW);self.assertEqual(s['next_machine_action'],'procurement_research');self.assertIsNone(s['final_approval_type'])
