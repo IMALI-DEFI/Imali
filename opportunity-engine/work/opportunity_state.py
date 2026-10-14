@@ -187,6 +187,10 @@ def classify(d, context=None, now=None):
     if d.get('pursuit_status')!='queued':return auto('queue_preparation')
     if d.get('eligibility_status')=='unchecked':return auto('verification')
     if str(d.get('source') or '')=='business_contract_remotive':
+        target_checks=[date(d.get('target_quality_checked_at')),date(d.get('last_verified_at'))]
+        target_checks=[x for x in target_checks if x]
+        target_fresh=max(target_checks) if target_checks else None
+        if not target_fresh or now-target_fresh>timedelta(days=7):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
         if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
         if not d.get('execution_verified'):return auto('verification')
@@ -198,6 +202,10 @@ def classify(d, context=None, now=None):
         if not d.get('application_package_path'):return auto('application_package')
         return human('Review the prepared contract application; external submission remains separately controlled','CONTRACT_APPLICATION')
     if lane=='Employment':
+        target_checks=[date(d.get('target_quality_checked_at')),date(d.get('last_verified_at'))]
+        target_checks=[x for x in target_checks if x]
+        target_fresh=max(target_checks) if target_checks else None
+        if not target_fresh or now-target_fresh>timedelta(days=14):return auto('target_resolution')
         if not d.get('application_url') or d.get('target_quality_status')!='verified':return auto('target_resolution')
         if d.get('eligibility_status') in ('review','ineligible'):return human('Resolve documented eligibility: '+str(d.get('eligibility_reason')),'ELIGIBILITY')
         if not d.get('tailored_resume'):return auto('resume_preparation')

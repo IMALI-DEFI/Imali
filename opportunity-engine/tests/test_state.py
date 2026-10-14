@@ -41,7 +41,7 @@ class States(unittest.TestCase):
   self.assertEqual(classify(r,now=NOW)['final_approval_type'],'COMMERCIAL_OUTREACH')
   self.assertEqual(classify(r,{'operation':{'approval_status':'approved'}},NOW)['operational_state'],'BLOCKED_EXTERNAL')
  def test_contract_application_path(self):
-  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',execution_verified=True,execution_source_verified=True,execution_status='ready')
+  r=self.row(application_url='https://jobs.example.com/job/123',target_quality_status='verified',target_quality_checked_at=NOW,last_verified_at=NOW,execution_verified=True,execution_source_verified=True,execution_status='ready')
   r.update(source='business_contract_remotive',revenue_path='direct_contract',eligibility_status='eligible')
   self.assertEqual(classify(r,now=NOW)['next_machine_action'],'resume_preparation')
   r['tailored_resume']='resume';r['application_package_path']='/tmp/package'
