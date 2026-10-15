@@ -17,7 +17,7 @@ DB=os.getenv("WORK_AGENT_DB_DSN","dbname=imali user=sniperuser host=localhost")
 DASH=os.getenv("HUMAN_ALERT_DASHBOARD_URL","https://imali-defi.com/admin/work-agent")
 NS="canonical-v3"
 FINAL_APPROVALS={"COMMERCIAL_OUTREACH","CONTRACT_APPLICATION","GOVERNMENT_BID","CAPITAL_APPLICATION","EMPLOYMENT_APPLICATION","REWARD_ENTRY","REWARD_SUBMISSION"}
-EXTERNAL_TYPES={"CAPTCHA","AUTHENTICATION_REQUIRED","REGISTRATION_REQUIRED","APPLICANT_PROFILE_REQUIRED"}
+EXTERNAL_TYPES={"CAPTCHA","AUTHENTICATION_REQUIRED","REGISTRATION_REQUIRED","APPLICANT_PROFILE_REQUIRED","CAPITAL_PROFILE_REQUIRED"}
 EXTERNAL_WORDS=("captcha","login","2fa","two-factor","registration","credential","account access","submission reconciliation","ambiguous submission")
 
 def money(v):
@@ -102,6 +102,7 @@ def collect():
     with psycopg2.connect(DB) as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(sql); rows=cur.fetchall()
     items=[]
+    federal_profile_rows=[]
     for r in rows:
         if r["operational_state"]=="ACTION_REQUIRED":
             if r["final_approval_type"] in FINAL_APPROVALS:
@@ -112,6 +113,9 @@ def collect():
         else:
             reason=(r["blocker_reason"] or ""); low=reason.lower()
             if r["blocker_type"] not in EXTERNAL_TYPES and not any(w in low for w in EXTERNAL_WORDS): continue
+            if r["blocker_type"]=="CAPITAL_PROFILE_REQUIRED" and r.get("source")=="grants_gov":
+                federal_profile_rows.append(r)
+                continue
             category="EXTERNAL ISSUE"; why=reason or ("Resolve "+str(r["blocker_type"] or "external dependency"))
         listing_url=r["url"]; action_url=r["application_url"] or r["contact_url"] or r["url"]
         if category=="FINAL APPROVAL" and r["final_approval_type"]=="CONTRACT_APPLICATION" and r["lane"]!="Employment":
@@ -135,6 +139,44 @@ def collect():
         signature="|".join(str(x or "") for x in (r["id"],category,r["final_approval_type"],r["blocker_type"],why,listing_url,action_url))
         key=f"{NS}:{r['id']}:"+hashlib.sha256(signature.encode()).hexdigest()[:16]
         items.append(dict(r,key=key,category=category,why=why,lucrative=lucrative,value_reason=reason_for_value,listing_url=listing_url,action_url=action_url))
+    if federal_profile_rows:
+        first=federal_profile_rows[0]
+        count=len(federal_profile_rows)
+        profile_key=f"{NS}:capital-applicant-profile:v1"
+        items.append({
+            "id":"CAPITAL-PROFILE",
+            "title":"One-time Capital Applicant Profile",
+            "company":"Opportunity Engine",
+            "source":"grants_gov",
+            "lane":"Capital",
+            "operational_state":"BLOCKED_EXTERNAL",
+            "next_human_action":None,
+            "blocker_type":"CAPITAL_PROFILE_REQUIRED",
+            "blocker_reason":"Complete one applicant/entity profile once so the engine can automatically screen federal grant eligibility.",
+            "final_approval_type":None,
+            "approval_status":None,
+            "estimated_revenue":None,
+            "estimated_margin":None,
+            "margin_percent":None,
+            "business_value":None,
+            "personal_fit":None,
+            "demand_confidence":None,
+            "pursuit_priority":None,
+            "deadline":None,
+            "url":None,
+            "application_url":None,
+            "contact_url":None,
+            "outreach_contact_email":None,
+            "business_reason":f"This one-time profile currently blocks automated eligibility screening for {count} Grants.gov opportunities. Once supplied, incompatible grants can be disposed automatically and compatible grants can continue toward package preparation.",
+            "capital_requirements":{},
+            "key":profile_key,
+            "category":"EXTERNAL ISSUE",
+            "why":"Provide your federal applicant/entity category once (for example: individual, for-profit/small business, nonprofit, institution, state/local/tribal entity as applicable). The engine will reuse it across Grants.gov instead of asking you grant-by-grant.",
+            "lucrative":f"Unlocks automated screening across {count} currently blocked federal funding opportunities; award amounts and fit are evaluated individually after the profile is supplied.",
+            "value_reason":f"One reusable profile removes {count} repetitive human blockers.",
+            "listing_url":DASH,
+            "action_url":DASH,
+        })
     return items
 
 def format_item(i):

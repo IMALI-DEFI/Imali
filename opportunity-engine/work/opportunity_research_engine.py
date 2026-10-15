@@ -402,6 +402,7 @@ def target(conn,d,alternative=False):
                     except Exception:
                         pass
                 from company_job_resolver import normalize
+                from final_execution_guard import live_role_matches as final_live_role_matches, is_job_specific_application_url as final_job_specific_url
                 def matches_role(body):
                     normalized=normalize(body)
                     company=normalize(d.get('company'));title=normalize(d.get('title'))
@@ -438,7 +439,11 @@ def target(conn,d,alternative=False):
                 source_role_verified=matches_role(text)
                 identity=company_identity(d.get('company'),description)
                 company_page_verified=(not bad_host(host_of(final)) and identity_matches(identity,host_of(final),text))
-                verified_target=final if (is_ats(final) or is_employer_career(final)) and source_role_verified else None
+                if d.get('revenue_path')=='employment':
+                    final_role_verified=final_job_specific_url(final) and final_live_role_matches(d.get('company'),d.get('title'),final)
+                else:
+                    final_role_verified=(is_ats(final) or is_employer_career(final)) and source_role_verified
+                verified_target=final if final_role_verified else None
                 target_kind='ATS' if verified_target and is_ats(verified_target) else 'employer career page' if verified_target else None
 
                 # For the contract feed, a source-explicit application URL can be
@@ -491,7 +496,10 @@ def target(conn,d,alternative=False):
                                 if len(rendered_body.strip())>len(body.strip()):body=rendered_body
                             except Exception:pass
                     except Exception:continue
-                    role_specific_ok=(is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body)
+                    if d.get('revenue_path')=='employment':
+                        role_specific_ok=final_job_specific_url(candidate) and final_live_role_matches(d.get('company'),d.get('title'),candidate)
+                    else:
+                        role_specific_ok=(is_ats(candidate) or is_employer_career(candidate) or is_role_specific_external(candidate)) and matches_role(body)
                     company_application_ok=(str(d.get('source') or '')=='business_contract_remotive'
                                             and company_page_verified and is_application_landing(candidate)
                                             and same_site(final,candidate))
@@ -1038,6 +1046,9 @@ def capital_package_review(conn,d):
                 _,app_text,_=rendered_public_page(application_url)
             except Exception as exc:
                 return 'retry','Capital pathway application route could not be revalidated during package review: '+type(exc).__name__,{'error_type':type(exc).__name__}
+        app_low=str(app_text).lower()
+        if re.search(r'performing security verification|verify you are not a bot|complete the captcha|security service to protect against malicious bots',app_low,re.I):
+            return 'exhausted','Official capital application page requires human anti-bot verification',{'application_url':application_url,'blocker_type':'CAPTCHA'}
         if len(str(app_text).strip())<120:
             return 'retry','Capital pathway application destination has insufficient verifiable content',{'application_url':application_url}
         requirements['package_readiness_verified']=True

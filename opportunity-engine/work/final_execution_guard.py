@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 import os
+import re
 from urllib.parse import urlparse
+
+import requests
+from bs4 import BeautifulSoup
 
 import psycopg2
 from dotenv import load_dotenv
@@ -148,11 +152,14 @@ def is_job_specific_application_url(value):
         ]
         return len(parts) >= 2
 
-    # Ashby
+    # Ashby. Current public job URLs are commonly
+    # jobs.ashbyhq.com/<company>/<posting-id> without a /job/ segment.
     if "ashbyhq.com" in host:
+        parts=[x for x in path.split("/") if x]
         return (
             "/job/" in path
             or "/application/" in path
+            or (host.startswith("jobs.") and len(parts)>=2 and len(parts[1])>=8)
         )
 
     # Workable
@@ -261,6 +268,70 @@ def same_or_known_application_source(
         return True
 
     return False
+
+
+
+def normalize_text(value):
+    return re.sub(r'[^a-z0-9]+',' ',str(value or '').lower()).strip()
+
+
+def live_role_matches(company,title,application_url):
+    """Require the live page's primary job title area to corroborate the recorded role."""
+    if not application_url or not title:
+        return False
+    try:
+        response=requests.get(
+            application_url,
+            timeout=10,
+            allow_redirects=True,
+            headers={"User-Agent":"IMALI-Final-Execution-Guard/1.0"},
+        )
+        if response.status_code in (404,410):
+            return False
+        response.raise_for_status()
+        if len(response.content)>2_000_000:
+            return False
+        soup=BeautifulSoup(response.text,"html.parser")
+        body_text=" ".join(soup.stripped_strings)
+        if re.search(r'job (?:is )?no longer available|position (?:has been )?filled|this job has expired|applications? closed',body_text,re.I):
+            return False
+
+        primary=[]
+        if soup.title:
+            primary.append(soup.title.get_text(" ",strip=True))
+        for tag in soup.find_all(["h1","h2"],limit=8):
+            text=" ".join(tag.stripped_strings)
+            if text:
+                primary.append(text)
+        primary_norm=normalize_text(" | ".join(primary))
+        wanted=normalize_text(title)
+        if not primary_norm or not wanted:
+            return False
+
+        # Exact normalized title in title/H1/H2 is strongest.
+        title_ok=wanted in primary_norm
+        if not title_ok:
+            # Allow seniority/stack modifiers around the same core role, but
+            # never infer a generic title from unrelated body copy.
+            stop={"senior","sr","junior","jr","staff","principal","lead","remote","full","stack"}
+            tokens=[t for t in wanted.split() if len(t)>=4 and t not in stop]
+            if not tokens:
+                return False
+            title_ok=all(t in primary_norm for t in set(tokens))
+        if not title_ok:
+            return False
+
+        # Company corroboration can come from title/headings, page body, or domain.
+        company_norm=normalize_text(company)
+        host=domain(response.url)
+        body_norm=normalize_text(body_text[:50000])
+        company_tokens=[t for t in company_norm.split() if len(t)>=3]
+        company_ok=(not company_tokens or
+                    all(t in body_norm for t in company_tokens[:3]) or
+                    any(t in host.replace("."," ") for t in company_tokens[:2]))
+        return bool(company_ok)
+    except Exception:
+        return False
 
 
 def run():
@@ -407,19 +478,32 @@ def run():
 
             if application_url:
 
-                if same_or_known_application_source(
-                    source_url,
-                    application_url
+                if (
+                    is_job_specific_application_url(
+                        application_url
+                    )
+                    and live_role_matches(
+                        company,
+                        title,
+                        application_url
+                    )
                 ):
                     ok = True
                     reason = (
-                        "Application URL passed source/ATS validation."
+                        "Live job-specific destination corroborates the recorded company and role title."
+                    )
+
+                elif is_job_specific_application_url(
+                    application_url
+                ):
+                    reason = (
+                        "Application destination is job-specific but the current live page "
+                        "does not corroborate the recorded company and role title."
                     )
 
                 else:
                     reason = (
-                        "Application URL exists but source relationship "
-                        "could not be confirmed."
+                        "Application URL is generic or not specific enough to the recorded role."
                     )
 
             elif application_email:

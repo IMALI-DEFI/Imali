@@ -46,6 +46,9 @@ def classify(d, context=None, now=None):
         return dict(base,operational_state='ACTION_REQUIRED',next_human_action=action,final_approval_type=kind)
     def auto(action):
         a=(c.get('attempts') or {}).get(action,{})
+        evidence=a.get('evidence') or {}
+        if evidence.get('blocker_type')=='CAPTCHA':
+            return blocked('CAPTCHA',a.get('reason') or 'Official site requires human verification')
         if a.get('result')=='credentials_required': return blocked('AUTHENTICATION_REQUIRED',a.get('reason','Credentials required'))
         if a.get('result')=='exhausted':
             target_kind='MISSING_APPLICATION_TARGET' if lane=='Employment' or str(d.get('source') or '')=='business_contract_remotive' else 'CONTACT_UNRESOLVED'
@@ -71,13 +74,26 @@ def classify(d, context=None, now=None):
         return dict(base,**{k:old.get(k) for k in base if k in old})
     if d.get('source')=='test': return dispose('UNSUPPORTED_SOURCE',{'source':'test','reason':'Explicit test source, not an external opportunity'})
     if c.get('duplicate_of'): return dispose('DUPLICATE',{'duplicate_of':c['duplicate_of'],'source':d.get('source'),'source_id':d.get('source_id')})
+    capital_attempt=(c.get('attempts') or {}).get('capital_research') or {}
+    if lane=='Capital' and str(d.get('source') or '')=='capital_pathway' and capital_attempt.get('result')=='exhausted':
+        creason=str(capital_attempt.get('reason') or '')
+        cevidence=capital_attempt.get('evidence') or {}
+        if ('no longer shows the expected active program terms' in creason.lower()
+                or cevidence.get('dead_destination')
+                or 'no longer available' in creason.lower()):
+            return dispose('FUNDING_PATH_INACTIVE',{'reason':creason,'evidence':cevidence,'source':d.get('url'),'application_url':d.get('application_url')})
     target_attempt=(c.get('attempts') or {}).get('target_resolution') or {}
     if (str(d.get('source') or '')=='business_contract_remotive' or lane=='Employment') and target_attempt.get('result')=='exhausted':
         evidence=target_attempt.get('evidence') or {}
         reason=str(target_attempt.get('reason') or '')
-        if evidence.get('stale_application_targets') or 'no longer available' in reason.lower():
+        low_reason=reason.lower()
+        if evidence.get('stale_application_targets') or 'no longer available' in low_reason:
             return dispose('DEAD_APPLICATION_TARGET',{'reason':reason,'evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
-        if evidence.get('unverifiable_application_targets') or d.get('target_quality_status')!='verified' or invalid_application_url(d.get('application_url')):
+        if (evidence.get('unverifiable_application_targets')
+                or d.get('target_quality_status')!='verified'
+                or invalid_application_url(d.get('application_url'))
+                or 'no verified official target' in low_reason
+                or 'could not be machine-verified' in low_reason):
             return dispose('NO_VERIFIED_APPLICATION_PATH',{'reason':reason or 'No role-specific application destination could be verified','evidence':evidence,'source':d.get('url'),'application_url':d.get('application_url')})
     due=date(d.get('solicitation_due_at') or d.get('procurement_deadline'))
     if lane in ('Government','Broker / Intermediary','Capital','Rewards') and due and due<now: return dispose('EXPIRED',{'official_deadline':due.isoformat(),'source':d.get('url')})
@@ -107,6 +123,10 @@ def classify(d, context=None, now=None):
     if lane=='Capital':
         base['workbench_stage']='Researching'
         requirements=research.get('requirements') or {}
+        package_review_attempt=(c.get('attempts') or {}).get('capital_package_review') or {}
+        package_review_evidence=package_review_attempt.get('evidence') or {}
+        if package_review_attempt.get('result')=='exhausted' and package_review_evidence.get('blocker_type')=='CAPTCHA':
+            return blocked('CAPTCHA',package_review_attempt.get('reason') or 'Official capital application page requires human verification')
         capital_attempt=(c.get('attempts') or {}).get('capital_research') or {}
         if capital_attempt.get('result')=='exhausted':
             reason=str(capital_attempt.get('reason') or '')
@@ -260,6 +280,7 @@ def classify(d, context=None, now=None):
         if not d.get('tailored_resume'):return auto('resume_preparation')
         if not d.get('application_package_path'):return auto('application_package')
         if not d.get('execution_verified'):return auto('verification')
+        if not d.get('execution_source_verified') or d.get('execution_status')!='ready':return auto('target_resolution')
         return human('Review the prepared application; submission requires separate authorization','EMPLOYMENT_APPLICATION')
     if not d.get('contact_url'):return auto('target_resolution')
     if not d.get('outreach_contact_email'):
