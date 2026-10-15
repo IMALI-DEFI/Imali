@@ -726,6 +726,17 @@ def _web3_capital_research(conn,d):
     try:
         final,text,_=fetch(source_url)
         app_final,app_text,_=fetch(apply_url)
+        if len(app_text.strip())<150:
+            try:
+                rendered_url,rendered_text,_=rendered_public_page(apply_url)
+                if rendered_url:
+                    app_final=rendered_url
+                if len(rendered_text.strip())>len(app_text.strip()):
+                    app_text=rendered_text
+            except PermissionError:
+                return 'exhausted','Official Web3 funding application requires human verification',{'source_url':final,'application_url':apply_url,'blocker_type':'CAPTCHA'}
+            except Exception:
+                pass
     except HTTPError as exc:
         if exc.code in (404,410):
             return 'exhausted','Official Web3 funding destination is no longer available',{'status':exc.code,'source_url':source_url,'application_url':apply_url,'dead_destination':True}

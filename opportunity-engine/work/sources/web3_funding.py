@@ -43,7 +43,7 @@ def _application_open(url):
         text=_text(soup).strip()
     except Exception:
         return False
-    if len(text)<80:
+    if len(text)<150:
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as pw:
@@ -58,10 +58,12 @@ def _application_open(url):
                     browser.close()
         except Exception:
             return False
-    if len(text)<80:
+    if len(text)<150:
         return False
     low=text.lower()
     if re.search(r'applications? (?:are )?closed|not accepting applications|program complete|submissions? closed|form (?:is )?closed|no longer accepting',low,re.I):
+        return False
+    if not re.search(r'funding|grant|application|apply|funding amount|submit',low,re.I):
         return False
     return True
 
