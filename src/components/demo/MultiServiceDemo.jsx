@@ -112,9 +112,15 @@ export default function MultiServiceDemo({preview=false}) {
     <select id={preview?"prev-symbol":"full-symbol"} value={symbol} onChange={e=>setSymbol(e.target.value)} className="mt-2 w-full rounded-xl border border-white/20 bg-slate-800 p-3 text-base">{definition.symbols.map(s=><option key={s}>{s}</option>)}</select>
     <div className="mt-4 rounded-xl border border-white/10 p-3">
      <div className="flex flex-wrap items-center justify-between gap-1 text-sm text-slate-300"><span>{playing?"● Updating every 1.2 seconds":"Paused"} · simulated price history</span><span>Generated prices, not live quotes</span></div>
-     <svg className="mt-2 h-24 w-full" viewBox="0 0 300 90" role="img" aria-label="Illustrative price trend">
-      <polyline points={history.map((v,i)=>`${i*300/(history.length-1)},${45-(v-100)*5}`).join(" ")} stroke="#6ee7b7" strokeWidth="3" fill="none" strokeLinejoin="round"/>
+     <svg className="mt-3 h-56 w-full sm:h-64" viewBox="0 0 640 270" role="img" aria-label="Animated simulated green and red candlesticks with price levels and illustrative trading volume">
+      {(()=>{const values=history.slice(-32).map(v=>price*v/history[history.length-1]);const candles=values.slice(1).map((close,i)=>{const open=values[i];return {open,close,high:Math.max(open,close)+(Math.abs(close-open)*.22||price*.00045),low:Math.min(open,close)-(Math.abs(close-open)*.22||price*.00045),volume:Math.max(5,Math.abs(close-open)/Math.max(price,.01)*10000+12+(i*13)%45)};});const low=Math.min(...candles.map(c=>c.low)), high=Math.max(...candles.map(c=>c.high)),span=Math.max(.01,high-low);const yy=v=>15+(high-v)/span*177;return <>
+       {[0,1,2,3,4].map(i=>{const level=high-span*i/4;return <g key={i}><line x1="6" x2="548" y1={yy(level)} y2={yy(level)} stroke="#334155" strokeDasharray="3 5"/><text x="554" y={yy(level)+4} fill="#94a3b8" fontSize="12">{level.toLocaleString("en-US",{maximumFractionDigits:2})}</text></g>})}
+       {candles.map((c,i)=>{const x=14+i*17,color=c.close>=c.open?"#34d399":"#fb7185";return <g key={i}><line x1={x} x2={x} y1={yy(c.high)} y2={yy(c.low)} stroke={color} strokeWidth="2"/><rect x={x-5} y={Math.min(yy(c.open),yy(c.close))} width="10" height={Math.max(2,Math.abs(yy(c.close)-yy(c.open)))} fill={color}/><rect x={x-5} y={239-c.volume/100*40} width="10" height={c.volume/100*40} fill={color} opacity=".65"/></g>})}
+       <line x1="6" x2="548" y1="198" y2="198" stroke="#475569"/>
+       <text x="8" y="259" fill="#94a3b8" fontSize="12">Earlier</text><text x="475" y="259" fill="#94a3b8" fontSize="12">Now · 1.2s ticks</text>
+      </>})()}
      </svg>
+     <p className="mt-1 text-xs text-slate-400">Illustrative volume and OHLC candles derived from generated demo prices; not exchange data.</p>
     </div>
    </div>
    <form onSubmit={trade} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
