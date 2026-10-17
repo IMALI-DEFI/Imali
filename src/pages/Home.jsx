@@ -52,7 +52,7 @@ export default function Home() {
 
       <div className="mx-auto max-w-6xl px-5 pb-10 sm:px-6 lg:px-8">
         <MultiServiceDemo preview />
-
+        <div className="mt-5 text-center"><Link to="/trade-demo" className="inline-flex rounded-xl border border-emerald-400/50 px-5 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/10">View the full-screen demo →</Link></div>
       </div>
 
       <RecentSocialShowcase />
