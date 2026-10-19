@@ -18,8 +18,8 @@ export default function Support() {
       a: "High network congestion or low gas can delay confirmation. Try increasing gas or wait a few minutes. See Supported Chains for RPC tips.",
     },
     {
-      q: "How do referrals and XP work?",
-      a: "Share your referral link from the dashboard. As referrals trade, you earn commissions and XP that unlock cosmetic badges and perks.",
+      q: "How does the referral program work?",
+      a: "Share your referral link from the dashboard. Eligible referrals may earn commissions under the published program terms. Review referral eligibility and payout details before sharing.",
     },
   ];
 
@@ -35,40 +35,19 @@ export default function Support() {
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <div>
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">
-              Support & Player Help
+              IMALI Support Center
             </h1>
             <p className="text-gray-300 mt-2">
-              Stuck on a quest? Power up here. Browse quick actions, status, and FAQs—or open a ticket.
+              Get help connecting a supported account, managing your strategy, understanding subscription access, or opening a support ticket.
             </p>
           </div>
 
-          {/* Player card */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 md:w-[360px]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-300">Player Level</p>
-                <p className="text-xl font-bold">Level 3 — Apprentice</p>
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-300 px-3 py-1 text-xs font-semibold">
-                ● Online
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>XP</span>
-                <span>480 / 600</span>
-              </div>
-              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
-                <div className="h-full w-[80%] bg-gradient-to-r from-indigo-500 to-fuchsia-500" />
-              </div>
-              <div className="mt-3 flex gap-2">
-                <span className="text-[11px] rounded-md bg-indigo-500/15 text-indigo-300 px-2 py-1">
-                  🎯 Daily Streak: 4
-                </span>
-                <span className="text-[11px] rounded-md bg-amber-500/15 text-amber-300 px-2 py-1">
-                  🏆 Referral Rookie
-                </span>
-              </div>
+          <div className="rounded-2xl border border-emerald-400/30 bg-white/5 p-5 md:w-[360px]">
+            <p className="text-sm font-semibold text-emerald-300">New to IMALI?</p>
+            <p className="mt-2 text-sm text-gray-200">Explore the simulated trading dashboard before connecting an account. No live funds required.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link to="/trade-demo" className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-bold text-gray-950">Explore demo</Link>
+              <Link to="/signup" className="rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white">Create account</Link>
             </div>
           </div>
         </div>
@@ -117,12 +96,12 @@ export default function Support() {
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">System Status</h3>
-              <span className="text-xs rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-1">All Systems Operational</span>
+              <span className="text-xs rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-1">Check Live Status</span>
             </div>
             <ul className="mt-4 space-y-2 text-sm text-gray-300">
-              <li>• Dashboard API — <span className="text-emerald-300">OK</span></li>
-              <li>• Telegram Alerts — <span className="text-emerald-300">OK</span></li>
-              <li>• OKX Integration — <span className="text-emerald-300">OK</span></li>
+              <li>• Dashboard API — verify in your account</li>
+              <li>• Telegram Alerts — check connected settings</li>
+              <li>• Exchange Integration — verify connection status</li>
             </ul>
           </div>
 
