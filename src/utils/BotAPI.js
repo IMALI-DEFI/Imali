@@ -828,6 +828,9 @@ const getSportsJediOverview = () =>
 const getSportsJediHealth = () =>
   api.get("/api/admin/sports-jedi/health");
 
+const getSportsJediUsers = () =>
+  api.get("/api/admin/sports-jedi-users");
+
 
 
 // ============================================================
@@ -1059,6 +1062,7 @@ const BotAPI = {
   // Admin — Sports Jedi
   getSportsJediOverview,
   getSportsJediHealth,
+  getSportsJediUsers,
 
   api,
   getToken,

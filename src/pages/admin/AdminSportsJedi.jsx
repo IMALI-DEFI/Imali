@@ -17,6 +17,8 @@ export default function AdminSportsJedi() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [accountData, setAccountData] = useState({ users: [], count: 0 });
+  const [accountError, setAccountError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -26,6 +28,17 @@ export default function AdminSportsJedi() {
       const response = await BotAPI.getSportsJediOverview();
 
       setData(response?.data || response);
+      try {
+        const accountsResponse = await BotAPI.getSportsJediUsers();
+        const payload = accountsResponse?.data?.data || accountsResponse?.data || {};
+        setAccountData({
+          users: Array.isArray(payload.users) ? payload.users : [],
+          count: Number(payload.count || 0),
+        });
+        setAccountError("");
+      } catch (accountsErr) {
+        setAccountError(accountsErr?.response?.data?.message || "Signup records could not be loaded.");
+      }
     } catch (err) {
       console.error("Sports Jedi admin error:", err);
 
@@ -133,6 +146,43 @@ export default function AdminSportsJedi() {
             "Not configured"
           }
         />
+      </div>
+
+      <div className="sj-panel">
+        <h2>Signup &amp; Subscription Reporting</h2>
+        <p>Users who registered for Sports Jedi, including free accounts. This report comes from the same account database used for Sports Jedi sign-in and IMALI admin analytics.</p>
+        {accountError ? <p role="alert">{accountError}</p> : (
+          <>
+            <p><strong>{accountData.count}</strong> Sports Jedi accounts recorded</p>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Signup date", "Email", "Plan", "Status", "Source", "Campaign"].map(label =>
+                      <th key={label} style={{ padding: "10px 8px", borderBottom: "1px solid #334155" }}>{label}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {accountData.users.slice(0, 25).map(u => (
+                    <tr key={u.id}>
+                      <td style={{ padding: "10px 8px" }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>{u.email || "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>{u.sports_jedi_plan || "free"}</td>
+                      <td style={{ padding: "10px 8px" }}>{u.sports_jedi_status || "free"}</td>
+                      <td style={{ padding: "10px 8px" }}>{u.utm_source || "direct / unknown"}</td>
+                      <td style={{ padding: "10px 8px" }}>{u.utm_campaign || "—"}</td>
+                    </tr>
+                  ))}
+                  {accountData.users.length === 0 &&
+                    <tr><td colSpan={6} style={{ padding: "14px 8px" }}>No Sports Jedi signups have been recorded.</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            {accountData.users.length > 25 && <p>Showing the 25 most recent registrations.</p>}
+          </>
+        )}
       </div>
 
       <div className="sj-panel">
