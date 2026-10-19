@@ -96,6 +96,12 @@ export default function Home() {
               Start Trading with IMALI
               <FaArrowRight className="transition group-hover:translate-x-1" />
             </Link>
+            <Link
+              to="/signup?utm_source=website&utm_medium=homepage&utm_campaign=explore_account"
+              className="mt-4 block text-center text-sm font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
+            >
+              Not ready for Pro? Create an account first
+            </Link>
 
             <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45">
               <span className="flex items-center gap-2">
@@ -230,6 +236,14 @@ export default function Home() {
             Start Pro — $19.95/month
             <FaArrowRight />
           </Link>
+          <div className="mt-5">
+            <Link
+              to="/signup?utm_source=website&utm_medium=homepage&utm_campaign=explore_account"
+              className="text-sm font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
+            >
+              Create an account before choosing a plan
+            </Link>
+          </div>
         </div>
       </section>
     </div>
