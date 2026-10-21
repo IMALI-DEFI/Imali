@@ -45,7 +45,7 @@ const plans = [
     alt: "Starter NFT Artwork",
     price: 0,
     profitShare: null,
-    subtitle: "Paper trade first. No risk. No credit card.",
+    subtitle: "Explore the demo with virtual funds. No credit card.",
     cta: "Start Free",
     ctaLoggedIn: "Current Plan",
     color: "from-emerald-500/20 to-teal-500/10",
@@ -53,11 +53,11 @@ const plans = [
     category: "trading",
     stripePriceId: STRIPE_CONFIG.STARTER_PRICE_ID,
     features: [
-      "$1,000 paper trading demo",
-      "Test all bots risk‑free",
-      "Stock & crypto preview",
+      "$1,000 virtual-funds trading demo",
+      "Try simulated strategy controls",
+      "Explore spot, stocks, futures, DEX and options simulations",
       "No credit card required",
-      "Instant access",
+      "Open the demo instantly",
     ],
     locked: ["Live trading", "DEX sniper", "Staking / Lending"],
   },
@@ -237,7 +237,7 @@ const faqs = [
   },
   {
     q: "Is there a free trial?",
-    a: "Starter includes a 7‑day free trial. Paid plans require billing setup before live trading.",
+    a: "Starter offers free access to the interactive demo. Paid automated trading requires a subscription and supported broker connection.",
   },
   {
     q: "What payment methods do you accept?",
@@ -805,14 +805,14 @@ export default function Pricing() {
           <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">
             {activeTab === "admin"
               ? "Get a complete admin panel with user management, billing, analytics, and more. Already built for you."
-              : "Join thousands of traders using IMALI to automate their strategies. Start free, practice first, go live when ready."}
+              : "Explore IMALI's trading demo with virtual funds. See how each service works, then compare plans when you're ready."}
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               to={activeTab === "admin" ? "/admin-platform/signup" : "/signup?plan=starter&tier=starter"}
               className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700"
             >
-              {activeTab === "admin" ? "Start Admin Free Trial →" : "Start Free Trial →"}
+              {activeTab === "admin" ? "Start Admin Free Trial →" : "Get Started Free →"}
             </Link>
             <Link to={activeTab === "admin" ? "/admin-platform/demo" : "/trade-demo"} className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
               {activeTab === "admin" ? "View Demo →" : "Try Demo First →"}
