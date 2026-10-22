@@ -1398,11 +1398,14 @@ function dashboardReducer(state, action) {
       return { ...state, activeType: action.payload, currentStrategy: selected };
     }
     case ACTIONS.SET_LANE_STRATEGIES: {
-      const lanes = isRecord(action.payload) ? action.payload : {};
+      const lanes = isRecord(action.payload?.lanes) ? action.payload.lanes : {};
+      const availableStrategies = recordRows(action.payload?.strategies).length
+        ? recordRows(action.payload.strategies) : state.strategies;
       const strategyId = lanes[state.activeType];
-      const selected = state.strategies.find(item => item.id === strategyId) ||
-        state.strategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
-      return { ...state, laneStrategies: lanes, laneStrategiesReady: true, currentStrategy: selected };
+      const selected = availableStrategies.find(item => item.id === strategyId) ||
+        availableStrategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
+      return { ...state, laneStrategies: lanes, strategies: availableStrategies,
+        laneStrategiesReady: true, currentStrategy: selected };
     }
     case ACTIONS.SET_LANE_STRATEGY: {
       const { lane, strategy } = action.payload;
@@ -2031,11 +2034,13 @@ function MemberDashboardContent() {
         selectedStrategy = mapped.find((strategy) => strategy.recommended) || mapped[1] || mapped[0];
       }
 
-      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
+      // A legacy global preference is not the active service's saved selection.
+      // Set the chosen service only after its lane preferences and strategy
+      // catalog are available together; the reducer applies both atomically.
       try {
         const saved = await BotAPI.getUserLaneStrategies();
         const lanes = saved?.lanes || saved?.data?.lanes || {};
-        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: lanes });
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: { lanes, strategies: mapped } });
       } catch (error) {
         console.warn("Lane strategy preferences unavailable", error);
         // Leave strategies unconfirmed; do not fall back to global saves.
