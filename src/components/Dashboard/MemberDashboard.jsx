@@ -1618,6 +1618,12 @@ function MemberDashboardContent() {
   }, [combinedExchangeKey]);
   const combinedPnlValue = combinedPnl.rows.reduce((total,row)=>total+row.amount,0);
   const combinedModes = [...new Set(combinedPnl.rows.map(row=>row.mode))];
+  // Never present an arithmetic sum as one account's live P&L if reports mix
+  // live and paper, omit connected exchanges, or fail to identify their mode.
+  const combinedPnlComparable = combinedPnl.rows.length > 0 &&
+    combinedPnl.unavailable.length === 0 &&
+    combinedPnl.rows.length === combinedExchangeKeys.length &&
+    combinedModes.length === 1 && ['live', 'paper'].includes(combinedModes[0]);
   const activeConnection = useMemo(
     () => state.connections[activeTab.connectionKey],
     [state.connections, activeTab.connectionKey]
@@ -3665,10 +3671,11 @@ getStrategy, state.debug.failedRequests]);
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">{combinedPnl.rows.length} of {combinedExchangeKeys.length} exchanges reporting</span>
             </div>
             <p className={`mt-4 text-3xl font-black sm:text-4xl ${combinedPnlValue < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-              {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnl.rows.length ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
+              {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnlComparable ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
             </p>
-            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()}: ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
+            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()} (${row.mode}): ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
             <p className="mt-3 text-xs text-amber-200/80">
+              {!combinedPnlComparable && combinedPnl.rows.length ? 'Combined amount withheld: missing or mixed live/paper reporting. Individual source figures shown for review only. ' : ''}
               {combinedPnl.unavailable.length ? `Partial total: no usable figures for ${combinedPnl.unavailable.join(', ')}. ` : ''}
               {combinedModes.length === 1 && combinedModes[0] === 'live' ? 'Reported live mode. ' : combinedModes.length === 1 && combinedModes[0] === 'paper' ? 'Reported paper mode. ' : 'Live/paper classification is not fully verified. '}
               Open-position P&L is excluded unless included by the upstream exchange's reported field. DEX wallet data is not yet included.
