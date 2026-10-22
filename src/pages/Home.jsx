@@ -17,13 +17,13 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
       {/* HERO */}
-      <section className="relative min-h-[78vh] flex items-center">
+      <section className="relative min-h-[42vh] flex items-center">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-slate-950 to-cyan-500/10" />
 
         <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
 
-        <div className="relative z-10 mx-auto w-full max-w-6xl px-5 py-20 text-center sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto w-full max-w-6xl px-5 py-12 text-center sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -45,12 +45,14 @@ export default function Home() {
               Connect your existing trading account and let IMALI analyze
               opportunities, manage risk, and automate trades.
             </p>
+            <a href="#interactive-trading-demo" className="mt-6 inline-flex items-center justify-center gap-3 rounded-2xl bg-emerald-400 px-8 py-4 text-lg font-black text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300">Try Demo <FaArrowRight aria-hidden="true" /></a>
+            <p className="mt-3 text-sm text-white/60">Try Spot, DEX, Stocks, Futures, and Options with simulated funds. No account required.</p>
 
           </motion.div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-6xl px-5 pb-10 sm:px-6 lg:px-8">
+      <div id="interactive-trading-demo" className="mx-auto max-w-6xl scroll-mt-6 px-5 pb-10 sm:px-6 lg:px-8">
         <MultiServiceDemo preview />
         <div className="mt-5 text-center"><Link to="/trade-demo" className="inline-flex rounded-xl border border-emerald-400/50 px-5 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/10">View the full-screen demo →</Link></div>
       </div>
