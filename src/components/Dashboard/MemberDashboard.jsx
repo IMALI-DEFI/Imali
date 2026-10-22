@@ -1,3 +1,4 @@
+import LearningProgress from "./LearningProgress";
 // src/components/Dashboard/MemberDashboard.jsx
 // PRODUCTION-READY IMALI Member Dashboard v3.0
 // FIXED: subscription sync, mobile-first, candlestick chart, AI panel, strategy heatmap
@@ -3527,6 +3528,7 @@ getStrategy, state.debug.failedRequests]);
               <button type="button" onClick={() => navigate('/trade-demo')} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">3 · Learn risk controls</strong><span className="block text-sm text-white/60">Explore simulated stop and exit settings.</span></button>
             </div>
           </section>
+          <LearningProgress />
           {/* Trading Types */}
           <section id="imali-trading-services" className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="grid grid-cols-4">
