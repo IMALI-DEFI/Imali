@@ -3696,6 +3696,7 @@ getStrategy, state.debug.failedRequests]);
                     <span aria-hidden="true" className={`text-3xl leading-none ${active ? "text-emerald-300" : "text-cyan-300"}`}>{tab.icon}</span>
                     <span className="leading-tight">{tab.label}</span>
                     {locked && <span className="flex items-center gap-1 text-[10px] text-amber-200/70"><FaLock /> {tab.minTier.toUpperCase()}</span>}
+                    {!locked && <span className="text-[10px] text-white/60">{!state.laneStrategiesReady ? "Preferences unavailable" : state.laneStrategies[tab.id] ? "Strategy saved" : "Choose strategy"}</span>}
                   </button>
                 );
               })}
