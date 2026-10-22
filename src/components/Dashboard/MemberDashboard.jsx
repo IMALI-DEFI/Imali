@@ -3518,8 +3518,17 @@ getStrategy, state.debug.failedRequests]);
             </div>
           )}
 
+          <section aria-label="IMALI learning missions" className="rounded-3xl border border-cyan-400/30 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 p-4 sm:p-5">
+            <h3 className="text-lg font-black">🎮 IMALI Learning Missions</h3>
+            <p className="my-3 text-sm text-white/65">Build research skills without rewarding unnecessary trades. These are guided activities, not verified streaks or profit badges.</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <button type="button" onClick={() => navigate('/trade-demo')} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">1 · Try the simulator</strong><span className="block text-sm text-white/60">Practice without placing a real trade.</span></button>
+              <button type="button" onClick={() => document.getElementById('imali-trading-services')?.scrollIntoView({behavior:'smooth'})} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">2 · Explore services</strong><span className="block text-sm text-white/60">Review trading tabs and connection status.</span></button>
+              <button type="button" onClick={() => navigate('/trade-demo')} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">3 · Learn risk controls</strong><span className="block text-sm text-white/60">Explore simulated stop and exit settings.</span></button>
+            </div>
+          </section>
           {/* Trading Types */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
+          <section id="imali-trading-services" className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="grid grid-cols-4">
               {visibleTradingTypes.map((tab) => {
                 const locked = !hasTierAccess(effectiveTier, tab.minTier);
