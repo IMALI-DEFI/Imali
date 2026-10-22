@@ -11,8 +11,11 @@ const initialBalance = 10000;
 const asMoney = (x)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(x);
 export default function MultiServiceDemo({preview=false}) {
  const [market,setMarket]=useState("Spot");
- const [strategy,setStrategy]=useState("Balanced");
- const [risk,setRisk]=useState("Medium");
+ // Preserve each service's beginner preferences independently during the demo.
+ const [preferences,setPreferences]=useState(()=>Object.fromEntries(Object.keys(MARKETS).map(key=>[key,{strategy:"Balanced",risk:"Medium"}])));
+ const strategy=preferences[market].strategy;
+ const risk=preferences[market].risk;
+ const setPreference=(field,value)=>setPreferences(previous=>({...previous,[market]:{...previous[market],[field]:value}}));
  const [investment,setInvestment]=useState("10000");
  const [symbol,setSymbol]=useState("BTC/USD");
  const [qty,setQty]=useState("0.01");
@@ -97,9 +100,10 @@ export default function MultiServiceDemo({preview=false}) {
    {Object.keys(MARKETS).map(m=><button type="button" key={m} role="tab" aria-selected={m===market} onClick={()=>setMarket(m)} className={`rounded-xl border px-4 py-3 text-sm font-bold ${m===market?"border-emerald-400 bg-emerald-400 text-slate-950":"border-white/20 bg-white/5 text-white"}`}>{m}</button>)}
   </div>
   <div className="mt-5 grid gap-3 rounded-xl border border-white/10 bg-white/5 p-4 sm:grid-cols-3">
-   <label className="text-sm">Strategy<select value={strategy} onChange={e=>setStrategy(e.target.value)} className="mt-1 w-full rounded-xl bg-slate-800 p-3 text-base">{["Conservative","Balanced","Growth","Aggressive"].map(v=><option key={v}>{v}</option>)}</select></label>
-   <label className="text-sm">Risk preference<select value={risk} onChange={e=>setRisk(e.target.value)} className="mt-1 w-full rounded-xl bg-slate-800 p-3 text-base">{["Low","Medium","High"].map(v=><option key={v}>{v}</option>)}</select></label>
+   <label className="text-sm">Strategy<select value={strategy} onChange={e=>setPreference("strategy",e.target.value)} className="mt-1 w-full rounded-xl bg-slate-800 p-3 text-base">{["Conservative","Balanced","Growth","Aggressive"].map(v=><option key={v}>{v}</option>)}</select></label>
+   <label className="text-sm">Risk preference<select value={risk} onChange={e=>setPreference("risk",e.target.value)} className="mt-1 w-full rounded-xl bg-slate-800 p-3 text-base">{["Low","Medium","High"].map(v=><option key={v}>{v}</option>)}</select></label>
    <label className="text-sm">Paper investment limit ($)<input type="number" min="1" max="10000" value={investment} onChange={e=>setInvestment(e.target.value)} className="mt-1 w-full rounded-xl bg-slate-800 p-3 text-base" /></label>
+   <p className="text-xs text-emerald-200 sm:col-span-3">{market} preferences: {strategy} strategy · {risk.toLowerCase()} risk. Each service keeps its own settings while you explore.</p>
    <p className="text-xs text-slate-300 sm:col-span-3">These beginner preferences are for illustration only; they do not change a real trading bot.</p>
   </div>
   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
