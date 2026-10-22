@@ -2364,6 +2364,16 @@ getStrategy, state.debug.failedRequests]);
     }
   }, [activeTab.exchange]);
 
+  const [paperStats, setPaperStats] = useState(null);
+  const [paperStatsError, setPaperStatsError] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    BotAPI.getPaperTradingStats()
+      .then(data => { if (mounted) { setPaperStats(data); setPaperStatsError(""); } })
+      .catch(() => { if (mounted) setPaperStatsError("Paper stats unavailable"); });
+    return () => { mounted = false; };
+  }, []);
+
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetchWithRetry(() =>
@@ -3648,6 +3658,22 @@ getStrategy, state.debug.failedRequests]);
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* Research-only paper outcomes. Never add to live account P&L. */}
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+            <h3 className="text-xl font-black">Paper Trading Results</h3>
+            <p className="mt-2 text-xs text-amber-200/80">
+              Historical simulation only. These are not broker-verified results and do not include verified execution fees.
+            </p>
+            {paperStats ? (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <MiniBox label="Paper wins" value={Number(paperStats.wins || 0).toLocaleString()} />
+                <MiniBox label="Paper losses" value={Number(paperStats.losses || 0).toLocaleString()} />
+                <MiniBox label="Break-even" value={Number(paperStats.breakeven || 0).toLocaleString()} />
+                <MiniBox label="Win rate" value={formatPercent(Number(paperStats.win_rate || 0))} />
+              </div>
+            ) : <p className="mt-3 text-sm text-white/60">{paperStatsError || "Loading paper statistics..."}</p>}
           </section>
 
           {/* Assets */}

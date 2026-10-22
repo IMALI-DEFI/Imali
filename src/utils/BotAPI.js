@@ -687,6 +687,9 @@ const getTradingActivity = async (
 };
 
 // ─── STATS / TRADES ─────────────────────────────────
+const getPaperTradingStats = async () =>
+  getData(await api.get("/api/trading/paper-stats"));
+
 const getLiveTradingStats = async (exchange = "okx", skipCache = false) =>
   cachedGet(`live_stats_${exchange}`, 7000, async () => {
     const d = getData(await api.get(`/api/trading/live-stats?exchange=${exchange}`));
@@ -1129,6 +1132,7 @@ const BotAPI = {
     };
   },
   updateUserStrategyPreference: async ({ strategyId }) => updateUserStrategy(strategyId),
+  getPaperTradingStats,
   getLiveTradingStats,
   getOpenPositions,
   getLiveTradeHistory,
