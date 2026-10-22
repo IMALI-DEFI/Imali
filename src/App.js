@@ -41,6 +41,7 @@ import AdminPlatformDemo from "./pages/AdminPlatformDemo";
 import AdminDashboard from "./pages/AdminDashboard";
 import Documentation from "./pages/Documentation";
 import AdminWorkAgent from "./pages/admin/AdminWorkAgent";
+import OpportunityWorkspace from "./pages/OpportunityWorkspace";
 import AdminSportsJedi from "./pages/admin/AdminSportsJedi";
 import AdminAutomationAnalytics from "./pages/admin/AdminAutomationAnalytics";
 
@@ -302,6 +303,9 @@ function MainAppRoutes() {
                 <RedirectIfActivated><Activation /></RedirectIfActivated>
               </ProtectedRoute>
             } />
+
+            <Route path="/opportunity-engine" element={<RequireAuth><OpportunityWorkspace /></RequireAuth>} />
+            <Route path="/opportunity-engine/*" element={<RequireAuth><OpportunityWorkspace /></RequireAuth>} />
 
             {/* DASHBOARD - MAIN MEMBER DASHBOARD */}
             <Route path="/dashboard" element={
