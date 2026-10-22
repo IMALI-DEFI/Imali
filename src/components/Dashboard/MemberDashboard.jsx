@@ -18,6 +18,7 @@ import BotAPI from "../../utils/BotAPI";
 import {isRecord, recordRows, safeText, storageGet, storageSet, signOutForRecovery} from "../../utils/dashboardSafety";
 import DashboardErrorBoundary from "./DashboardErrorBoundary";
 import LiveDashboardOverview from "./LiveDashboardOverview";
+import OptionsTrading from "../../pages/OptionsTrading";
 import { motion } from "framer-motion";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
@@ -51,6 +52,8 @@ import {
   FaBell,
   FaBrain,
   FaClock,
+  FaLayerGroup,
+  FaBalanceScale,
 } from "react-icons/fa";
 
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
@@ -148,7 +151,7 @@ const TRADING_TYPES = [
     icon: <FaChartLine />,
     exchange: "okx",
     connectionKey: "okx",
-    connectionLabel: "OKX Futures API",
+    connectionLabel: "OKX Futures",
     minTier: "elite",
     connectRoute: "/connect-okx",
   },
@@ -159,7 +162,7 @@ const TRADING_TYPES = [
     icon: <FaWater />,
     exchange: "wallet",
     connectionKey: "wallet",
-    connectionLabel: "Wallet / DEX Bot",
+    connectionLabel: "Wallet / DEX",
     minTier: "elite",
     connectRoute: "/connect-wallet",
   },
@@ -173,6 +176,28 @@ const TRADING_TYPES = [
     connectionLabel: "Alpaca API",
     minTier: "pro",
     connectRoute: "/connect-alpaca",
+  },
+  {
+    id: "options",
+    categoryId: "options",
+    label: "Options",
+    icon: <FaLayerGroup />,
+    exchange: "alpaca",
+    connectionKey: "alpaca",
+    connectionLabel: "Alpaca Options",
+    minTier: "elite",
+    connectRoute: "/options",
+  },
+  {
+    id: "kalshi",
+    categoryId: "kalshi",
+    label: "Prediction",
+    icon: <FaBalanceScale />,
+    exchange: "kalshi",
+    connectionKey: "kalshi",
+    connectionLabel: "Kalshi",
+    minTier: "elite",
+    connectRoute: "/connect-kalshi",
   },
 ];
 
@@ -490,11 +515,12 @@ const ConnectionCard = memo(
               </p>
             ) : needsReconnect ? (
               <p className="text-xs sm:text-sm text-yellow-100/80">
-                Reconnect before trading can start.
+                Connect Live
               </p>
             ) : (
               <p className="text-xs sm:text-sm text-emerald-100/80">
-                Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
+                {normalizeMode(connection?.mode) === "paper" ? "Connected Paper" : "Connected Live"}
+                {connection?.keyMasked ? ` (${connection.keyMasked})` : ""}
               </p>
             )}
 
@@ -529,8 +555,8 @@ const ConnectionCard = memo(
             </>
           ) : needsReconnect ? (
             <>
-              <FaRedo className="inline mr-1 sm:mr-2" />
-              Reconnect
+              <FaPlug className="inline mr-1 sm:mr-2" />
+              Connect Live
             </>
           ) : String(activeTab?.exchange || "").toLowerCase() === "alpaca" ? (
             <>
@@ -1269,6 +1295,8 @@ const initialState = {
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
+  laneStrategies: {},
+  laneStrategiesReady: false,
   botRunning: false,
   botMode: "paper",
   connections: {
@@ -1276,6 +1304,7 @@ const initialState = {
     robinhood: { connected: false, mode: "live", keyMasked: "" },
     alpaca: { connected: false, mode: "paper", keyMasked: "" },
     wallet: { connected: false, mode: "live", keyMasked: "" },
+    kalshi: { connected: false, mode: "paper", keyMasked: "" },
   },
   totalAssetValue: 0,
   usdCashValue: 0,
@@ -1325,6 +1354,8 @@ const ACTIONS = {
   SET_ACTIVE_TYPE: "SET_ACTIVE_TYPE",
   SET_STRATEGIES: "SET_STRATEGIES",
   SET_CURRENT_STRATEGY: "SET_CURRENT_STRATEGY",
+  SET_LANE_STRATEGIES: "SET_LANE_STRATEGIES",
+  SET_LANE_STRATEGY: "SET_LANE_STRATEGY",
   SET_BOT_RUNNING: "SET_BOT_RUNNING",
   SET_BOT_MODE: "SET_BOT_MODE",
   SET_CONNECTIONS: "SET_CONNECTIONS",
@@ -1360,8 +1391,24 @@ function dashboardReducer(state, action) {
         ...state,
         subscriptionStatus: String(action.payload || "").toLowerCase(),
       };
-    case ACTIONS.SET_ACTIVE_TYPE:
-      return { ...state, activeType: action.payload };
+    case ACTIONS.SET_ACTIVE_TYPE: {
+      const strategyId = state.laneStrategies[action.payload];
+      const selected = state.strategies.find(item => item.id === strategyId) ||
+        state.strategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
+      return { ...state, activeType: action.payload, currentStrategy: selected };
+    }
+    case ACTIONS.SET_LANE_STRATEGIES: {
+      const lanes = isRecord(action.payload) ? action.payload : {};
+      const strategyId = lanes[state.activeType];
+      const selected = state.strategies.find(item => item.id === strategyId) ||
+        state.strategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
+      return { ...state, laneStrategies: lanes, laneStrategiesReady: true, currentStrategy: selected };
+    }
+    case ACTIONS.SET_LANE_STRATEGY: {
+      const { lane, strategy } = action.payload;
+      return { ...state, laneStrategies: {...state.laneStrategies,[lane]:strategy.id},
+        currentStrategy: state.activeType === lane ? strategy : state.currentStrategy };
+    }
     case ACTIONS.SET_STRATEGIES:
       return { ...state, strategies: recordRows(action.payload).length ? recordRows(action.payload) : FALLBACK_STRATEGIES };
     case ACTIONS.SET_CURRENT_STRATEGY:
@@ -1536,6 +1583,41 @@ function MemberDashboardContent() {
     [state.activeType]
   );
 
+  // One request per distinct exchange, never per service tab (OKX spot/futures and
+  // Alpaca stocks/options share exchange identifiers in the current stats API).
+  const [combinedPnl, setCombinedPnl] = useState({loading:true, rows:[], unavailable:[], updatedAt:null});
+  const combinedExchangeKeys = useMemo(() => {
+    const enabled = TRADING_TYPES.filter(item => state.connections[item.connectionKey]?.connected);
+    return [...new Set(enabled.map(item => item.exchange).filter(exchange => exchange && exchange !== "wallet"))];
+  }, [state.connections]);
+  const combinedExchangeKey = combinedExchangeKeys.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!combinedExchangeKeys.length) {
+        if (!cancelled) setCombinedPnl({loading:false,rows:[],unavailable:[],updatedAt:new Date()});
+        return;
+      }
+      if (!cancelled) setCombinedPnl(previous => ({...previous,loading:true}));
+      const results = await Promise.all(combinedExchangeKeys.map(async exchange => {
+        try {
+          const result = unwrapData(await BotAPI.getLiveTradingStats(exchange,true));
+          const summary = result?.summary || result;
+          const raw = summary?.realized_pnl ?? summary?.realizedPnl ?? summary?.total_pnl ?? summary?.totalPnl;
+          if (raw === null || raw === undefined || raw === '' || !Number.isFinite(Number(raw))) throw new Error('No realized P&L reported');
+          return {exchange, amount:Number(raw), mode: String(summary?.mode || summary?.trading_mode || 'unknown').toLowerCase()};
+        } catch (error) {
+          return {exchange, error:true};
+        }
+      }));
+      if (!cancelled) setCombinedPnl({loading:false,rows:results.filter(row=>!row.error),unavailable:results.filter(row=>row.error).map(row=>row.exchange),updatedAt:new Date()});
+    };
+    load();
+    const interval = window.setInterval(load,60000);
+    return () => {cancelled=true;window.clearInterval(interval);};
+  }, [combinedExchangeKey]);
+  const combinedPnlValue = combinedPnl.rows.reduce((total,row)=>total+row.amount,0);
+  const combinedModes = [...new Set(combinedPnl.rows.map(row=>row.mode))];
   const activeConnection = useMemo(
     () => state.connections[activeTab.connectionKey],
     [state.connections, activeTab.connectionKey]
@@ -1944,6 +2026,14 @@ function MemberDashboardContent() {
       }
 
       dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
+      try {
+        const saved = await BotAPI.getUserLaneStrategies();
+        const lanes = saved?.lanes || saved?.data?.lanes || {};
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: lanes });
+      } catch (error) {
+        console.warn("Lane strategy preferences unavailable", error);
+        // Leave strategies unconfirmed; do not fall back to global saves.
+      }
     } catch (err) {
       if (err.name === "AbortError") return;
       console.warn("Fetch strategies failed:", err);
@@ -2086,6 +2176,16 @@ getStrategy, state.debug.failedRequests]);
         console.warn("Fetch Robinhood status failed:", robinhoodErr);
       }
 
+      let kalshiStatus = null;
+      try {
+        const kalshiRes = await fetchWithRetry(() =>
+          BotAPI.getKalshiStatus?.(true)
+        );
+        kalshiStatus = unwrapData(kalshiRes);
+      } catch (kalshiErr) {
+        console.warn("Fetch Kalshi status failed:", kalshiErr);
+      }
+
       const toBool = (value) =>
         value === true || value === "true" || value === 1 || value === "1";
 
@@ -2121,6 +2221,13 @@ getStrategy, state.debug.failedRequests]);
 
       const walletConnected = toBool(
         data.wallet_connected ?? data.walletConnected ?? data.wallet?.connected
+      );
+
+      const kalshiConnected = toBool(
+        kalshiStatus?.connected ??
+        kalshiStatus?.connection?.connected ??
+        data.kalshi_connected ??
+        data.kalshi?.connected
       );
 
       const okxMode = normalizeMode(
@@ -2180,6 +2287,14 @@ getStrategy, state.debug.failedRequests]);
               data.wallet?.address_masked ??
               "",
           },
+          kalshi: {
+            connected: kalshiConnected,
+            mode: kalshiStatus?.live_trading ? "live" : "paper",
+            keyMasked:
+              kalshiStatus?.key_masked ??
+              kalshiStatus?.api_key_masked ??
+              "",
+          },
         },
       });
 
@@ -2193,6 +2308,13 @@ getStrategy, state.debug.failedRequests]);
 
       if (activeTab.connectionKey === "robinhood") {
         dispatch({ type: ACTIONS.SET_BOT_MODE, payload: robinhoodMode });
+      }
+
+      if (activeTab.connectionKey === "kalshi") {
+        dispatch({
+          type: ACTIONS.SET_BOT_MODE,
+          payload: kalshiStatus?.live_trading ? "live" : "paper",
+        });
       }
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -2578,14 +2700,11 @@ getStrategy, state.debug.failedRequests]);
   // SAVE FUNCTIONS
   // ============================================================================
 
-  const saveStrategyPreference = useCallback(async (strategyId) => {
-    storageSet("imali_selected_strategy", strategyId);
-
-    try {
-      await BotAPI.updateUserStrategy?.(strategyId);
-    } catch (err) {
-      console.warn("Could not save strategy preference to backend", err);
-    }
+  const saveStrategyPreference = useCallback(async (strategyId, lane) => {
+    if (typeof BotAPI.updateUserLaneStrategy !== "function") throw new Error("Per-service strategy API unavailable");
+    const response = await BotAPI.updateUserLaneStrategy(lane, strategyId);
+    if (response?.success === false || response?.error) throw new Error(response.error || "Strategy preference rejected");
+    return response;
   }, []);
 
   // ============================================================================
@@ -2761,11 +2880,16 @@ getStrategy, state.debug.failedRequests]);
         return;
       }
 
-      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
-      await saveStrategyPreference(strategy.id);
-      showNotice(`Strategy changed to ${strategy.name}`);
+      try {
+        if (!state.laneStrategiesReady) throw new Error("Per-service strategy storage is not available yet");
+        await saveStrategyPreference(strategy.id, activeTab.id);
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGY, payload: {lane: activeTab.id, strategy} });
+        showNotice(`${activeTab.label} preference saved: ${strategy.name}. Running bots are unchanged.`);
+      } catch (error) {
+        showError(`Unable to save strategy: ${error.message || "please retry"}`);
+      }
     },
-    [state.botRunning, saveStrategyPreference, showNotice, showError]
+    [state.botRunning, state.laneStrategiesReady, activeTab.id, activeTab.label, saveStrategyPreference, showNotice, showError]
   );
 
   const handleConnect = useCallback(() => {
@@ -2824,6 +2948,14 @@ getStrategy, state.debug.failedRequests]);
   ]);
 
   const handleStartBot = useCallback(async () => {
+    if (["options", "kalshi"].includes(activeTab.id)) {
+      showError(`${activeTab.label} has a dedicated execution workflow; this generic bot launcher cannot safely start it.`);
+      return;
+    }
+    if (!state.laneStrategiesReady) {
+      showError("Per-service strategy configuration has not loaded. Please retry.");
+      return;
+    }
     if (isLocked) {
       showError("Your current plan does not include this trading type.");
       navigate("/billing");
@@ -2850,7 +2982,7 @@ getStrategy, state.debug.failedRequests]);
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
-      await saveStrategyPreference(state.currentStrategy.id);
+      await saveStrategyPreference(state.currentStrategy.id, activeTab.id);
 
       const config = {
         takeProfitPct: state.currentStrategy.takeProfitPct,
@@ -2983,6 +3115,7 @@ getStrategy, state.debug.failedRequests]);
     activeTab,
     state.botMode,
     state.currentStrategy,
+    state.laneStrategiesReady,
     saveStrategyPreference,
     refreshDashboard,
     fetchIntegrationStatus,
@@ -3395,10 +3528,6 @@ getStrategy, state.debug.failedRequests]);
 
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
           {state.loading && <p role="status">Loading dashboard data…</p>}
-          {(Object.keys(requestErrors).length > 0 || state.error) && <section role="alert" className="rounded-2xl border border-amber-400/40 p-4">
-            <p>{Object.values(requestErrors).includes(403) ? 'Some features are unavailable for your account. Review your subscription or access permissions.' : 'Some dashboard data is unavailable. Other sections remain available.'}</p>
-            <button className="rounded-xl bg-cyan-700 px-5 py-3 mt-3" onClick={() => refreshDashboard(true, {refreshBot:true,refreshBalance:true,refreshTrades:true,refreshProfile:true,refreshBilling:true,refreshStrategies:true})}>Retry dashboard data</button>
-          </section>}
           {!hasPaidAccess && !isAdminUser && <section className="rounded-2xl border border-white/20 p-4">
             <h3>Limited dashboard access</h3><p>No active paid subscription is confirmed. Review plans to access paid features.</p>
             <button className="rounded-xl bg-emerald-700 px-5 py-3 mt-3" onClick={() => navigate('/billing')}>Review plans</button>
@@ -3529,43 +3658,44 @@ getStrategy, state.debug.failedRequests]);
             </div>
           </section>
           <LearningProgress />
-          {/* Trading Types */}
-          <section id="imali-trading-services" className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
-            <div className="grid grid-cols-4">
+          {/* Cross-exchange reported realized P&L; not a verified live-only total. */}
+          <section className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-slate-900/80 to-cyan-500/10 p-5 sm:p-6" aria-label="Combined trading profit and loss">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div><p className="text-sm font-semibold text-emerald-300">Combined reported P&L</p><h3 className="mt-1 text-xs text-white/55">Realized trading P&L across reporting connected exchanges</h3></div>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">{combinedPnl.rows.length} of {combinedExchangeKeys.length} exchanges reporting</span>
+            </div>
+            <p className={`mt-4 text-3xl font-black sm:text-4xl ${combinedPnlValue < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+              {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnl.rows.length ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
+            </p>
+            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()}: ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
+            <p className="mt-3 text-xs text-amber-200/80">
+              {combinedPnl.unavailable.length ? `Partial total: no usable figures for ${combinedPnl.unavailable.join(', ')}. ` : ''}
+              {combinedModes.length === 1 && combinedModes[0] === 'live' ? 'Reported live mode. ' : combinedModes.length === 1 && combinedModes[0] === 'paper' ? 'Reported paper mode. ' : 'Live/paper classification is not fully verified. '}
+              Open-position P&L is excluded unless included by the upstream exchange's reported field. DEX wallet data is not yet included.
+            </p>
+          </section>
+
+          {/* Trading Types — demo-inspired responsive icon grid */}
+          <section id="imali-trading-services" className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-4 sm:p-5">
+            <div className="mb-4">
+              <h3 className="text-lg font-bold text-white">Trading Services</h3>
+              <p className="text-xs text-white/50">Select a service to view its real account and trading workspace.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" aria-label="Trading services">
               {visibleTradingTypes.map((tab) => {
                 const locked = !hasTierAccess(effectiveTier, tab.minTier);
                 const active = state.activeType === tab.id;
-
                 return (
                   <button
                     key={tab.id}
-                    onClick={() =>
-                      dispatch({
-                        type: ACTIONS.SET_ACTIVE_TYPE,
-                        payload: tab.id,
-                      })
-                    }
-                    className={`relative min-w-0 px-1 py-4 text-center font-black transition ${
-                      active
-                        ? "bg-cyan-400/10 text-white"
-                        : "text-white/50 hover:bg-white/[0.04]"
-                    }`}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => dispatch({type: ACTIONS.SET_ACTIVE_TYPE, payload: tab.id})}
+                    className={`flex min-h-[105px] min-w-0 flex-col items-center justify-center gap-2 rounded-xl border px-3 py-4 text-center text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${active ? "border-emerald-400 bg-emerald-500/20 text-white shadow-lg shadow-emerald-500/10" : "border-white/10 bg-white/5 text-white/65 hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-white"}`}
                   >
-                    <div className="flex flex-col items-center justify-center gap-1">
-                      <span className={`text-lg sm:text-xl ${active ? "text-cyan-300" : ""}`}>
-                        {tab.icon}
-                      </span>
-                      <span className="text-[10px] sm:text-base leading-none">
-                        {tab.label}
-                      </span>
-                      {locked && (
-                        <FaLock className="text-[8px] sm:text-[10px] text-white/40" />
-                      )}
-                    </div>
-
-                    {active && (
-                      <div className="absolute bottom-0 left-4 right-4 h-1 rounded-full bg-cyan-300" />
-                    )}
+                    <span aria-hidden="true" className={`text-3xl leading-none ${active ? "text-emerald-300" : "text-cyan-300"}`}>{tab.icon}</span>
+                    <span className="leading-tight">{tab.label}</span>
+                    {locked && <span className="flex items-center gap-1 text-[10px] text-amber-200/70"><FaLock /> {tab.minTier.toUpperCase()}</span>}
                   </button>
                 );
               })}
@@ -3601,6 +3731,12 @@ getStrategy, state.debug.failedRequests]);
             />
           )}
 
+          {state.activeType === "options" && !isLocked && (
+            <section className="rounded-[2rem] border border-cyan-400/20 bg-white/[0.03] p-3 sm:p-5 overflow-hidden">
+              <OptionsTrading embedded />
+            </section>
+          )}
+
           {starterPaperOnly && (
             <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-xs sm:text-sm">
               Starter accounts support paper trading only. Upgrade to Pro for live trading.
@@ -3613,22 +3749,35 @@ getStrategy, state.debug.failedRequests]);
           />
 
           {(effectiveTier === "elite" ||
-            effectiveTier === "enterprise") && (
-            <KalshiIntelligencePanel />
-          )}
+            effectiveTier === "enterprise") &&
+            state.activeType === "kalshi" && (
+              <KalshiIntelligencePanel />
+            )}
 
           {/* LIVE ACCOUNT STATS + HELD COIN MARKET */}
-          <LiveDashboardOverview
+          {!["kalshi", "options"].includes(state.activeType) && (
+            <LiveDashboardOverview
+              exchange={activeTab.exchange}
+              exchangeLabel={activeTab.label}
+              botRunning={state.botRunning}
+            />
+          )}
+
+          <LiveBotActivity
             exchange={activeTab.exchange}
-            exchangeLabel={activeTab.label}
-            botRunning={state.botRunning}
+            lane={state.activeType}
+            running={state.botRunning || state.activeType === "options"}
+            title={activeTab.label + " Activity"}
           />
 
+          {!["kalshi", "options"].includes(state.activeType) && (
+            <>
           {/* Account Overview */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
             <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
               <div>
                 <h3 className="text-xl font-black">Account Overview</h3>
+                <p className="mt-1 text-xs text-amber-200/80">Realized P&amp;L and win/loss figures below are from the live-trading statistics API; they do not include historical paper-trading results.</p>
                 <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
                 <p className="mt-2 text-3xl sm:text-5xl font-black break-words">
                   {formatMoney(state.totalAssetValue)}
@@ -3918,9 +4067,13 @@ getStrategy, state.debug.failedRequests]);
 
           {/* Bot Strategies */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <h3 className="mb-5 text-xl sm:text-2xl font-black">
-              Available Bot Strategies
+            <h3 className="mb-2 text-xl sm:text-2xl font-black">
+              {activeTab.label} Strategy Preferences
             </h3>
+            <p className="mb-4 text-sm text-white/55">{state.laneStrategiesReady
+              ? state.laneStrategies[activeTab.id] ? "Saved for this service. Existing running bot settings do not change until confirmed by the executor." : "No strategy saved for this service yet. Choose a preference below."
+              : "Per-service strategy settings are unavailable. Changes are disabled until they load."}</p>
+            {['options','kalshi'].includes(activeTab.id) && <p className="mb-3 text-xs text-amber-300">This service needs its dedicated executor to apply a strategy. The generic bot launcher is disabled for safety.</p>}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {state.strategies.map((strategy) => (
@@ -3929,7 +4082,7 @@ getStrategy, state.debug.failedRequests]);
                   strategy={strategy}
                   selected={state.currentStrategy.id === strategy.id}
                   onClick={() => handleSelectStrategy(strategy)}
-                  disabled={state.botRunning}
+                  disabled={state.botRunning || !state.laneStrategiesReady}
                 />
               ))}
             </div>
@@ -3940,10 +4093,6 @@ getStrategy, state.debug.failedRequests]);
           running={state.botRunning}
         />
 
-        <LiveBotActivity
-            exchange={activeTab.exchange}
-            running={state.botRunning}
-          />
 
           {/* Canonical AI Signal Feed */}
           <GlassCard
@@ -4130,7 +4279,8 @@ getStrategy, state.debug.failedRequests]);
               )}
             </div>
           </GlassCard>
-
+            </>
+          )}
 
           {/* IMALI Utility & Upgrade */}
           <div className="grid gap-5 lg:grid-cols-2">

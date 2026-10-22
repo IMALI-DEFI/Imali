@@ -549,8 +549,26 @@ const stopTradingBot = async (exchange = "okx") => {
 };
 
 const startTradingBotByCategory = async (category, strategy, runMode = "paper", config = {}) => {
+  const normalizedCategory = String(category || "").toLowerCase();
+  const normalizedMode = mode(runMode);
+
+  // The member UI must never arm live Futures or DEX execution directly.
+  // Those lanes are only allowed through their dedicated, separately armed
+  // production executors after server-side permission checks.
+  if (["futures", "dex"].includes(normalizedCategory) && normalizedMode !== "paper") {
+    throw new Error(
+      `${normalizedCategory === "futures" ? "Futures" : "DEX"} live execution is gated. Start this lane in paper mode from the dashboard.`
+    );
+  }
+
   const map = { spot: "okx", crypto: "okx", futures: "okx", stocks: "alpaca", dex: "wallet" };
-  return startTradingBot(map[category] || "okx", strategy, runMode, category, config);
+  return startTradingBot(
+    map[normalizedCategory] || "okx",
+    strategy,
+    normalizedMode,
+    normalizedCategory,
+    config
+  );
 };
 
 const stopTradingBotByCategory = async (category) => {
@@ -659,6 +677,8 @@ const getTradingStrategies = async (skipCache = false) =>
   cachedGet("strategies", 30000, async () => unwrap(await api.get("/api/trading/strategies")), skipCache);
 
 const updateUserStrategy = async (strategy) => unwrap(await api.put("/api/user/strategy", { strategy }));
+const getUserLaneStrategies = async () => getData(await api.get("/api/user/lane-strategies"));
+const updateUserLaneStrategy = async (lane, strategy) => unwrap(await api.put(`/api/user/lane-strategies/${encodeURIComponent(lane)}`, { strategy }));
 
 
 const getTradingActivity = async (
@@ -682,6 +702,21 @@ const getTradingActivity = async (
   return getData(
     await api.get(
       `/api/trading/activity?${params.toString()}`
+    )
+  );
+};
+
+
+const getLaneActivity = async (
+  lane = "crypto",
+  limit = 100
+) => {
+  const params = new URLSearchParams();
+  params.set("lane", String(lane || "crypto").toLowerCase());
+  params.set("limit", String(limit));
+  return getData(
+    await api.get(
+      `/api/trading/lane-activity?${params.toString()}`
     )
   );
 };
@@ -748,6 +783,12 @@ const closeAllPositions = async (exchange = "okx") => {
 // ─── TOGGLES ────────────────────────────────────────
 const toggleTrading = async (enabled, confirmed = true) => unwrap(await api.post("/api/trading/enable", { enabled, confirmed }));
 const togglePaperTrading = async (enabled) => unwrap(await api.patch("/api/user/paper-trading", { enabled }));
+
+const getAutomationLanes = async () =>
+  getData(await api.get("/api/trading/automation/lanes"));
+
+const setAutomationLane = async (lane, enabled, confirmed = false) =>
+  getData(await api.post(`/api/trading/automation/lanes/${lane}`, { enabled, confirmed }));
 
 // ─── IMALI TOKEN ────────────────────────────────────
 const getImaliBalance = async () => {
@@ -1119,6 +1160,8 @@ const BotAPI = {
   getStrategyConfigs,
   getTradingStrategies,
   updateUserStrategy,
+  getUserLaneStrategies,
+  updateUserLaneStrategy,
   getUserStrategyPreference: async () => {
     const result = getData(await api.get("/api/trading/strategies"));
     return {
@@ -1139,6 +1182,7 @@ const BotAPI = {
   getUserTradingStats,
   getRealTradingStats,
   getTradingActivity,
+  getLaneActivity,
   getTradingRiskSettings,
   updateTradingRiskSettings,
   executePaperTrade,
@@ -1146,6 +1190,8 @@ const BotAPI = {
   closeAllPositions,
   toggleTrading,
   togglePaperTrading,
+  getAutomationLanes,
+  setAutomationLane,
   getImaliBalance,
   getImaliDiscountStatus,
   applyImaliDiscount,
