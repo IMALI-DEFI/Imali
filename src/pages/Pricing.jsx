@@ -45,7 +45,7 @@ const plans = [
     alt: "Starter NFT Artwork",
     price: 0,
     profitShare: null,
-    subtitle: "Explore the demo with virtual funds. No credit card.",
+    subtitle: "Free forever: daily AI research, a personal watchlist, and the trading demo.",
     cta: "Start Free",
     ctaLoggedIn: "Current Plan",
     color: "from-emerald-500/20 to-teal-500/10",
@@ -53,11 +53,12 @@ const plans = [
     category: "trading",
     stripePriceId: STRIPE_CONFIG.STARTER_PRICE_ID,
     features: [
-      "$1,000 virtual-funds trading demo",
-      "Try simulated strategy controls",
-      "Explore spot, stocks, futures, DEX and options simulations",
-      "No credit card required",
-      "Open the demo instantly",
+      "1 free AI token analysis each day",
+      "Basic AI market scores and grades (delayed)",
+      "Personal watchlist for up to 5 tokens",
+      "Limited Shadow Lab research insights",
+      "Interactive trading simulator",
+      "No credit card required — free forever",
     ],
     locked: ["Live trading", "DEX sniper", "Staking / Lending"],
   },
@@ -237,7 +238,7 @@ const faqs = [
   },
   {
     q: "Is there a free trial?",
-    a: "Starter offers free access to the interactive demo. Paid automated trading requires a subscription and supported broker connection.",
+    a: "Starter is a free-forever membership with daily AI token research, basic delayed grades, a five-token watchlist, limited Shadow Lab insights, and the demo. Broker connections and automated live trading require a paid plan.",
   },
   {
     q: "What payment methods do you accept?",
@@ -805,7 +806,7 @@ export default function Pricing() {
           <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">
             {activeTab === "admin"
               ? "Get a complete admin panel with user management, billing, analytics, and more. Already built for you."
-              : "Explore IMALI's trading demo with virtual funds. See how each service works, then compare plans when you're ready."}
+              : "Join IMALI Free forever for daily token research, a five-token watchlist, basic market grades, limited Shadow Lab insights, and the interactive simulator."}
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
