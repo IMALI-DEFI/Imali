@@ -2038,7 +2038,7 @@ function MemberDashboardContent() {
       // Set the chosen service only after its lane preferences and strategy
       // catalog are available together; the reducer applies both atomically.
       try {
-        const saved = await BotAPI.getUserLaneStrategies();
+        const saved = await fetchWithRetry(() => BotAPI.getUserLaneStrategies(), 2);
         const lanes = saved?.lanes || saved?.data?.lanes || {};
         dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: { lanes, strategies: mapped } });
       } catch (error) {
@@ -3708,7 +3708,7 @@ getStrategy, state.debug.failedRequests]);
                     <span aria-hidden="true" className={`text-3xl leading-none ${active ? "text-emerald-300" : "text-cyan-300"}`}>{tab.icon}</span>
                     <span className="leading-tight">{tab.label}</span>
                     {locked && <span className="flex items-center gap-1 text-[10px] text-amber-200/70"><FaLock /> {tab.minTier.toUpperCase()}</span>}
-                    {!locked && <span className="text-[10px] text-white/60">{!state.laneStrategiesReady ? "Preferences unavailable" : state.laneStrategies[tab.id] ? "Strategy saved" : "Choose strategy"}</span>}
+                    {!locked && <span className="text-[10px] text-white/60">{!state.laneStrategiesReady ? "Reconnect to load preferences" : state.laneStrategies[tab.id] ? "Strategy saved" : "Choose strategy"}</span>}
                   </button>
                 );
               })}
