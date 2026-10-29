@@ -113,7 +113,7 @@ export default function SocialAutomationPanel(){
         <button onClick={load}>Refresh automation</button>
       </div>
 
-      <div className="sm-automation-state">
+      <div className="sm-automation-state" style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
         <span>
           Scheduler: <b>{data?.scheduler_active?'ACTIVE':'OFF'}</b>
         </span>
@@ -123,7 +123,7 @@ export default function SocialAutomationPanel(){
         </span>
       </div>
 
-      {data?.stats&&<div className="sm-automation-state">{Object.entries(data.stats).map(([k,v])=><span key={k}>{k.replace(/_/g,' ')}: <b>{v}</b></span>)}</div>}
+      {data?.stats&&<div className="sm-automation-state" style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>{Object.entries(data.stats).map(([k,v])=><span key={k}>{k.replace(/_/g,' ')}: <b>{v}</b></span>)}</div>}
       {error&&<p className="sm-error" role="alert">{error}</p>}
       {notice&&<p className="sm-callout" role="status">{notice}</p>}
 
