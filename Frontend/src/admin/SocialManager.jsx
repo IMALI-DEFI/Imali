@@ -1,6 +1,7 @@
 // src/admin/SocialManager.jsx (gamified)
 import React, { useState } from "react";
 import GamifiedShell from "./_GamifiedShell";
+import CreativeLibrary from "./CreativeLibrary";
 
 export default function SocialManager() {
   const [message, setMessage] = useState("New feature is live! 🚀");
@@ -10,6 +11,7 @@ export default function SocialManager() {
       title="Social Manager"
       subtitle="Post updates across linked channels."
     >
+      <CreativeLibrary />
       <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
         <textarea
           rows={5}
