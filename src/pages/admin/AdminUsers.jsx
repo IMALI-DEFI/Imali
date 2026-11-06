@@ -28,14 +28,7 @@ const AdminUsers = () => {
       setUsers(data || []);
     } catch (error) {
       console.error('Failed to fetch users:', error);
-      // Demo data
-      setUsers([
-        { id: '1', email: 'john.doe@example.com', name: 'John Doe', role: 'admin', status: 'active', joined: '2024-01-15', lastLogin: '2026-01-14', avatar: null },
-        { id: '2', email: 'jane.smith@example.com', name: 'Jane Smith', role: 'member', status: 'active', joined: '2024-02-20', lastLogin: '2026-01-13', avatar: null },
-        { id: '3', email: 'bob.johnson@example.com', name: 'Bob Johnson', role: 'member', status: 'inactive', joined: '2024-03-10', lastLogin: '2025-12-20', avatar: null },
-        { id: '4', email: 'alice.williams@example.com', name: 'Alice Williams', role: 'admin', status: 'active', joined: '2024-04-05', lastLogin: '2026-01-14', avatar: null },
-        { id: '5', email: 'charlie.brown@example.com', name: 'Charlie Brown', role: 'member', status: 'pending', joined: '2026-01-10', lastLogin: null, avatar: null },
-      ]);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
