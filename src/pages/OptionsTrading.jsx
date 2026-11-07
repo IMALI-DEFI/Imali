@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { apiFetch } from "../context/AuthContext";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function OptionsTrading({ embedded = false }) {
   const [capability, setCapability] = useState(null);
   const [underlying, setUnderlying] = useState("AAPL");
@@ -101,6 +102,7 @@ export default function OptionsTrading({ embedded = false }) {
     <div className={embedded ? "text-white" : "min-h-screen bg-[#050816] text-white px-3 sm:px-4 py-5 sm:py-8"}>
       <div className={embedded ? "space-y-4" : "max-w-5xl mx-auto space-y-5 sm:space-y-6"}>
         <div className={embedded ? "rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4" : ""}>
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className={embedded ? "text-xl font-black" : "text-2xl sm:text-3xl font-bold"}>Options Trading</h1>
           <p className="text-white/60 mt-1 text-sm">
             Find a contract, review the risk, then approve the entry. IMALI manages the exit.

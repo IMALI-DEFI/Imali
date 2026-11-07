@@ -13,6 +13,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 
+import { MascotLogo } from "../components/game/GameKit";
 ChartJS.register(
   LineElement,
   PointElement,
@@ -284,33 +285,30 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
                 <span>🏆</span> Notable Trades (Top {botNotableTrades.length} by % Return)
               </div>
-              <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[440px] space-y-2 overflow-y-auto pr-1">
                 {botNotableTrades.map((trade, idx) => (
-                  <div 
-                    key={trade.id || idx} 
-                    className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100" 
+                  <div
+                    key={trade.id || idx}
+                    className="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-indigo-400/40 bg-gradient-to-r from-[#202d60] to-[#111934] px-3 py-3 text-white shadow-sm transition-colors hover:from-[#2b3c7b] hover:to-[#1c2854]"
                     onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" || trade.side === "long" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="break-all text-sm font-bold text-white">{trade.symbol || "Unknown"}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${trade.side === "buy" || trade.side === "long" ? "bg-emerald-500/25 text-emerald-200" : "bg-rose-500/25 text-rose-200"}`}>
                           {trade.side?.toUpperCase()}
                         </span>
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
+                        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200">#{idx + 1}</span>
                       </div>
-                      <div className="mt-0.5 text-[9px] text-gray-500">
-                        {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
+                      <div className="mt-1 text-[11px] text-indigo-200">{timeAgo(trade.created_at)}</div>
+                      <div className="mt-1 text-[11px] leading-relaxed text-slate-200">
+                        Entry: {formatCurrency(trade.price)}
                         {trade.exit_price && ` → Exit: ${formatCurrency(trade.exit_price)}`}
                       </div>
                     </div>
-                    <div className="ml-4 shrink-0 text-right">
-                      <div className="text-base font-bold text-green-600">
-                        {formatPercent(trade.pnl_percent)}
-                      </div>
-                      <div className="text-[9px] text-gray-500">
-                        {formatCurrencySigned(trade.pnl_usd)}
-                      </div>
+                    <div className="ml-1 shrink-0 text-right">
+                      <div className="text-base font-bold text-emerald-300">{formatPercent(trade.pnl_percent)}</div>
+                      <div className="mt-1 text-[11px] text-slate-200">{formatCurrencySigned(trade.pnl_usd)}</div>
                     </div>
                   </div>
                 ))}
@@ -683,6 +681,7 @@ export default function PublicDashboard() {
         )}
 
         <div className="mb-4 text-center">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">IMALI Trading Activity</h1>
           <p className="text-xs text-gray-500">
             {formatNumber(totalTrades)} tracked records • {activeBots} active systems • Updating every 30 seconds

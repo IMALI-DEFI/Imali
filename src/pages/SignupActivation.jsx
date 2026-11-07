@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function SignupActivation() {
   const nav = useNavigate();
   const location = useLocation();
@@ -156,6 +157,7 @@ export default function SignupActivation() {
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white flex items-center justify-center px-4">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-3xl font-bold">Create Your Account</h1>
           <p className="text-gray-400 mt-2">
             {getTierDisplayName(selectedTier)} Plan

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Link } from "react-router-dom";
+import { MascotLogo, TradingSchool, useGameProgress } from "../components/game/GameKit";
 import {
     FaBolt,
     FaShieldAlt,
@@ -170,15 +171,17 @@ export default function HowItWorks() {
         </div>
     );
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const { lessonsDone, completeLesson } = useGameProgress();
+
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
             <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
                 {/* Hero */}
-                <section className="mx-auto mb-14 max-w-3xl text-center">
+                <section className="fun-sparkle mx-auto mb-14 max-w-3xl text-center p-6 sm:p-10">
+                    <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
                     <div className="mb-4 flex justify-center">
-                        <div className="rounded-2xl bg-indigo-100 p-3">
-                            <FaBolt className="h-8 w-8 text-indigo-600" />
-                        </div>
+                        <MascotLogo size={96} />
                     </div>
 
                     <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
@@ -1030,8 +1033,15 @@ export default function HowItWorks() {
                     </div>
                 </section>
 
+                {/* Trading School */}
+                <section className="mb-12">
+                    <TradingSchool lessonsDone={lessonsDone} onComplete={completeLesson} />
+                </section>
+
                 {/* CTA */}
-                <section className="border-t border-slate-200 pb-8 pt-8 text-center">
+                <section className="fun-sparkle p-8 text-center">
+                    <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+                    <MascotLogo size={80} className="mx-auto mb-2" />
                     <h2 className="text-2xl font-bold text-slate-900">
                         Ready to set up your account?
                     </h2>
@@ -1040,13 +1050,12 @@ export default function HowItWorks() {
                         Create your IMALI account, connect a supported platform, choose your strategy and risk settings, and activate the execution mode available for that connection.
                     </p>
 
-                    <Link
-                        to="/signup"
-                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 font-bold text-white shadow-md transition hover:bg-indigo-700 hover:shadow-lg"
-                    >
-                        <FaBolt className="h-5 w-5" />
-                        Get Started with IMALI
-                    </Link>
+                    <div className="flex flex-col sm:flex-row justify-center gap-3">
+                        <Link to="/signup" className="fun-btn fun-gold fun-big">
+                            <span className="fun-btn-emoji" aria-hidden="true">🚀</span> Get Started with IMALI
+                        </Link>
+                        <Link to="/trade-demo" className="fun-btn fun-blue fun-big">🎮 Play the Demo</Link>
+                    </div>
                 </section>
             </main>
         </div>

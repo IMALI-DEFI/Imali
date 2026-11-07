@@ -12,10 +12,14 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 import "./styles/admin-mobile.css";
 import MarketingTracker from "./components/MarketingTracker";
+import SEO from "./components/SEO";
+import AdSenseLoader from "./components/AdSenseLoader";
 
 // Enterprise
 import Enterprise from "./pages/Enterprise";
 import EnterpriseDemo from "./pages/EnterpriseDemo";
+import Subcontractors from "./pages/Subcontractors"; // BID-DESK public sub sign-up
+import OpportunityBoard from "./pages/OpportunityBoard"; // public opportunity dashboard
 import EnterpriseOnboardingWizard from "./components/enterprise/EnterpriseOnboardingWizard";
 import EnterpriseDashboard from "./pages/EnterpriseDashboard";
 
@@ -34,6 +38,8 @@ import ReferralSystem from "./pages/ReferralPartner";
 import LandingPages from "./pages/LandingPages";
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
+import SEOLanding from "./pages/SEOLanding";
+import Compare from "./pages/Compare";
 
 // Admin Platform Pages
 import AdminPlatformLanding from "./pages/AdminPlatformLanding";
@@ -41,7 +47,6 @@ import AdminPlatformDemo from "./pages/AdminPlatformDemo";
 import AdminDashboard from "./pages/AdminDashboard";
 import Documentation from "./pages/Documentation";
 import AdminWorkAgent from "./pages/admin/AdminWorkAgent";
-import OpportunityWorkspace from "./pages/OpportunityWorkspace";
 import AdminSportsJedi from "./pages/admin/AdminSportsJedi";
 import AdminAutomationAnalytics from "./pages/admin/AdminAutomationAnalytics";
 
@@ -64,6 +69,7 @@ const ConnectRobinhood = lazy(() => import("./pages/ConnectRobinhood"));
 const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpaca"));
 const ConnectWallet = lazy(() => import("./pages/ConnectWallet"));
 const ConnectKalshi = lazy(() => import("./pages/ConnectKalshi"));
+const OptionsTrading = lazy(() => import("./pages/OptionsTrading"));
 
 // Enterprise dashboard pages
 const TeamPage = lazy(() => import("./pages/TeamPage"));
@@ -180,11 +186,8 @@ function PostLoginRedirect() {
       return;
     }
 
-    // Admin goes to admin panel
-    if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") {
-      navigate("/admin", { replace: true });
-      return;
-    }
+    // Signing in always opens the member dashboard. Admin tools remain
+    // available via their explicit /admin route, never as a forced redirect.
 
     // Regular users ALWAYS go to dashboard or billing
     const tier = String(user?.tier || "starter").toLowerCase();
@@ -233,11 +236,13 @@ function MainAppRoutes() {
 
   return (
     <>
+      <AdSenseLoader />
+      <SEO />
       <MarketingTracker />
       <Header />
       <main
-        className={`min-h-screen pt-16 bg-[#050816] text-white ${
-          isAdminPath ? "imali-admin-mobile" : ""
+        className={`min-h-screen pt-20 bg-[#050816] text-white ${
+          isAdminPath ? "imali-admin-mobile" : "imali-fun-site"
         }`}
       >
         <Suspense fallback={<PageFallback />}>
@@ -257,6 +262,9 @@ function MainAppRoutes() {
             <Route path="/referrals" element={<ReferralSystem />} />
             <Route path="/enterprise" element={<Enterprise />} />
             <Route path="/enterprise-demo" element={<EnterpriseDemo />} />
+            <Route path="/subcontractors" element={<Subcontractors />} />
+            <Route path="/opportunity" element={<OpportunityBoard />} />
+            <Route path="/opportunities" element={<Navigate to="/opportunity" replace />} />
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
@@ -272,6 +280,13 @@ function MainAppRoutes() {
             <Route path="/socialB" element={<LandingPages />} />
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
+            <Route path="/ai-crypto-trading-bot" element={<SEOLanding />} />
+            <Route path="/automated-crypto-trading" element={<SEOLanding />} />
+            <Route path="/crypto-trading-software" element={<SEOLanding />} />
+            <Route path="/non-custodial-trading-bot" element={<SEOLanding />} />
+            <Route path="/compare/3commas" element={<Compare />} />
+            <Route path="/compare/cryptohopper" element={<Compare />} />
+            <Route path="/compare/pionex" element={<Compare />} />
 
             {/* Admin Platform Routes */}
             <Route path="/admin-platform" element={<AdminPlatformLanding />} />
@@ -303,9 +318,6 @@ function MainAppRoutes() {
                 <RedirectIfActivated><Activation /></RedirectIfActivated>
               </ProtectedRoute>
             } />
-
-            <Route path="/opportunity-engine" element={<RequireAuth><OpportunityWorkspace /></RequireAuth>} />
-            <Route path="/opportunity-engine/*" element={<RequireAuth><OpportunityWorkspace /></RequireAuth>} />
 
             {/* DASHBOARD - MAIN MEMBER DASHBOARD */}
             <Route path="/dashboard" element={
@@ -339,6 +351,7 @@ function MainAppRoutes() {
                 <ConnectWallet />
               </ProtectedRoute>
             } />
+            <Route path="/options" element={<RequireAuth><OptionsTrading /></RequireAuth>} />
             <Route path="/connect-kalshi" element={
               <ProtectedRoute requirePaid={true} requireActivation={false}>
                 <ConnectKalshi />

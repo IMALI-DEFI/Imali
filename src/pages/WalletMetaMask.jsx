@@ -1,8 +1,10 @@
 import React from "react";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function WalletMetaMask() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 text-white">
+      <MascotLogo size={84} className="block mx-auto mb-3" />
       <h1 className="text-3xl font-bold mb-6">MetaMask Setup</h1>
 
       <h2 className="text-xl font-semibold mb-2">1) Install</h2>

@@ -69,7 +69,9 @@ const shortMessage = (message) => {
 
 export default function LiveBotActivity({
   exchange = "",
+  lane = "",
   running = false,
+  title = "Live Bot Activity",
 }) {
   const [activity, setActivity] =
     useState([]);
@@ -91,11 +93,15 @@ export default function LiveBotActivity({
             setLoading(true);
           }
 
-          const result =
-            await BotAPI.getTradingActivity(
-              exchange,
-              100
-            );
+          const result = lane
+            ? await BotAPI.getLaneActivity(
+                lane,
+                100
+              )
+            : await BotAPI.getTradingActivity(
+                exchange,
+                100
+              );
 
           const rows =
             result?.activity ||
@@ -116,7 +122,7 @@ export default function LiveBotActivity({
           setLoading(false);
         }
       },
-      [exchange]
+      [exchange, lane]
     );
 
   useEffect(() => {
@@ -213,7 +219,7 @@ export default function LiveBotActivity({
             <FaRobot className="text-xl text-cyan-300" />
 
             <h3 className="text-xl sm:text-2xl font-black">
-              Live Bot Activity
+              {title}
             </h3>
 
             <span

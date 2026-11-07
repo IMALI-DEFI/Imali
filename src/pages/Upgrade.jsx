@@ -2,6 +2,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function Upgrade() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 px-6">
@@ -11,6 +12,7 @@ export default function Upgrade() {
             <span className="text-3xl">🚀</span>
           </div>
 
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-2xl font-extrabold text-gray-900">
             Unlock Live Trading
           </h1>

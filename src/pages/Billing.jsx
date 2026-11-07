@@ -8,6 +8,7 @@ import BotAPI from "../utils/BotAPI";
 import BillingDashboard from "./BillingDashboard";
 import CardUpdateForm from "./CardUpdateForm";
 
+import { MascotLogo } from "../components/game/GameKit";
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
 
 function normalizeTier(value) {
@@ -295,6 +296,7 @@ export default function Billing() {
       <div className="relative mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
+            <MascotLogo size={84} className="block mx-auto mb-3" />
             <h1 className="text-3xl font-black">
               Billing & Plan Setup
             </h1>

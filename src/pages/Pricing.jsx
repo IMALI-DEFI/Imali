@@ -15,6 +15,7 @@ import nftElite from "../assets/images/nfts/nft-elite.png";
 import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
 
 import STRIPE_CONFIG from "../config/stripe";
+import { MascotLogo } from "../components/game/GameKit";
 import BotAPI from "../utils/BotAPI";
 
 const ENTERPRISE_IMAGE = "/enterprise.PNG";
@@ -45,7 +46,9 @@ const plans = [
     alt: "Starter NFT Artwork",
     price: 0,
     profitShare: null,
-    subtitle: "Free forever: daily AI research, a personal watchlist, and the trading demo.",
+    subtitle: "Play with $1,000 of pretend money. Free, no card.",
+    emoji: "🐣",
+    funColor: "fun-green",
     cta: "Start Free",
     ctaLoggedIn: "Current Plan",
     color: "from-emerald-500/20 to-teal-500/10",
@@ -53,12 +56,11 @@ const plans = [
     category: "trading",
     stripePriceId: STRIPE_CONFIG.STARTER_PRICE_ID,
     features: [
-      "1 free AI token analysis each day",
-      "Basic AI market scores and grades (delayed)",
-      "Personal watchlist for up to 5 tokens",
-      "Limited Shadow Lab research insights",
-      "Interactive trading simulator",
-      "No credit card required — free forever",
+      "$1,000 virtual-funds trading demo",
+      "Try simulated strategy controls",
+      "Explore spot, stocks, futures, DEX and options simulations",
+      "No credit card required",
+      "Open the demo instantly",
     ],
     locked: ["Live trading", "DEX sniper", "Staking / Lending"],
   },
@@ -69,7 +71,9 @@ const plans = [
     alt: "Pro NFT Artwork",
     price: STRIPE_CONFIG.getPlanPrice("pro"),
     profitShare: null,
-    subtitle: "Live trading + advanced signals.",
+    subtitle: "Your robot trades real crypto and stocks for you.",
+    emoji: "🚀",
+    funColor: "fun-blue",
     cta: "Start Pro",
     ctaLoggedIn: "Upgrade to Pro",
     color: "from-blue-600/20 to-indigo-500/10",
@@ -95,7 +99,9 @@ const plans = [
     alt: "Elite NFT Artwork",
     price: STRIPE_CONFIG.getPlanPrice("elite"),
     profitShare: null,
-    subtitle: "Full access + DeFi & advanced tools.",
+    subtitle: "Every robot unlocked, plus DeFi power tools.",
+    emoji: "👑",
+    funColor: "fun-purple",
     cta: "Start Elite",
     ctaLoggedIn: "Upgrade to Elite",
     color: "from-purple-600/20 to-pink-500/10",
@@ -123,7 +129,9 @@ const plans = [
     alt: "Enterprise Plan",
     price: "Custom",
     profitShare: "Custom",
-    subtitle: "For teams, funds, and institutions.",
+    subtitle: "For teams, funds, and companies.",
+    emoji: "🏢",
+    funColor: "fun-orange",
     cta: "Contact Sales",
     ctaLoggedIn: "Contact Sales",
     color: "from-indigo-600/20 to-purple-500/10",
@@ -238,7 +246,7 @@ const faqs = [
   },
   {
     q: "Is there a free trial?",
-    a: "Starter is a free-forever membership with daily AI token research, basic delayed grades, a five-token watchlist, limited Shadow Lab insights, and the demo. Broker connections and automated live trading require a paid plan.",
+    a: "Starter offers free access to the interactive demo. Paid automated trading requires a subscription and supported broker connection.",
   },
   {
     q: "What payment methods do you accept?",
@@ -366,7 +374,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
   };
 
   return (
-    <div className={`relative rounded-3xl border border-white/10 bg-gradient-to-br ${plan.color} p-6 backdrop-blur transition-all hover:scale-[1.02] hover:border-white/20`}>
+    <div className={`fun-plan relative rounded-3xl border-2 border-[#3a4590] bg-gradient-to-br ${plan.color} p-6 backdrop-blur transition-all hover:-translate-y-1 ${plan.popular ? "fun-plan-popular" : ""}`}>
       {plan.popular && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1 text-xs font-extrabold text-black shadow-lg">
           🔥 Most Popular
@@ -387,13 +395,16 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
         <img src={plan.image} alt={plan.alt} className="h-32 w-32 rounded-2xl object-cover shadow-lg ring-2 ring-white/20" loading="lazy" />
       </div>
 
-      <h3 className="mt-4 text-center text-2xl font-extrabold text-white">{plan.name}</h3>
+      <h3 className="mt-4 text-center text-2xl font-black text-white">
+        {plan.emoji && <span className="fun-bounce mr-1" aria-hidden="true">{plan.emoji}</span>}
+        {plan.name}
+      </h3>
 
       <div className="mt-2 text-center">
         {billingModel === "profit_share" && plan.id !== "starter" && plan.id !== "enterprise" && !isAdmin ? (
           <div>
             <span className="text-4xl font-extrabold text-white">{profitSharePct}%</span>
-            <p className="text-sm text-white/70">of profits</p>
+            <p className="text-sm text-white/80 font-bold">of what your robot earns</p>
             <p className="text-xs text-white/50">above 3% monthly return</p>
           </div>
         ) : plan.price === 0 ? (
@@ -424,17 +435,13 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       <button
         onClick={handleClick}
         disabled={isCurrentPlan}
-        className={`mt-6 block w-full rounded-2xl px-5 py-3 text-center font-bold text-white transition ${
-          isCurrentPlan
-            ? "bg-emerald-600/50 cursor-default"
-            : `bg-gradient-to-r ${plan.buttonColor} hover:opacity-90`
-        }`}
+        className={`mt-6 w-full fun-btn ${isCurrentPlan ? "fun-ghost" : plan.popular ? "fun-gold" : plan.funColor || "fun-blue"}`}
       >
         {getButtonText()} {!isCurrentPlan && <FaArrowRight className="inline ml-2" />}
       </button>
 
       <div className="mt-6">
-        <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white/60">Included</h4>
+        <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-[#8dffc4]">✅ You get</h4>
         <ul className="space-y-2">
           {plan.features.slice(0, 6).map((feature) => (
             <li key={feature} className="flex items-start gap-2 text-sm text-slate-200">
@@ -450,7 +457,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
 
       {plan.locked.length > 0 && (
         <div className="mt-6 border-t border-white/10 pt-5">
-          <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white/40">Unlock with higher tier</h4>
+          <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-white/50">🔒 Unlocks on a bigger plan</h4>
           <ul className="space-y-2">
             {plan.locked.slice(0, 4).map((feature) => (
               <li key={feature} className="flex items-start gap-2 text-sm text-white/40">
@@ -525,16 +532,15 @@ export default function Pricing() {
   const isAdminTab = activeTab === "admin";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
+    <div className="fun-game-bg min-h-screen text-white" style={{ background: "radial-gradient(circle at 50% -10%, #2a1366 0, #0a0d26 45%, #050816 100%)" }}>
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200">
-            <FaRobot /> Simple. Transparent. Start Free.
-          </div>
+        <div className="fun-sparkle mx-auto max-w-4xl text-center p-6 sm:p-8">
+          <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+          <MascotLogo size={96} className="mx-auto" />
 
-          <h1 className="mt-6 text-4xl font-extrabold leading-tight md:text-6xl">
-            Choose Your <span className="text-emerald-400">Platform</span>
+          <h1 className="mt-3 text-4xl font-black leading-tight md:text-6xl fun-shine-text">
+            Pick Your Plan
           </h1>
 
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
@@ -554,21 +560,13 @@ export default function Pricing() {
           <div className="mt-8 flex justify-center gap-2">
             <button
               onClick={() => setActiveTab("trading")}
-              className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
-                activeTab === "trading"
-                  ? "bg-emerald-600 text-white shadow-lg"
-                  : "bg-white/5 text-white/60 hover:bg-white/10"
-              }`}
+              className={`fun-btn fun-small ${activeTab === "trading" ? "fun-blue" : "fun-ghost"}`}
             >
-              <FaRobot /> Trading Platform
+              <FaRobot /> Trading Robots
             </button>
             <button
               onClick={() => setActiveTab("admin")}
-              className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
-                activeTab === "admin"
-                  ? "bg-purple-600 text-white shadow-lg"
-                  : "bg-white/5 text-white/60 hover:bg-white/10"
-              }`}
+              className={`fun-btn fun-small ${activeTab === "admin" ? "fun-blue" : "fun-ghost"}`}
             >
               <FaCubes /> Admin Platform
             </button>
@@ -579,7 +577,7 @@ export default function Pricing() {
             <div className="mt-4 flex justify-center gap-2">
               <button
                 onClick={() => setBillingModel("fixed")}
-                className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}
+                className={`fun-btn fun-small ${billingModel === "fixed" ? "fun-blue" : "fun-ghost"}`}
               >
                 Monthly Subscription — No Profit Percentage
               </button>
@@ -589,7 +587,7 @@ export default function Pricing() {
           {/* Token Tier Selector - Only for Trading */}
           {activeTab === "trading" && (
             <div className="mt-4 flex justify-center items-center gap-3 text-sm">
-              <span className="text-white/50">IMALI Token:</span>
+              <span className="font-bold">🪙 Hold IMALI tokens? Get a discount:</span>
               <select
                 value={tokenTier}
                 onChange={(e) => setTokenTier(e.target.value)}
@@ -604,7 +602,7 @@ export default function Pricing() {
         </div>
 
         {/* Plans Grid */}
-        <div className="mt-12 grid gap-6 lg:grid-cols-3">
+        <div className={`mt-12 grid gap-6 sm:grid-cols-2 ${currentPlans.length >= 4 ? "xl:grid-cols-4" : "lg:grid-cols-3"}`}>
           {currentPlans.map((plan) => (
             <div key={plan.id} id={`plan-${plan.id}`}>
               <PlanCard
@@ -806,7 +804,7 @@ export default function Pricing() {
           <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">
             {activeTab === "admin"
               ? "Get a complete admin panel with user management, billing, analytics, and more. Already built for you."
-              : "Join IMALI Free forever for daily token research, a five-token watchlist, basic market grades, limited Shadow Lab insights, and the interactive simulator."}
+              : "Explore IMALI's trading demo with virtual funds. See how each service works, then compare plans when you're ready."}
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link

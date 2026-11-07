@@ -1,253 +1,174 @@
+// src/pages/Home.jsx — game-style home (same links, offers and social showcase as before).
 import React from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import RecentSocialShowcase from "../components/RecentSocialShowcase";
+import { MascotLogo } from "../components/game/GameKit";
+import { ShadowLabCard } from "../components/game/ShadowLab";
 import MultiServiceDemo from "../components/demo/MultiServiceDemo";
-import {
-  FaArrowRight,
-  FaCheckCircle,
-  FaShieldAlt,
-  FaRobot,
-  FaPlug,
-  FaChartLine,
-} from "react-icons/fa";
 
+const STEPS = [
+  { emoji: "📝", color: "fun-gold", title: "Make your account", text: "Sign up and pick the plan you want." },
+  { emoji: "🔌", color: "fun-blue", title: "Connect an account", text: "Robinhood Crypto, OKX, Alpaca, Kalshi or a DEX wallet. Your money stays there." },
+  { emoji: "🤖", color: "fun-green", title: "Let your robot trade", text: "IMALI watches the market, checks chances, and trades using your settings." },
+];
+
+const PROVIDERS = [
+  { emoji: "🪶", color: "fun-green", name: "Robinhood Crypto" },
+  { emoji: "🪙", color: "fun-gold", name: "OKX" },
+  { emoji: "🏛️", color: "fun-blue", name: "Alpaca" },
+  { emoji: "🔮", color: "fun-purple", name: "Kalshi" },
+  { emoji: "🔗", color: "fun-orange", name: "DEX Wallet" },
+];
+
+const DEMO_MARKETS = ["🪙 OKX Spot & Futures", "🪶 Robinhood Crypto", "🏛️ Alpaca & Options", "🔮 DEX & Kalshi"];
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
-      {/* HERO */}
-      <section className="relative min-h-[42vh] flex items-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-slate-950 to-cyan-500/10" />
-
-        <div className="absolute top-20 left-1/4 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute bottom-20 right-1/4 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
-
-        <div className="relative z-10 mx-auto w-full max-w-6xl px-5 py-12 text-center sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
-              <FaRobot />
-              AI That Helps You Trade
-            </div>
-
-            <h1 className="mx-auto max-w-4xl text-4xl font-black tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-              Let IMALI
-              <span className="block bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-                Trade for You
-              </span>
-            </h1>
-
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg md:text-xl">
-              Connect your existing trading account and let IMALI analyze
-              opportunities, manage risk, and automate trades.
-            </p>
-            <a href="#interactive-trading-demo" className="mt-6 inline-flex items-center justify-center gap-3 rounded-2xl bg-emerald-400 px-8 py-4 text-lg font-black text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300">Try Demo <FaArrowRight aria-hidden="true" /></a>
-            <p className="mt-3 text-sm text-white/60">Try Spot, DEX, Stocks, Futures, and Options with simulated funds. No account required.</p>
-
-          </motion.div>
-        </div>
-      </section>
-
-      <div id="interactive-trading-demo" className="mx-auto max-w-6xl scroll-mt-6 px-5 pb-10 sm:px-6 lg:px-8">
-        <MultiServiceDemo preview />
-        <div className="mt-5 text-center"><Link to="/trade-demo" className="inline-flex rounded-xl border border-emerald-400/50 px-5 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/10">View the full-screen demo →</Link></div>
-      </div>
-
-      <RecentSocialShowcase />
-
-      {/* OFFER */}
-      <section className="relative border-t border-white/5 bg-slate-950 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl px-5 sm:px-6 lg:px-8">
-          <div className="mx-auto mt-12 max-w-3xl rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-7 text-center sm:p-10">
-
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">
-              Start with IMALI
-            </p>
-
-            <h3 className="mt-3 text-3xl font-black sm:text-4xl">
-              Put AI to Work on Your Trading
-            </h3>
-
-            <p className="mx-auto mt-4 max-w-xl text-white/55">
-              Connect a supported trading account, choose your settings,
-              and let IMALI help analyze opportunities and automate eligible trades.
-            </p>
-
-            <div className="mt-7 flex items-end justify-center gap-2">
-              <span className="text-5xl font-black text-white">
-                $19.95
-              </span>
-              <span className="mb-2 text-lg text-white/50">
-                /month
-              </span>
-            </div>
-
-            <Link
-              to="/signup?plan=pro&tier=pro&product_type=trading"
-              state={{
-                tier: "pro",
-                product_type: "trading",
-                from: "home-video-demo",
-              }}
-              className="group mt-7 inline-flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 shadow-xl shadow-emerald-500/20 transition hover:scale-[1.02] hover:bg-emerald-400 sm:w-auto sm:min-w-[320px]"
-            >
-              Start Trading with IMALI
-              <FaArrowRight className="transition group-hover:translate-x-1" />
-            </Link>
-            <Link
-              to="/signup?utm_source=website&utm_medium=homepage&utm_campaign=explore_account"
-              className="mt-4 block text-center text-sm font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
-            >
-              Not ready for Pro? Create an account first
-            </Link>
-
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45">
-              <span className="flex items-center gap-2">
-                <FaShieldAlt className="text-emerald-400" />
-                Non-custodial
-              </span>
-
-              <span className="flex items-center gap-2">
-                <FaCheckCircle className="text-emerald-400" />
-                Your funds stay in your account
-              </span>
-
-              <span className="flex items-center gap-2">
-                <FaCheckCircle className="text-emerald-400" />
-                Cancel anytime
-              </span>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* THREE STEPS */}
-      <section className="border-y border-white/5 bg-white/[0.02] py-14 sm:py-16">
-        <div className="mx-auto max-w-5xl px-5 sm:px-6">
-          <div className="mb-10 text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-400">
-              Getting started
-            </p>
-
-            <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
-              Here's How It Works
-            </h2>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-3">
-            {[
-              {
-                number: "1",
-                icon: <FaCheckCircle />,
-                title: "Create Your Account",
-                text: "Sign up for IMALI and choose the plan you want to use.",
-              },
-              {
-                number: "2",
-                icon: <FaPlug />,
-                title: "Connect Your Trading Account",
-                text: "Connect Robinhood Crypto, OKX, Alpaca, Kalshi, or your supported DEX wallet. Your funds stay in your connected account or wallet.",
-              },
-              {
-                number: "3",
-                icon: <FaChartLine />,
-                title: "Let IMALI Trade",
-                text: "IMALI watches the market, checks opportunities, and can place eligible trades based on your settings.",
-              },
-            ].map((step) => (
-              <div
-                key={step.number}
-                className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 text-center"
-              >
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-xl text-emerald-400">
-                  {step.icon}
-                </div>
-
-                <div className="mt-4 text-xs font-black uppercase tracking-[0.2em] text-white/25">
-                  Step {step.number}
-                </div>
-
-                <h3 className="mt-2 text-xl font-bold">{step.title}</h3>
-
-                <p className="mt-2 text-sm leading-relaxed text-white/50">
-                  {step.text}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* SUPPORTED ACCOUNTS */}
-      <section className="py-14 sm:py-16">
-        <div className="mx-auto max-w-4xl px-5 text-center sm:px-6">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-white/35">
-            Use an Account You Already Have
+    <div className="fun-game-bg min-h-screen overflow-x-hidden text-white" style={{ background: "radial-gradient(circle at 50% -10%, #2a1366 0, #0a0d26 45%, #050816 100%)" }}>
+      <div className="mx-auto max-w-6xl px-4 py-8 space-y-10">
+        {/* HERO */}
+        <section className="fun-sparkle p-6 sm:p-10 text-center">
+          <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+          <MascotLogo size={120} className="mx-auto" />
+          <h1 className="mt-3 text-4xl sm:text-6xl font-black leading-tight">
+            Let IMALI <span className="fun-shine-text">Trade for You</span>
+          </h1>
+          <p className="fun-help text-lg sm:text-xl mt-4 max-w-2xl mx-auto">
+            Connect a trading account you already have. Your IMALI robot looks for good chances, keeps losses small,
+            and trades for you — while you learn how markets work.
           </p>
-
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
-            {["Robinhood Crypto", "OKX", "Alpaca", "Kalshi", "DEX"].map((provider) => (
-              <div
-                key={provider}
-                className="rounded-xl border border-white/10 bg-white/[0.04] px-6 py-3 font-semibold text-white/80"
-              >
-                {provider}
-              </div>
-            ))}
+          <div className="mt-6 flex flex-col sm:flex-row justify-center gap-3">
+            <Link to="/trade-demo" className="fun-btn fun-gold fun-big fun-pulse">
+              <span className="fun-btn-emoji" aria-hidden="true">🎮</span> Play the Free Demo
+            </Link>
+            <Link to="/signup" className="fun-btn fun-green fun-big">
+              <span aria-hidden="true">🚀</span> Get Started
+            </Link>
           </div>
+          <p className="text-sm text-white/60 mt-3">The demo uses pretend money. No sign-up needed.</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <span className="fun-pill">🔒 Your money stays in your account</span>
+            <span className="fun-pill">🛑 Stop-loss safety net</span>
+            <span className="fun-pill">⏹️ Cancel any time</span>
+          </div>
+        </section>
 
-          <p className="mx-auto mt-7 max-w-xl text-sm leading-relaxed text-white/45">
-            IMALI connects to supported exchanges, brokerages, prediction markets,
-            and compatible wallets without taking custody of your funds.
-          </p>
-
-          <Link
-            to="/how-it-works"
-            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300"
-          >
-            See how IMALI works <FaArrowRight />
+        {/* DEMO PREVIEW */}
+        <section className="grid gap-6 lg:grid-cols-2 items-center">
+          <div>
+            <span className="fun-pill">🎮 Free practice mode</span>
+            <h2 className="mt-3 text-3xl sm:text-4xl font-black">Try every robot before you connect anything</h2>
+            <p className="fun-help mt-3 text-lg">
+              Play with $1,000 in pretend money across OKX, Robinhood Crypto, Alpaca, DEX, options, futures and Kalshi.
+              Everything in the demo is simulated — nothing real happens.
+            </p>
+            <Link to="/trade-demo" className="fun-btn fun-gold mt-5">🎮 Open the Demo →</Link>
+          </div>
+          <Link to="/trade-demo" className="fun-card block hover:-translate-y-1 transition" aria-label="Open the interactive demo">
+            <div className="flex justify-between text-sm font-bold">
+              <span className="fun-help">IMALI · Robot HQ preview</span>
+              <span className="fun-pill">🟡 PRACTICE</span>
+            </div>
+            <div className="my-6 text-center">
+              <div className="text-5xl font-black text-[#4ff0a0]">$1,000.00</div>
+              <div className="fun-help text-sm mt-1">💵 Starting play money</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_MARKETS.map((m) => (
+                <div key={m} className="rounded-xl border-2 border-white/10 bg-white/5 p-3 text-sm font-bold">{m}</div>
+              ))}
+            </div>
+            <p className="mt-4 text-center font-black text-[#ffe07a]">Tap to play →</p>
           </Link>
-        </div>
-      </section>
+        </section>
 
-      {/* FINAL CTA */}
-      <section className="border-t border-white/5 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 py-16">
-        <div className="mx-auto max-w-3xl px-5 text-center">
-          <h2 className="text-3xl font-black sm:text-4xl">
-            Ready to let IMALI watch the market for you?
-          </h2>
+        <section id="interactive-trading-demo" className="fun-card p-4 sm:p-6 scroll-mt-6">
+          <h2 className="text-2xl sm:text-3xl font-black mb-3">🎮 Interactive Trading Demo</h2>
+          <p className="fun-help mb-4">Try simulated trades and switch between services. No real orders are placed.</p>
+          <MultiServiceDemo preview />
+          <Link to="/trade-demo" className="fun-btn fun-gold mt-4">Open Full Demo</Link>
+        </section>
 
-          <p className="mt-3 text-white/55">
-            Connect your trading account and let IMALI help find, check, and automate trading opportunities.
+        <ShadowLabCard />
+
+        <RecentSocialShowcase />
+
+        {/* 3 STEPS */}
+        <section>
+          <h2 className="text-center text-3xl sm:text-4xl font-black">How it works — 3 steps</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {STEPS.map((s, i) => (
+              <div key={s.title} className={`fun-tile ${s.color}`} style={{ minHeight: 220, cursor: "default" }}>
+                <span className="fun-step" style={{ position: "absolute", top: 12, left: 12 }}>{i + 1}</span>
+                <span className="fun-emoji" aria-hidden="true">{s.emoji}</span>
+                <strong>{s.title}</strong>
+                <span className="text-sm font-bold max-w-[17rem]" style={{ textShadow: "0 1px 0 #0006" }}>{s.text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-5">
+            <Link to="/how-it-works" className="fun-btn fun-ghost">🧭 See the full tour</Link>
+          </div>
+        </section>
+
+        {/* PROVIDERS */}
+        <section className="fun-card text-center">
+          <h2 className="text-2xl sm:text-3xl font-black">🔌 Use an account you already have</h2>
+          <p className="fun-help mt-2 max-w-xl mx-auto">IMALI connects to these without ever holding your money.</p>
+          <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {PROVIDERS.map((p) => (
+              <div key={p.name} className={`fun-tile ${p.color}`} style={{ minHeight: 120, cursor: "default" }}>
+                <span className="fun-emoji" style={{ fontSize: "2.6rem" }} aria-hidden="true">{p.emoji}</span>
+                <strong style={{ fontSize: "1rem" }}>{p.name}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* OFFER */}
+        <section className="fun-sparkle p-6 sm:p-10 max-w-3xl mx-auto text-center">
+          <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+          <span className="fun-pill">🚀 IMALI Pro</span>
+          <h2 className="mt-3 text-3xl sm:text-4xl font-black">Put a robot to work on your trading</h2>
+          <p className="fun-help mt-3 max-w-xl mx-auto">
+            Connect a supported account, pick your settings, and let IMALI find chances and make eligible trades for you.
           </p>
-
+          <div className="mt-6 flex items-end justify-center gap-2">
+            <span className="text-6xl font-black text-[#ffe07a]">$19.95</span>
+            <span className="mb-2 text-lg fun-help">/month</span>
+          </div>
           <Link
             to="/signup?plan=pro&tier=pro&product_type=trading"
-            state={{
-              tier: "pro",
-              product_type: "trading",
-              from: "home",
-            }}
-            className="mt-7 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-8 py-4 text-lg font-extrabold text-slate-950 transition hover:bg-emerald-400"
+            state={{ tier: "pro", product_type: "trading", from: "home-video-demo" }}
+            className="fun-btn fun-gold fun-big mt-6 w-full sm:w-auto"
           >
-            Start Pro — $19.95/month
-            <FaArrowRight />
+            <span className="fun-btn-emoji" aria-hidden="true">🚀</span> Start Trading with IMALI
           </Link>
-          <div className="mt-5">
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <span className="fun-pill">🔒 Non-custodial</span>
+            <span className="fun-pill">✅ Your money stays in your account</span>
+            <span className="fun-pill">⏹️ Cancel any time</span>
+          </div>
+        </section>
+
+        {/* FINAL CTA */}
+        <section className="fun-card p-8 text-center">
+          <MascotLogo size={84} className="mx-auto" />
+          <h2 className="text-3xl sm:text-4xl font-black mt-2">Ready to let IMALI watch the market for you?</h2>
+          <p className="fun-help mt-2 max-w-xl mx-auto">Try the free demo first, or jump straight in.</p>
+          <div className="mt-6 flex flex-col sm:flex-row justify-center gap-3">
+            <Link to="/trade-demo" className="fun-btn fun-blue fun-big">🎮 Play the Demo</Link>
             <Link
-              to="/signup?utm_source=website&utm_medium=homepage&utm_campaign=explore_account"
-              className="text-sm font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
+              to="/signup?plan=pro&tier=pro&product_type=trading"
+              state={{ tier: "pro", product_type: "trading", from: "home" }}
+              className="fun-btn fun-green fun-big"
             >
-              Create an account before choosing a plan
+              🚀 Start Pro — $19.95/month
             </Link>
           </div>
-        </div>
-      </section>
+          <p className="text-xs text-white/40 mt-5">Trading with real money can lose money. Past results don't promise future results.</p>
+        </section>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function BillingCancel() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-amber-50 to-white px-6">
@@ -10,6 +11,7 @@ export default function BillingCancel() {
           <span className="text-3xl">⚠️</span>
         </div>
 
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
           Payment Canceled
         </h1>

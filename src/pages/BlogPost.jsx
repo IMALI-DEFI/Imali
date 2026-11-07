@@ -2,8 +2,63 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import Header from "../components/Header";
+import AdSenseUnit from "../components/AdSenseUnit";
+import { trackMarketingEvent } from "../components/MarketingTracker";
 
+import { MascotLogo } from "../components/game/GameKit";
 const API_URL = "https://api.imali-defi.com";
+
+function getArticleCTA(post, slug) {
+  const text = `${post?.title || ""} ${post?.excerpt || ""} ${post?.content || ""}`.toLowerCase();
+  const params = new URLSearchParams({
+    utm_source: "blog",
+    utm_medium: "organic_content",
+    utm_campaign: slug || "article",
+    utm_content: "article_cta",
+  });
+
+  if (/sports|nfl|nba|mlb|odds|betting|parlay|matchup/.test(text)) {
+    return {
+      product: "Sports Jedi",
+      title: "Turn sports data into smarter picks",
+      body: "See Sports Jedi's current matchup analysis, confidence data, and picks.",
+      label: "Visit Sports Jedi",
+      href: `https://sportsjedi.com/?${params.toString()}&product=SportsJedi`,
+      external: true,
+    };
+  }
+
+  if (/job|career|grant|contract|government|small business|funding|opportunit|bookkeeping/.test(text)) {
+    return {
+      product: "Opportunity Engine",
+      title: "Find opportunities you can actually pursue",
+      body: "Explore IMALI's opportunity resources for funding, contracts, business and career opportunities.",
+      label: "Explore Opportunities",
+      href: `/funding-guide?${params.toString()}&product=OpportunityEngine`,
+      external: false,
+    };
+  }
+
+  if (/crypto|bitcoin|ethereum|trading|market|invest|stock|finance|fintech|bank|credit|ai|automation/.test(text)) {
+    return {
+      product: "IMALI",
+      title: "Put market automation to work with IMALI",
+      body: "Connect a supported trading account while keeping custody of your assets and let IMALI automate the workflow.",
+      label: "Start with IMALI",
+      href: `/signup?${params.toString()}&product=IMALI`,
+      external: false,
+    };
+  }
+
+  return {
+    product: "IMALI Newsletter",
+    title: "Get the next useful IMALI insight",
+    body: "Get new market, technology and opportunity insights delivered as they publish.",
+    label: "Join the Newsletter",
+    href: `/newsletter?${params.toString()}&product=Newsletter`,
+    external: false,
+  };
+}
 
 function removeFrontMatter(markdown = "") {
   return markdown.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "");
@@ -14,6 +69,7 @@ export default function BlogPost() {
 
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
+  const cta = post ? getArticleCTA(post, slug) : null;
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -68,6 +124,14 @@ export default function BlogPost() {
   useEffect(() => {
     if (!post) return;
 
+    trackMarketingEvent("article_view", {
+      product: getArticleCTA(post, slug).product,
+      metadata: {
+        slug,
+        title: post.title || "",
+      },
+    });
+
     const cleanTitle = String(post.title || "").replace(
       /^["']+|["']+$/g,
       ""
@@ -84,7 +148,19 @@ export default function BlogPost() {
     }
 
     meta.content = post.excerpt || "";
-  }, [post]);
+  }, [post, slug]);
+
+  const handleCtaClick = () => {
+    if (!cta) return;
+    trackMarketingEvent("article_cta_click", {
+      product: cta.product,
+      metadata: {
+        slug,
+        title: post?.title || "",
+        destination: cta.href,
+      },
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#050816] text-white">
@@ -107,6 +183,7 @@ export default function BlogPost() {
 
           {error && (
             <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-8">
+              <MascotLogo size={84} className="block mx-auto mb-3" />
               <h1 className="text-2xl font-bold">{error}</h1>
 
               <Link
@@ -150,6 +227,11 @@ export default function BlogPost() {
                   </div>
                 )}
               </header>
+
+              <AdSenseUnit
+                slot={process.env.REACT_APP_ADSENSE_ARTICLE_TOP_SLOT}
+                className="mb-10 min-h-[90px]"
+              />
 
               <div className="text-white/80 leading-8">
                 <ReactMarkdown
@@ -208,23 +290,38 @@ export default function BlogPost() {
                 </ReactMarkdown>
               </div>
 
-              <div className="mt-16 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-8 md:p-10">
-                <h2 className="text-2xl font-bold">
-                  Explore automated trading with IMALI
-                </h2>
+              <AdSenseUnit
+                slot={process.env.REACT_APP_ADSENSE_ARTICLE_BOTTOM_SLOT}
+                className="mt-12 min-h-[90px]"
+              />
 
-                <p className="mt-3 text-white/60">
-                  Connect your supported trading account while keeping
-                  custody of your assets.
-                </p>
+              {cta && (
+                <div className="mt-16 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-8 md:p-10">
+                  <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">
+                    Recommended next step
+                  </div>
+                  <h2 className="mt-2 text-2xl font-bold">{cta.title}</h2>
+                  <p className="mt-3 text-white/60">{cta.body}</p>
 
-                <Link
-                  to="/signup"
-                  className="inline-block mt-6 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold transition"
-                >
-                  Get Started
-                </Link>
-              </div>
+                  {cta.external ? (
+                    <a
+                      href={cta.href}
+                      onClick={handleCtaClick}
+                      className="inline-block mt-6 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold transition"
+                    >
+                      {cta.label}
+                    </a>
+                  ) : (
+                    <Link
+                      to={cta.href}
+                      onClick={handleCtaClick}
+                      className="inline-block mt-6 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold transition"
+                    >
+                      {cta.label}
+                    </Link>
+                  )}
+                </div>
+              )}
             </>
           )}
         </article>

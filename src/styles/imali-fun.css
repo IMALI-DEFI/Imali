@@ -1,0 +1,598 @@
+/* ==========================================================
+   IMALI FUN KIT — glossy, bouncy, easy-to-read UI pieces.
+   Same feel as Sports Jedi's moving buttons. Use anywhere:
+     <button className="fun-btn fun-gold">Go!</button>
+     <div className="fun-tile fun-green"><span className="fun-emoji">🤖</span>…</div>
+     <section className="fun-sparkle"><h1>…</h1><div className="fun-sparkles"><i/><i/><i/><i/><i/><i/></div></section>
+   ========================================================== */
+:root {
+  --f-gold: linear-gradient(180deg, #ffe07a, #ffbf1f 55%, #c98a00);   --f-gold-b: #fff1b0;  --f-gold-s: #5a3a05;
+  --f-green: linear-gradient(180deg, #4ff0a0, #0fb36a 55%, #06703f);  --f-green-b: #a8ffd2; --f-green-s: #053420;
+  --f-blue: linear-gradient(180deg, #5eb2ff, #1d6fe0 55%, #0b3a8f);   --f-blue-b: #b6dcff;  --f-blue-s: #051640;
+  --f-purple: linear-gradient(180deg, #b48bff, #7a3cf0 55%, #3f1796); --f-purple-b: #dcc8ff;--f-purple-s: #1b0a44;
+  --f-red: linear-gradient(180deg, #ff7a80, #e3263a 55%, #8a0b1e);    --f-red-b: #ffc0c4;   --f-red-s: #3a0610;
+  --f-orange: linear-gradient(180deg, #ffb35c, #f07510 55%, #8f3a04); --f-orange-b: #ffd8a8;--f-orange-s: #3e1704;
+  --f-ink: #1b1300;
+}
+
+/* ---------- BUTTONS: big, glossy, bouncy ---------- */
+.fun-btn {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 52px; padding: .8rem 1.5rem; border-radius: 18px;
+  font-size: 1.05rem; font-weight: 900; letter-spacing: .01em; line-height: 1.1;
+  color: #fff; text-shadow: 0 2px 0 #0005; border: 2px solid #ffffff99; cursor: pointer;
+  background: var(--f-blue); border-color: var(--f-blue-b);
+  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-blue-s), 0 8px 18px #0006;
+  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
+}
+.fun-btn::after { /* moving shine */
+  content: ""; position: absolute; top: -40%; bottom: -40%; left: -60%; width: 40%; z-index: -1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, #ffffff55 50%, transparent); transform: skewX(-18deg);
+  animation: funShimmer 3.4s ease-in-out infinite;
+}
+.fun-btn:hover, .fun-btn:focus-visible { transform: translateY(-3px) scale(1.03); filter: brightness(1.1); }
+.fun-btn:active { transform: translateY(4px); box-shadow: inset 0 2px 10px #fff7, 0 1px 0 #0008 !important; }
+.fun-btn:disabled, .fun-btn[aria-disabled="true"] { filter: grayscale(.7) brightness(.8); cursor: not-allowed; transform: none; }
+.fun-btn .fun-btn-emoji { display: inline-block; font-size: 1.35em; animation: funBounce 1.8s ease-in-out infinite; text-shadow: none; }
+.fun-btn:hover .fun-btn-emoji { animation: funWobble .5s ease-in-out infinite; }
+.fun-btn.fun-big { min-height: 64px; font-size: 1.3rem; padding: 1rem 2rem; border-radius: 22px; }
+.fun-btn.fun-small { min-height: 40px; font-size: .9rem; padding: .5rem 1rem; border-radius: 14px; }
+.fun-btn.fun-pulse { animation: funPulse 1.8s ease-in-out infinite; }
+
+.fun-gold   { background: var(--f-gold) !important;   border-color: var(--f-gold-b) !important;   color: var(--f-ink) !important; text-shadow: 0 1px 0 #fff8 !important; box-shadow: inset 0 2px 10px #fff9, 0 5px 0 var(--f-gold-s), 0 8px 18px #0006; }
+.fun-green  { background: var(--f-green) !important;  border-color: var(--f-green-b) !important;  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-green-s), 0 8px 18px #0006; }
+.fun-blue   { background: var(--f-blue) !important;   border-color: var(--f-blue-b) !important;   box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-blue-s), 0 8px 18px #0006; }
+.fun-purple { background: var(--f-purple) !important; border-color: var(--f-purple-b) !important; box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-purple-s), 0 8px 18px #0006; }
+.fun-red    { background: var(--f-red) !important;    border-color: var(--f-red-b) !important;    box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-red-s), 0 8px 18px #0006; }
+.fun-orange { background: var(--f-orange) !important; border-color: var(--f-orange-b) !important; box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-orange-s), 0 8px 18px #0006; }
+.fun-ghost  { background: #ffffff14 !important; border-color: #ffffff55 !important; box-shadow: inset 0 2px 10px #fff2, 0 5px 0 #0008 !important; }
+
+/* ---------- TILES: big choice cards with floating emoji ---------- */
+.fun-tile {
+  position: relative; overflow: hidden; isolation: isolate; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem;
+  min-height: 140px; padding: 1rem .75rem; border-radius: 24px; border: 3px solid #ffffff88;
+  color: #fff; cursor: pointer; transition: transform .18s ease, filter .18s ease;
+}
+.fun-tile::before { /* glossy top */
+  content: ""; position: absolute; inset: 0 0 55% 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, #ffffff45, #ffffff00); border-radius: 22px 22px 50% 50% / 22px 22px 24px 24px;
+}
+.fun-tile .fun-emoji {
+  font-size: 3.4rem; line-height: 1; display: inline-block;
+  filter: drop-shadow(0 6px 6px #0009) drop-shadow(0 0 12px #ffffffaa);
+  animation: funFloat 2.8s ease-in-out infinite;
+}
+.fun-tile:nth-child(2) .fun-emoji { animation-delay: .35s; }
+.fun-tile:nth-child(3) .fun-emoji { animation-delay: .7s; }
+.fun-tile:nth-child(4) .fun-emoji { animation-delay: 1.05s; }
+.fun-tile:nth-child(5) .fun-emoji { animation-delay: 1.4s; }
+.fun-tile:nth-child(6) .fun-emoji { animation-delay: 1.75s; }
+.fun-tile strong { font-size: 1.15rem; font-weight: 950; font-style: italic; text-shadow: 0 2px 0 #0007; line-height: 1.1; }
+.fun-tile small {
+  font-size: .75rem; font-weight: 900; letter-spacing: .05em; color: #fff;
+  background: #00000045; border: 1px solid #ffffff55; border-radius: 999px; padding: 3px 10px;
+}
+.fun-tile:hover, .fun-tile:focus-visible { transform: translateY(-4px) scale(1.03); filter: brightness(1.12); }
+.fun-tile:hover .fun-emoji { animation: funWobble .6s ease-in-out infinite; }
+.fun-tile:nth-child(even):hover .fun-emoji { animation: funSpin .9s linear infinite; }
+.fun-tile:active { transform: translateY(3px); }
+.fun-tile.is-picked { box-shadow: 0 0 0 4px #fff, 0 0 28px #ffffffcc, inset 0 2px 12px #fff6 !important; transform: translateY(-2px); }
+.fun-tile.is-picked::after {
+  content: "✓"; position: absolute; top: 8px; right: 10px; width: 28px; height: 28px; border-radius: 999px;
+  display: grid; place-items: center; font-weight: 950; color: #0a5a33; background: #fff; box-shadow: 0 2px 0 #0006;
+}
+.fun-tile:disabled { cursor: not-allowed; filter: grayscale(.5) brightness(.75); transform: none; }
+.fun-tile.fun-gold strong, .fun-tile.fun-gold small { color: var(--f-ink); text-shadow: none; }
+.fun-tile.fun-gold small { background: #ffffff66; }
+
+/* ---------- PANELS: friendly cards ---------- */
+.fun-card {
+  border-radius: 26px; padding: 1.25rem; color: #fff;
+  background: linear-gradient(180deg, #1c2350, #121638); border: 2px solid #3a4590;
+  box-shadow: inset 0 2px 14px #ffffff12, 0 6px 0 #070a20, 0 10px 30px #0007;
+}
+.fun-step {
+  display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 999px; flex: none;
+  font-weight: 950; font-size: 1.2rem; color: var(--f-ink); background: var(--f-gold); border: 2px solid var(--f-gold-b);
+  box-shadow: inset 0 2px 6px #fff9, 0 3px 0 var(--f-gold-s);
+}
+.fun-step.is-done { background: var(--f-green); border-color: var(--f-green-b); color: #fff; box-shadow: inset 0 2px 6px #fff7, 0 3px 0 var(--f-green-s); }
+.fun-title { font-weight: 950; font-size: clamp(1.4rem, 3.6vw, 2rem); line-height: 1.15; }
+.fun-help { color: #c9d2ff; font-size: 1rem; line-height: 1.5; }
+.fun-pill {
+  display: inline-flex; align-items: center; gap: .35rem; padding: 4px 12px; border-radius: 999px;
+  font-weight: 900; font-size: .8rem; background: #ffffff1f; border: 1px solid #ffffff40; color: #fff;
+}
+
+/* ---------- SPARKLE HEADER ---------- */
+.fun-sparkle {
+  position: relative; overflow: hidden; isolation: isolate; border-radius: 28px; border: 3px solid #c59bff;
+  background: radial-gradient(circle at 20% 0%, #7a3cf0 0, transparent 55%), radial-gradient(circle at 90% 100%, #0fb36a55 0, transparent 50%), linear-gradient(180deg, #2a1366, #120a33);
+  animation: funGlow 2.6s ease-in-out infinite;
+}
+.fun-sparkle::after {
+  content: ""; position: absolute; inset: -40% auto -40% -60%; width: 45%; z-index: -1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, #ffffff30 45%, #ffe9a066 50%, #ffffff30 55%, transparent);
+  transform: skewX(-18deg); animation: funShimmer 3.2s ease-in-out infinite;
+}
+.fun-shine-text {
+  background: linear-gradient(90deg, #fff 0%, #ffe07a 25%, #fff 50%, #8dffc4 75%, #fff 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 0 #0007) drop-shadow(0 0 12px #ffd45e66);
+  animation: funTextShine 3.5s linear infinite;
+}
+.fun-bounce { display: inline-block; animation: funBounce 1.8s ease-in-out infinite; }
+.fun-float  { display: inline-block; animation: funFloat 2.8s ease-in-out infinite; }
+.fun-sparkles { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.fun-sparkles i {
+  position: absolute; width: 14px; height: 14px; font-style: normal; opacity: 0;
+  background: radial-gradient(circle, #fff 0 18%, transparent 20%),
+              conic-gradient(from 0deg, transparent 0 40deg, #fff6c2 45deg, transparent 50deg 130deg, #fff6c2 135deg, transparent 140deg 220deg, #fff6c2 225deg, transparent 230deg 310deg, #fff6c2 315deg, transparent 320deg);
+  filter: drop-shadow(0 0 6px #ffe07a); animation: funTwinkle 2.4s ease-in-out infinite;
+}
+.fun-sparkles i:nth-child(1) { top: 14%; left: 62%; }
+.fun-sparkles i:nth-child(2) { top: 58%; left: 88%; animation-delay: .5s; width: 18px; height: 18px; }
+.fun-sparkles i:nth-child(3) { top: 22%; left: 92%; animation-delay: 1s; width: 10px; height: 10px; }
+.fun-sparkles i:nth-child(4) { top: 70%; left: 48%; animation-delay: 1.5s; }
+.fun-sparkles i:nth-child(5) { top: 10%; left: 30%; animation-delay: 1.9s; width: 10px; height: 10px; }
+.fun-sparkles i:nth-child(6) { top: 76%; left: 8%; animation-delay: .8s; width: 12px; height: 12px; }
+
+/* ---------- NAV ---------- */
+.fun-nav-link {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .8rem; border-radius: 14px;
+  font-weight: 850; font-size: .95rem; color: #e3e8ff; border: 2px solid transparent; transition: transform .15s ease, background .15s ease;
+}
+.fun-nav-link:hover { background: #ffffff14; transform: translateY(-2px); }
+.fun-nav-link:hover .fun-nav-emoji { animation: funWobble .5s ease-in-out infinite; }
+.fun-nav-link.is-active { background: #ffffff1f; border-color: #ffffff40; color: #fff; }
+.fun-nav-emoji { display: inline-block; font-size: 1.15em; }
+.fun-nav-glow { animation: funNavGlow 2.6s ease-in-out infinite; }
+
+/* ---------- money pop + trade slide ---------- */
+.fun-pop { animation: funPop .45s ease-out; }
+.fun-slide-in { animation: funSlideIn .35s ease-out; }
+.fun-meter { height: 18px; border-radius: 999px; background: #ffffff1a; border: 2px solid #ffffff30; overflow: hidden; }
+.fun-meter > div { height: 100%; border-radius: 999px; transition: width .5s ease; background: linear-gradient(90deg, #ffbf1f, #4ff0a0); box-shadow: inset 0 2px 4px #fff8; }
+
+@keyframes funShimmer { 0% { left: -60%; } 55%, 100% { left: 130%; } }
+@keyframes funTextShine { from { background-position: 0% 0; } to { background-position: 250% 0; } }
+@keyframes funTwinkle { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+@keyframes funBounce { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-5px) rotate(-8deg); } }
+@keyframes funFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes funWobble { 0%, 100% { transform: rotate(-14deg) scale(1.1); } 50% { transform: rotate(14deg) scale(1.1); } }
+@keyframes funSpin { from { transform: rotate(0deg) scale(1.1); } to { transform: rotate(360deg) scale(1.1); } }
+@keyframes funPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes funPop { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes funSlideIn { from { opacity: 0; transform: translateY(-10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes funGlow {
+  0%, 100% { box-shadow: inset 0 2px 14px #fff3, 0 0 16px #9a43ff88, 0 5px 0 #13072c; border-color: #c59bff; }
+  50%      { box-shadow: inset 0 2px 18px #fff5, 0 0 34px #c05bffcc, 0 0 0 3px #ffd45e99, 0 5px 0 #13072c; border-color: #ffe07a; }
+}
+@keyframes funNavGlow { 0%, 100% { box-shadow: inset 0 2px 10px #fff9, 0 4px 0 var(--f-gold-s), 0 0 6px #ffd45e55; } 50% { box-shadow: inset 0 2px 10px #fff9, 0 4px 0 var(--f-gold-s), 0 0 22px #ffd45ecc; } }
+
+@media (max-width: 560px) {
+  .fun-tile { min-height: 124px; }
+  .fun-tile .fun-emoji { font-size: 2.8rem; }
+  .fun-btn.fun-big { font-size: 1.15rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fun-btn::after, .fun-btn .fun-btn-emoji, .fun-tile .fun-emoji, .fun-sparkle, .fun-sparkle::after, .fun-shine-text,
+  .fun-bounce, .fun-float, .fun-sparkles i, .fun-nav-glow, .fun-pulse, .fun-pop, .fun-slide-in { animation: none !important; }
+  .fun-sparkles i { opacity: .8; }
+}
+
+/* ==========================================================
+   MEMBER DASHBOARD reskin (wrapper: .imali-fun-dash)
+   Restyles the existing Tailwind cards without touching logic.
+   ========================================================== */
+.imali-fun-dash { background: radial-gradient(circle at 50% -10%, #2a1366 0, #0a0d26 45%, #050816 100%) !important; }
+.imali-fun-dash > header { background: #070a1fcc !important; border-bottom: 2px solid #2b3470 !important; }
+.imali-fun-dash main > section[class*="rounded-[2rem]"],
+.imali-fun-dash main > section > section[class*="rounded-[2rem]"],
+.imali-fun-dash main > div[class*="rounded-[2rem]"] {
+  border-radius: 26px !important; border-width: 2px !important;
+  box-shadow: inset 0 2px 14px #ffffff12, 0 6px 0 #070a20, 0 10px 30px #0007;
+}
+.imali-fun-dash main > section[class*="border-white/10"],
+.imali-fun-dash main > section > section[class*="border-white/10"] {
+  background: linear-gradient(180deg, #1c2350, #121638) !important; border-color: #3a4590 !important;
+}
+.imali-fun-dash main h3 { letter-spacing: .01em; }
+.imali-fun-dash main [class*="text-white/40"], .imali-fun-dash main [class*="text-white/50"] { color: #b9c3f5 !important; }
+.imali-fun-dash main [class*="rounded-2xl"][class*="bg-black/25"] { background: #ffffff0f !important; border: 2px solid #ffffff1a; }
+
+/* settings shortcuts: chunky chips */
+.imali-fun-dash main section > div.grid > button[class*="rounded-xl"] {
+  min-height: 52px; border-radius: 16px !important; border: 2px solid #ffffff30 !important;
+  background: linear-gradient(180deg, #2a3373, #1a2056) !important; color: #fff !important;
+  box-shadow: inset 0 2px 8px #ffffff22, 0 4px 0 #070a20 !important; transition: transform .15s ease;
+}
+.imali-fun-dash main section > div.grid > button[class*="rounded-xl"]:hover { transform: translateY(-2px); }
+.imali-fun-dash main section > div.grid > button[class*="rounded-xl"]:active { transform: translateY(3px); box-shadow: none !important; }
+
+/* status pills */
+.imali-fun-dash main [class*="rounded-full"][class*="tracking-widest"] { font-size: .8rem !important; padding: 8px 14px !important; border-width: 2px !important; }
+
+/* robot style cards */
+.imali-fun-dash .fun-strategy {
+  border-radius: 22px !important; border: 3px solid #ffffff30 !important;
+  background: linear-gradient(180deg, #2a3373, #171c4a) !important;
+  box-shadow: inset 0 2px 10px #ffffff22, 0 5px 0 #070a20 !important; transition: transform .18s ease, filter .18s ease;
+}
+.imali-fun-dash .fun-strategy:not(:disabled):hover { transform: translateY(-4px); filter: brightness(1.12); }
+.imali-fun-dash .fun-strategy:not(:disabled):hover .text-3xl { animation: funWobble .6s ease-in-out infinite; display: inline-block; }
+.imali-fun-dash .fun-strategy.is-picked {
+  border-color: #ffe07a !important; background: linear-gradient(180deg, #3b2f8a, #221a5c) !important;
+  box-shadow: 0 0 0 3px #fff, 0 0 26px #ffe07a88, inset 0 2px 10px #ffffff33 !important;
+}
+.imali-fun-dash .fun-strategy .text-3xl { animation: funFloat 2.8s ease-in-out infinite; display: inline-block; }
+.imali-fun-dash .fun-strategy span[title] { color: #dfe5ff; font-weight: 700; }
+
+/* trade feed rows */
+.imali-fun-dash main [class*="max-h-[500px]"] > div { animation: funSlideIn .35s ease-out; border-width: 2px !important; border-radius: 18px !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .imali-fun-dash .fun-strategy .text-3xl, .imali-fun-dash main [class*="max-h-[500px]"] > div { animation: none !important; }
+}
+
+/* ==========================================================
+   GAME LAYER: player HUD, XP bar, quests, quiz answers, starfield
+   ========================================================== */
+.fun-game-bg { position: relative; isolation: isolate; }
+.fun-game-bg::before { /* drifting stars */
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .55;
+  background-image:
+    radial-gradient(1.5px 1.5px at 10% 20%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 30% 70%, #fff 50%, transparent 51%),
+    radial-gradient(2px 2px at 55% 30%, #ffe07a 50%, transparent 51%), radial-gradient(1px 1px at 75% 85%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 90% 15%, #8dffc4 50%, transparent 51%), radial-gradient(1px 1px at 45% 50%, #fff 50%, transparent 51%);
+  background-size: 420px 420px; animation: funStars 60s linear infinite;
+}
+@keyframes funStars { from { background-position: 0 0; } to { background-position: 0 420px; } }
+
+.fun-hud {
+  display: flex; align-items: center; gap: 1rem; padding: .9rem 1.1rem; border-radius: 22px; color: #fff;
+  background: linear-gradient(180deg, #232b66, #141842); border: 3px solid #5c6ad6;
+  box-shadow: inset 0 2px 12px #ffffff22, 0 5px 0 #070a20, 0 0 24px #5c6ad655;
+}
+.fun-hud-avatar {
+  width: 64px; height: 64px; flex: none; display: grid; place-items: center; font-size: 2.2rem; border-radius: 18px;
+  background: var(--f-purple); border: 3px solid var(--f-purple-b); box-shadow: inset 0 2px 8px #fff7, 0 4px 0 var(--f-purple-s);
+  animation: funFloat 2.8s ease-in-out infinite;
+}
+.fun-hud-level {
+  font-weight: 950; font-size: .85rem; padding: 3px 10px; border-radius: 10px; color: var(--f-ink);
+  background: var(--f-gold); border: 2px solid var(--f-gold-b); box-shadow: 0 2px 0 var(--f-gold-s);
+}
+.fun-xp { position: relative; height: 22px; border-radius: 999px; background: #0008; border: 2px solid #ffffff33; overflow: hidden; }
+.fun-xp > div {
+  height: 100%; border-radius: 999px; transition: width .6s ease;
+  background: linear-gradient(90deg, #7a3cf0, #1d6fe0, #4ff0a0); box-shadow: inset 0 3px 4px #fff7;
+}
+.fun-xp > span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .72rem; font-weight: 900; text-shadow: 0 1px 2px #000; }
+.fun-hud-coins {
+  display: flex; align-items: center; gap: .5rem; padding: .5rem .8rem; border-radius: 16px; flex: none;
+  background: #ffbf1f22; border: 2px solid #ffe07a88;
+}
+@media (max-width: 560px) {
+  .fun-hud { flex-wrap: wrap; }
+  .fun-hud-avatar { width: 52px; height: 52px; font-size: 1.8rem; }
+  .fun-hud-coins { width: 100%; justify-content: center; }
+}
+
+.fun-quest {
+  display: flex; align-items: center; gap: .75rem; padding: .65rem .8rem; border-radius: 16px;
+  background: #ffffff0d; border: 2px solid #ffffff1f; transition: transform .15s ease;
+}
+.fun-quest:hover { transform: translateX(3px); }
+.fun-quest.is-done { background: #0fb36a1f; border-color: #0fb36a; }
+.fun-quest.is-done .flex-1 { text-decoration: line-through; text-decoration-color: #4ff0a0aa; opacity: .85; }
+.fun-quest-xp { font-weight: 950; font-size: .8rem; color: #ffe07a; white-space: nowrap; }
+
+.fun-lesson { border-radius: 22px; padding: 1.25rem; background: #ffffff0a; border: 2px solid #ffffff1f; }
+.fun-answer {
+  min-height: 52px; padding: .6rem 1rem; border-radius: 16px; font-weight: 900; color: #fff; text-align: center;
+  background: linear-gradient(180deg, #2a3373, #1a2056); border: 2px solid #ffffff30;
+  box-shadow: inset 0 2px 8px #ffffff22, 0 4px 0 #070a20; transition: transform .15s ease;
+}
+.fun-answer:hover:not(:disabled) { transform: translateY(-2px); }
+.fun-answer:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
+.fun-answer.is-right { background: var(--f-green); border-color: var(--f-green-b); animation: funPop .45s ease-out; }
+.fun-answer.is-wrong { background: var(--f-red); border-color: var(--f-red-b); animation: funShake .4s ease; }
+.fun-answer:disabled { cursor: default; }
+@keyframes funShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fun-game-bg::before, .fun-hud-avatar, .fun-answer.is-right, .fun-answer.is-wrong { animation: none !important; }
+}
+
+/* ==========================================================
+   SITE-WIDE REskin (wrapper: main.imali-fun-site, set in App.js)
+   Gives older pages (sign-up, log-in, connect, billing, support…)
+   the game look without touching their logic. Pages already built
+   with fun-* classes are left alone via :not(.fun-*) guards.
+   ========================================================== */
+
+/* page backgrounds: swap flat dark for the game sky */
+.imali-fun-site > div[class*="min-h-screen"]:not(.fun-game-bg):not(.imali-fun-dash):not([class*="bg-gray-50"]):not([class*="bg-white"]):not([class*="from-white"]):not([class*="bg-gray-100"]):not([class*="from-gray-50"]) {
+  background: radial-gradient(circle at 50% -10%, #2a1366 0, #0a0d26 45%, #050816 100%) !important;
+}
+
+/* big action buttons → glossy, bouncy */
+.imali-fun-site :is(button, a)[class*="py-3"]:not(.fun-btn):not(.fun-tile):not(.fun-answer):is([class*="bg-"], [class*="from-"]):not([class*="bg-white"]):not([class*="bg-black"]):not([class*="bg-transparent"]),
+.imali-fun-site :is(button, a)[class*="py-4"]:not(.fun-btn):not(.fun-tile):not(.fun-answer):is([class*="bg-"], [class*="from-"]):not([class*="bg-white"]):not([class*="bg-black"]):not([class*="bg-transparent"]) {
+  position: relative; border-radius: 18px !important; font-weight: 900 !important; color: #fff !important;
+  min-height: 50px; text-shadow: 0 2px 0 #0005;
+  background: var(--f-blue) !important; border: 2px solid var(--f-blue-b) !important;
+  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-blue-s), 0 8px 18px #0006 !important;
+  transition: transform .15s ease, filter .15s ease !important;
+}
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):is([class*="emerald-"], [class*="green-"], [class*="teal-"]):is([class*="bg-"], [class*="from-"]):not([class*="bg-white"]):not([class*="/1"]):not([class*="/2"]) {
+  background: var(--f-green) !important; border-color: var(--f-green-b) !important;
+  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-green-s), 0 8px 18px #0006 !important;
+}
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):is([class*="purple-"], [class*="pink-"]):is([class*="bg-"], [class*="from-"]):not([class*="bg-white"]):not([class*="/1"]):not([class*="/2"]) {
+  background: var(--f-purple) !important; border-color: var(--f-purple-b) !important;
+  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-purple-s), 0 8px 18px #0006 !important;
+}
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):is([class*="bg-red-"], [class*="from-red-"]):not([class*="/1"]):not([class*="/2"]) {
+  background: var(--f-red) !important; border-color: var(--f-red-b) !important;
+  box-shadow: inset 0 2px 10px #fff7, 0 5px 0 var(--f-red-s), 0 8px 18px #0006 !important;
+}
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):is([class*="bg-amber-"], [class*="bg-yellow-"], [class*="from-amber-"], [class*="from-orange-"]):not([class*="/1"]):not([class*="/2"]) {
+  background: var(--f-gold) !important; border-color: var(--f-gold-b) !important; color: var(--f-ink) !important; text-shadow: none;
+  box-shadow: inset 0 2px 10px #fff9, 0 5px 0 var(--f-gold-s), 0 8px 18px #0006 !important;
+}
+/* translucent "ghost" buttons (bg-white/5, bg-white/10) */
+.imali-fun-site :is(button, a)[class*="py-3"]:not(.fun-btn):not(.fun-tile):not(.fun-answer)[class*="bg-white/"],
+.imali-fun-site :is(button, a)[class*="py-4"]:not(.fun-btn):not(.fun-tile):not(.fun-answer)[class*="bg-white/"] {
+  border-radius: 18px !important; font-weight: 900 !important; min-height: 50px;
+  background: #ffffff14 !important; border: 2px solid #ffffff55 !important; box-shadow: inset 0 2px 10px #fff2, 0 5px 0 #0008 !important;
+}
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):not(.fun-tile):not(.fun-answer):is([class*="bg-"], [class*="from-"]):hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+.imali-fun-site :is(button, a)[class*="py-"]:not(.fun-btn):not(.fun-tile):not(.fun-answer):is([class*="bg-"], [class*="from-"]):active:not(:disabled) { transform: translateY(4px); box-shadow: none !important; }
+
+/* form fields: bigger, rounder, easier to tap */
+.imali-fun-site :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea) {
+  min-height: 50px; border-radius: 14px !important; border-width: 2px !important;
+  font-size: 1rem; transition: border-color .15s ease, box-shadow .15s ease;
+}
+.imali-fun-site :is(input, select, textarea):focus { border-color: #ffe07a !important; box-shadow: 0 0 0 4px #ffe07a33 !important; outline: none !important; }
+.imali-fun-site label { font-weight: 800; }
+
+/* cards: chunkier edges + game shadow */
+.imali-fun-site div[class*="rounded-3xl"][class*="border"]:not(.fun-card):not(.fun-plan):not(.fun-tile),
+.imali-fun-site div[class*="rounded-[2rem]"][class*="border"]:not(.fun-card) {
+  border-width: 2px !important; box-shadow: inset 0 2px 14px #ffffff10, 0 6px 0 #070a20, 0 10px 30px #0006;
+}
+.imali-fun-site h1:not(.fun-shine-text) { font-weight: 950; letter-spacing: -.01em; }
+
+/* plan cards on the Plans page */
+.fun-plan { box-shadow: inset 0 2px 14px #ffffff12, 0 6px 0 #070a20, 0 10px 30px #0007; }
+.fun-plan-popular { border-color: #ffe07a !important; box-shadow: 0 0 0 2px #ffe07a66, 0 0 30px #ffbf1f44, 0 6px 0 #070a20 !important; }
+.fun-plan img { animation: funFloat 3.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) { .fun-plan img { animation: none !important; } }
+
+/* ---------- IMALI logo mascot ---------- */
+.fun-mascot {
+  display: inline-block; object-fit: contain; border-radius: 22px;
+  filter: drop-shadow(0 8px 10px #0009) drop-shadow(0 0 18px #ffe07a88);
+}
+.fun-mascot-move { animation: funMascot 3s ease-in-out infinite; }
+.fun-mascot-move:hover { animation: funWobble .6s ease-in-out infinite; }
+@keyframes funMascot {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-9px) rotate(3deg); }
+}
+@media (prefers-reduced-motion: reduce) { .fun-mascot-move { animation: none !important; } }
+
+/* ==========================================================
+   LIGHT → GAME CONVERTER
+   Any page whose root uses a light background (bg-white, bg-slate-50,
+   bg-gray-50…) — or anything wrapped in .fun-convert — is turned into
+   the dark game style automatically. Keeps every word of content.
+   ========================================================== */
+:is(.fun-convert,
+    .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) {
+  background: radial-gradient(circle at 50% -10%, #2a1366 0, #0a0d26 45%, #050816 100%) !important;
+  color: #fff !important;
+}
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, .bg-white\/80, .bg-white\/90, .bg-white\/70) {
+  background: linear-gradient(180deg, #1c2350, #121638) !important;
+  border-color: #3a4590 !important;
+  color: #fff;
+}
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) {
+  --fc: 1;
+}
+/* cards get the chunky game edge */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.rounded-2xl, .rounded-3xl, .rounded-xl):is(.bg-white, .bg-slate-50, .bg-gray-50, .border) {
+  border-width: 2px !important;
+  box-shadow: inset 0 2px 14px #ffffff10, 0 5px 0 #070a20, 0 10px 24px #0006 !important;
+}
+/* borders */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.border-slate-100, .border-slate-200, .border-slate-300, .border-gray-100, .border-gray-200, .border-gray-300) { border-color: #3a4590 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.divide-slate-100, .divide-slate-200, .divide-gray-100, .divide-gray-200) > * { border-color: #3a4590 !important; }
+/* text */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-slate-900, .text-slate-800, .text-gray-900, .text-gray-800, .text-black) { color: #fff !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-slate-700, .text-slate-600, .text-gray-700, .text-gray-600) { color: #dbe2ff !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-slate-500, .text-slate-400, .text-gray-500, .text-gray-400) { color: #aab4ee !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-indigo-600, .text-indigo-700, .text-blue-600, .text-blue-700, .text-sky-600, .text-cyan-600) { color: #9fd0ff !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-emerald-600, .text-emerald-700, .text-green-600, .text-green-700, .text-teal-600) { color: #4ff0a0 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-amber-600, .text-amber-700, .text-amber-800, .text-yellow-600, .text-yellow-700, .text-orange-600) { color: #ffe07a !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-rose-600, .text-rose-700, .text-red-600, .text-red-700) { color: #ff9aa0 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.text-purple-600, .text-purple-700, .text-violet-600) { color: #c9a8ff !important; }
+/* tinted light panels → glowing translucent panels */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-indigo-50, .bg-indigo-100, .bg-blue-50, .bg-blue-100, .bg-sky-50) { background: #1d6fe02e !important; border-color: #5eb2ff88 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-emerald-50, .bg-emerald-100, .bg-green-50, .bg-green-100, .bg-teal-50) { background: #0fb36a26 !important; border-color: #4ff0a088 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-amber-50, .bg-amber-100, .bg-yellow-50, .bg-yellow-100, .bg-orange-50) { background: #ffbf1f22 !important; border-color: #ffe07a88 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-rose-50, .bg-rose-100, .bg-red-50, .bg-red-100) { background: #e3263a22 !important; border-color: #ff9aa088 !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(.bg-purple-50, .bg-purple-100, .bg-violet-50) { background: #7a3cf02e !important; border-color: #c9a8ff88 !important; }
+/* headings pop */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) h1 {
+  font-weight: 950 !important;
+  background: linear-gradient(90deg, #fff 0%, #ffe07a 25%, #fff 50%, #8dffc4 75%, #fff 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important;
+  filter: drop-shadow(0 3px 0 #0007); animation: funTextShine 3.5s linear infinite;
+}
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) h1 span { color: inherit !important; }
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) :is(h2, h3) { font-weight: 900 !important; }
+/* inputs */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"]))
+  :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { background: #0a0d26 !important; color: #fff !important; border-color: #5c6ad6 !important; }
+/* tables */
+:is(.fun-convert, .imali-fun-site > :is(div, main, section):is(.bg-white, .bg-slate-50, .bg-gray-50, .bg-gray-100, .bg-slate-100, [class*="from-white"], [class*="from-slate-50"], [class*="from-gray-50"])) :is(thead, tr:nth-child(even)) { background: #ffffff08; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.fun-convert, .imali-fun-site > :is(div, main, section)) h1 { animation: none !important; }
+}
+
+/* ---------- charts ---------- */
+.fun-chart { margin: 0; border-radius: 18px; background: #0006; border: 2px solid #ffffff14; padding: 8px 6px 0; }
+.fun-chart-line { filter: drop-shadow(0 0 6px currentColor); }
+.fun-chart-dot { animation: funPulse 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.fun-candles { border-radius: 18px; background: #0006; border: 2px solid #ffffff14; padding: 6px; overflow: hidden; }
+
+/* calmer mode for working screens (demo + dashboard): fun, not busy */
+.fun-calm .fun-tile .fun-emoji { animation-duration: 4.5s; }
+.fun-calm .fun-btn::after { animation-duration: 6s; }
+.fun-calm .fun-sparkle { animation-duration: 5s; }
+.fun-calm .fun-pulse { animation: none; }
+@media (prefers-reduced-motion: reduce) { .fun-chart-dot { animation: none !important; } }
+
+/* text clamping (works with or without the Tailwind plugin) */
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---------- plan robots (NFT art) that move ---------- */
+.fun-tier-robot {
+  width: 64px; height: 64px; object-fit: cover; border-radius: 16px;
+  border: 2px solid #ffffffaa; box-shadow: 0 6px 12px #0008, 0 0 14px #ffffff55;
+  animation: funFloat 3s ease-in-out infinite;
+}
+.fun-tile:nth-child(2) .fun-tier-robot { animation-delay: .4s; }
+.fun-tile:nth-child(3) .fun-tier-robot { animation-delay: .8s; }
+.fun-tile:nth-child(4) .fun-tier-robot { animation-delay: 1.2s; }
+.fun-tile:hover .fun-tier-robot, .fun-tile:focus-visible .fun-tier-robot { animation: funWobble .6s ease-in-out infinite; }
+.fun-tile.is-picked .fun-tier-robot {
+  animation: funRobotJump 1.4s ease-in-out infinite;
+  box-shadow: 0 0 0 3px #fff, 0 0 26px #ffe07acc, 0 8px 14px #0008;
+}
+.fun-tier-robot-hero {
+  width: 120px; height: 120px; border-radius: 22px; display: block;
+  animation: funRobotEnter .5s ease-out, funMascot 3s ease-in-out .5s infinite;
+  box-shadow: 0 0 0 3px #ffe07a, 0 0 34px #ffe07a99, 0 10px 18px #0009;
+}
+@keyframes funRobotJump {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.08) rotate(-4deg); }
+  55% { transform: translateY(0) scale(.97); }
+  75% { transform: translateY(-4px) scale(1.03) rotate(3deg); }
+}
+@keyframes funRobotEnter {
+  from { transform: scale(.4) rotate(-20deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+@media (max-width: 560px) { .fun-tier-robot { width: 56px; height: 56px; } .fun-tier-robot-hero { width: 104px; height: 104px; } }
+@media (prefers-reduced-motion: reduce) { .fun-tier-robot, .fun-tier-robot-hero { animation: none !important; } }
+
+/* ---------- phone safety: boxes never grow wider than the screen ---------- */
+.fun-card, .fun-sparkle, .fun-hud, .fun-quest, .fun-lesson, .fun-tile { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+.imali-fun-site :is(.grid, .flex) > * { min-width: 0; }
+.imali-fun-site { overflow-x: hidden; }
+.imali-fun-site :is(p, h1, h2, h3, h4, li, a, span) { overflow-wrap: break-word; }
+@media (max-width: 560px) {
+  .fun-card { padding: 1rem; border-radius: 22px; }
+  .fun-sparkle { border-radius: 24px; }
+}
+
+/* ==========================================================
+   HEADER (desktop: slim pill nav; phone keeps the big game buttons)
+   ========================================================== */
+.hdr {
+  background: linear-gradient(180deg, #0b0e2bf2, #070a1ff2);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #ffffff14;
+  box-shadow: 0 8px 24px #0006;
+}
+.hdr-logo {
+  height: 46px; width: 46px; object-fit: cover; border-radius: 12px;
+  box-shadow: 0 0 0 2px #ffe07a66, 0 0 16px #ffe07a33;
+  transition: transform .2s ease;
+}
+.hdr a:hover .hdr-logo { transform: rotate(-6deg) scale(1.05); }
+
+.hdr-nav {
+  align-items: center; gap: 2px; padding: 5px;
+  border-radius: 999px; background: #ffffff0d; border: 1px solid #ffffff1a;
+  box-shadow: inset 0 1px 0 #ffffff14;
+}
+.hdr-link {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 14px; border-radius: 999px;
+  font-size: .9rem; font-weight: 800; color: #c9d2ff; white-space: nowrap;
+  transition: color .15s ease, background .15s ease;
+}
+.hdr-link:hover { color: #fff; background: #ffffff12; }
+.hdr-link:hover .hdr-emoji { transform: translateY(-2px) rotate(-8deg); }
+.hdr-emoji { display: inline-block; font-size: 1rem; transition: transform .2s ease; }
+.hdr-link.is-active {
+  color: #fff; background: linear-gradient(180deg, #2f3a8f, #222a6b);
+  box-shadow: inset 0 1px 0 #ffffff26, 0 0 0 1px #5c6ad6;
+}
+.hdr-link.is-active::after {
+  content: ""; position: absolute; left: 50%; bottom: 3px; width: 18px; height: 3px; margin-left: -9px;
+  border-radius: 3px; background: #ffe07a; box-shadow: 0 0 8px #ffe07a;
+}
+.hdr-caret { font-size: .75rem; transition: transform .2s ease; }
+.hdr-caret.is-open { transform: rotate(180deg); }
+.hdr-menu {
+  position: absolute; right: 0; top: calc(100% + 10px); min-width: 210px; padding: 6px;
+  border-radius: 16px; background: #0f1336; border: 1px solid #3a4590;
+  box-shadow: 0 18px 40px #000a; z-index: 50;
+}
+.hdr-menu-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+  font-weight: 800; font-size: .92rem; color: #dbe2ff;
+}
+.hdr-menu-item:hover, .hdr-menu-item.is-active { background: #ffffff12; color: #fff; }
+
+.hdr-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 18px;
+  border-radius: 999px; font-weight: 900; font-size: .92rem; white-space: nowrap;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, filter .15s ease;
+}
+.hdr-btn:hover { transform: translateY(-1px); }
+.hdr-btn:active { transform: translateY(1px); }
+.hdr-btn-ghost { color: #fff; background: transparent; border: 1px solid #ffffff3a; }
+.hdr-btn-ghost:hover { background: #ffffff12; border-color: #ffffff66; }
+.hdr-btn-gold {
+  color: #1b1300; background: linear-gradient(180deg, #ffe07a, #ffbf1f); border: 1px solid #fff1b0;
+  box-shadow: 0 0 0 0 #ffbf1f00, 0 6px 16px #ffbf1f40;
+}
+.hdr-btn-gold:hover { filter: brightness(1.05); box-shadow: 0 0 0 4px #ffbf1f33, 0 8px 22px #ffbf1f66; }
+
+/* tighten on small laptops */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .hdr-link { padding: 0 10px; font-size: .84rem; }
+  .hdr-emoji { display: none; }
+  .hdr-btn { padding: 0 14px; }
+}

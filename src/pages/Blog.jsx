@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
 
+import { MascotLogo } from "../components/game/GameKit";
 const API_URL = "https://api.imali-defi.com";
 
 export default function Blog() {
@@ -56,6 +57,7 @@ export default function Blog() {
               IMALI Insights
             </div>
 
+            <MascotLogo size={84} className="block mx-auto mb-3" />
             <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight">
               Trading, AI & Automation
             </h1>

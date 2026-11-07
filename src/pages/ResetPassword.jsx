@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 import { useAuth } from "../context/AuthContext";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -83,6 +84,7 @@ export default function ResetPassword() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white flex items-center justify-center">
         <div className="w-full max-w-md p-6 rounded-2xl bg-white/5 border border-white/10 text-center">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-2xl font-bold text-red-400 mb-4">Invalid Reset Link</h1>
           <p className="text-gray-400 mb-6">
             This password reset link is invalid or has expired.

@@ -1,6 +1,7 @@
 // src/pages/ConnectRobinhood.jsx
 import React, { useCallback, useEffect, useState } from "react";
 import BotAPI from "../utils/BotAPI";
+import { MascotLogo } from "../components/game/GameKit";
 import {
   FaCheckCircle,
   FaCopy,
@@ -245,6 +246,7 @@ const [loading, setLoading] = useState(true);
             🪶 Robinhood
           </div>
 
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-2xl sm:text-4xl font-black">
             Connect Robinhood Crypto
           </h1>

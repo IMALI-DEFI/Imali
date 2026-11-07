@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function DataDeletion() {
   useEffect(() => {
     const previous = document.title;
@@ -9,6 +10,7 @@ export default function DataDeletion() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-indigo-950 text-white">
       <article className="mx-auto max-w-4xl px-6 py-14 space-y-6">
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="text-3xl font-bold">IMALI Data Deletion Instructions</h1>
         <p className="text-white/80">You can request deletion of personal information associated with your IMALI account and connected Meta services, including Facebook and Instagram.</p>
         <h2 className="text-xl font-semibold">How to request deletion</h2>

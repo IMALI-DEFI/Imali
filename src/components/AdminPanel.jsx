@@ -71,12 +71,15 @@ const TabLoader = ({ name }) => (
 // Existing Admin Components
 const DashboardOverview = lazy(() => import("../admin/AdminExecutiveOverview.jsx"));
 const AdminAttention = lazy(() => import("../admin/AdminExecutiveOverview.jsx").then(m=>({default:m.AdminAttention})));
+const BidDesk = lazy(() => import("../admin/BidDesk.jsx")); // BID-DESK
 const TokenManagement = lazy(() => import("../admin/TokenManagement.jsx"));
 const FeeDistributor = lazy(() => import("../admin/FeeDistributor.jsx"));
 const ReferralAnalytics = lazy(() => import("../admin/ReferralAnalytics.jsx"));
 const SocialManager = lazy(() => import("../pages/admin/SocialConnectionsPage.jsx"));
 const AccessControl = lazy(() => import("../admin/AccessControl.jsx"));
 const UserManagement = lazy(() => import("../admin/UserManagement.jsx"));
+const VaultPlayers = lazy(() => import("../admin/VaultPlayers.jsx"));
+const VaultQuestions = lazy(() => import("../admin/VaultQuestions.jsx"));
 const PromoManagement = lazy(() => import("../admin/PromoManagement.jsx"));
 const WithdrawalManagement = lazy(() => import("../admin/WithdrawalManagement.jsx"));
 const SystemHealth = lazy(() => import("../admin/SystemHealth.jsx"));
@@ -85,6 +88,7 @@ const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"))
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
 const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
+const TradingStrategyControl = lazy(() => import("../admin/TradingStrategyControl.jsx"));
 const AutoResponder = lazy(() => import("../admin/AutoResponder.jsx"));
 const NewsletterManager = lazy(() => import("../admin/NewsletterManager.jsx"));
 const GA4Analytics = lazy(() => import("../admin/GA4Analytics.jsx"));
@@ -294,6 +298,8 @@ const EXISTING_SECTIONS = [
     emoji: "👥",
     description: "Manage accounts and user data.",
     tabs: [
+      { key: "vault-players", label: "Vault Players", emoji: "🎮", component: VaultPlayers, description: "Black Culture Vault registrations.", help: "View registered game players separately from trading accounts." },
+      { key: "vault-questions", label: "Vault Questions", emoji: "🧠", component: VaultQuestions, description: "Edit live game questions.", help: "Create, update, or delete Black Culture Vault questions." },
       {
         key: "users",
         label: "All Users",
@@ -319,6 +325,15 @@ const EXISTING_SECTIONS = [
         description: "View all platform trades.",
         help: "See all trades across the platform including enterprise organization trades.",
         actions: [{ id: "refresh", label: "Refresh Trades", icon: "🔄", endpoint: "/api/admin/trades?page=1&limit=50", method: "GET" }],
+      },
+      {
+        key: "strategy-control",
+        label: "Strategy Control",
+        emoji: "🎛️",
+        component: TradingStrategyControl,
+        description: "Control live trading strategy profiles and thresholds.",
+        help: "Adjust trading qualification, timeframe confirmation, execution, market guards, and profit-protection settings. Changes are saved centrally and include rollback support.",
+        actions: [],
       },
       {
         key: "reports",
@@ -538,11 +553,12 @@ byKey['work-agent']={...byKey['work-agent'],label:'Opportunity Control Center'};
 byKey.automation={...byKey.automation,label:'Legacy Automation Jobs',description:'Existing job definitions; delivery receipts are in Social Media Center.'};
 byKey.library={key:'content-library',label:'Content / Campaign Library',emoji:'📝',description:'Existing generated marketing content',href:'/admin/social?status=LIBRARY'};
 byKey.billing={key:'billing',label:'Subscriptions / Billing',emoji:'💳',description:'Existing subscription and billing controls',href:'/admin/billing'};
+byKey['bid-desk']={key:'bid-desk',label:'Bid Desk',emoji:'🏛️',component:BidDesk,description:'Government jobs in plain words: subs, prices, papers, one-tap actions',actions:[]};
 byKey.attention={key:'attention',label:'Needs Your Attention',emoji:'🔔',component:AdminAttention,description:'Human decisions and publishing failures',actions:[]};
 const TAB_SECTIONS=[
 {id:'overview',name:'Overview',emoji:'📊',tabs:['overview','attention']},
 {id:'social',name:'SOCIAL MEDIA',emoji:'📱',tabs:['social']},
-{id:'opportunities',name:'Opportunity Engine',emoji:'💼',tabs:['work-agent']},
+{id:'opportunities',name:'Opportunity Engine',emoji:'💼',tabs:['bid-desk','work-agent']},
 {id:'marketing',name:'Marketing',emoji:'📢',tabs:['library','automation','automation-analytics','ga4-analytics','newsletter','autoresponder','promos','referral-partners','referrals','sports-jedi']},
 {id:'trading',name:'Trading',emoji:'📈',tabs:['trades','reports','treasury','token']},
 {id:'customers',name:'Customers',emoji:'👥',tabs:['users','billing','admin-customers','organizations','enterprise-requests','enterprise-analytics','withdrawals','fees']},

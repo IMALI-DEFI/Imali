@@ -32,6 +32,7 @@ import {
 
 import { Line } from "react-chartjs-2";
 
+import { MascotLogo } from "../components/game/GameKit";
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -216,6 +217,7 @@ export default function EnterpriseDashboardDemo() {
               </div>
 
               <div>
+                <MascotLogo size={84} className="block mx-auto mb-3" />
                 <h1 className="text-3xl font-extrabold">
                   IMALI Enterprise
                 </h1>

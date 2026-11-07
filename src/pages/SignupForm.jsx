@@ -3,6 +3,22 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getGoogleIdToken, signOutGoogle } from "../firebase";
+import { trackMarketingEvent } from "../components/MarketingTracker";
+import { MascotLogo } from "../components/game/GameKit";
+import nftStarter from "../assets/images/nfts/nft-starter.png";
+import nftPro from "../assets/images/nfts/nft-pro.png";
+import nftElite from "../assets/images/nfts/nft-elite.png";
+import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
+
+// Plan robots (same artwork as the Plans page)
+const TIER_ROBOTS = {
+  starter: nftStarter,
+  pro: nftPro,
+  elite: nftElite,
+  enterprise: "/enterprise.PNG",
+  professional: nftAdminBot,
+  business: nftAdminBot,
+};
 
 const TIERS = {
   starter: {
@@ -285,6 +301,15 @@ export default function SignupForm() {
 
       const redirectPath = getSignupRedirect(result, googleEmail);
 
+      trackMarketingEvent("signup_complete", {
+        product: form.productType === "admin" ? "AdminPlatform" : "IMALI",
+        metadata: {
+          method: "google",
+          tier: form.tier,
+          redirectPath,
+        },
+      });
+
       navigate(redirectPath, {
         replace: true,
         state: {
@@ -359,6 +384,15 @@ export default function SignupForm() {
         form.email.trim().toLowerCase()
       );
 
+      trackMarketingEvent("signup_complete", {
+        product: form.productType === "admin" ? "AdminPlatform" : "IMALI",
+        metadata: {
+          method: "email",
+          tier: form.tier,
+          redirectPath,
+        },
+      });
+
       navigate(redirectPath, {
         replace: true,
         state: {
@@ -390,12 +424,25 @@ export default function SignupForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black px-4 py-12">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="text-5xl mb-3">{currentTier.icon}</div>
-          <h1 className="text-3xl font-bold text-white">
-            {isAdminSignup ? "Create your admin account" : "Create your account"}
+        <div className="fun-sparkle text-center mb-6 p-6">
+          <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+          {TIER_ROBOTS[form.tier] ? (
+            <img
+              key={form.tier}
+              src={TIER_ROBOTS[form.tier]}
+              alt={`${currentTier.name} plan robot`}
+              className="fun-tier-robot fun-tier-robot-hero mx-auto mb-2"
+            />
+          ) : (
+            <MascotLogo size={92} className="mx-auto mb-2" />
+          )}
+          <h1 className="text-3xl font-black text-white">
+            {isAdminSignup ? "Create your admin account" : form.tier === "starter" ? "Get your free robot" : "Create your account"}
           </h1>
-          <p className="text-gray-400 mt-2">
+          {!isAdminSignup && form.tier === "starter" && (
+            <p className="fun-help mt-2">Takes about a minute. 7 days free with <b className="text-[#ffe07a]">$1,000 in practice money</b> — no card needed.</p>
+          )}
+          <p className="text-gray-300 mt-2 font-bold">
             {currentTier.name} Plan
             {form.billingModel === "profit_share" && form.profitSharePct
               ? ` · ${form.profitSharePct}% profit share`
@@ -410,27 +457,31 @@ export default function SignupForm() {
 
         {/* Tier Selection */}
         <div className="mb-6">
-          <p className="text-sm text-gray-400 mb-3">Select your plan:</p>
-          <div className="grid grid-cols-3 gap-2">
-            {Object.entries(availableTiers).map(([id, tier]) => (
+          <p className="text-sm font-black text-white mb-3">1️⃣ Pick a plan <span className="fun-help font-bold">(you can change it later)</span></p>
+          <div className={`grid gap-2 ${Object.keys(availableTiers).length >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+            {Object.entries(availableTiers).map(([id, tier], i) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => handleTierChange(id)}
-                className={`px-3 py-2 rounded-xl text-center transition-all ${
-                  form.tier === id
-                    ? "bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg"
-                    : "bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10"
-                }`}
+                aria-pressed={form.tier === id}
+                className={`fun-tile ${["fun-green", "fun-blue", "fun-purple", "fun-orange"][i % 4]} ${form.tier === id ? "is-picked" : ""}`}
+                style={{ minHeight: 96, padding: ".6rem .4rem" }}
               >
-                <div className="text-xl">{tier.icon}</div>
-                <div className="text-xs font-semibold">{tier.name}</div>
+                {TIER_ROBOTS[id] ? (
+                  <img src={TIER_ROBOTS[id]} alt="" aria-hidden="true" className="fun-tier-robot" loading="lazy" />
+                ) : (
+                  <span className="fun-emoji" style={{ fontSize: "1.9rem" }} aria-hidden="true">{tier.icon}</span>
+                )}
+                <strong style={{ fontSize: ".9rem" }}>{tier.name}</strong>
+                <small>{tier.price === "$0" ? "Free" : tier.price}</small>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur">
+        <div className="fun-card">
+          <p className="text-sm font-black text-white mb-3">2️⃣ Make your login</p>
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
               {error}
@@ -577,14 +628,14 @@ export default function SignupForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold disabled:opacity-50 transition hover:from-emerald-500 hover:to-cyan-500"
+              className={`fun-btn fun-big w-full ${form.tier === "starter" ? "fun-gold fun-pulse" : "fun-green"}`}
             >
               {loading
-                ? "Creating account..."
+                ? "⏳ Building your robot…"
                 : isAdminSignup
                 ? `Start ${currentTier.name} Plan →`
                 : form.tier === "starter"
-                ? "Start Free Trial →"
+                ? "🚀 Start Free — No Card"
                 : form.tier === "enterprise"
                 ? "Request Enterprise Access →"
                 : `Start ${currentTier.name} (${currentTier.price}/mo) →`}
@@ -611,15 +662,13 @@ export default function SignupForm() {
               <span>🔒 Enterprise-grade security</span>
             </>
           ) : (
-            <>
-              <span>✅ 7‑day free trial</span>
-              <span className="mx-2">•</span>
-              <span>💰 $1,000 paper trading</span>
-              <span className="mx-2">•</span>
-              <span>🔒 No credit card required</span>
-              <span className="mx-2">•</span>
-              <span>🎮 Practice trading immediately</span>
-            </>
+            <div className="flex flex-wrap justify-center gap-2">
+              <span className="fun-pill">✅ 7-day free trial</span>
+              <span className="fun-pill">💰 $1,000 practice money</span>
+              <span className="fun-pill">🔒 No credit card</span>
+              <span className="fun-pill">🎓 Free Trading School</span>
+              <span className="fun-pill">⏹️ Quit any time</span>
+            </div>
           )}
         </div>
       </div>

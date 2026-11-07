@@ -30,6 +30,7 @@ import {
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
 
+import { MascotLogo } from "../components/game/GameKit";
 // Glass Card Component
 const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white/5" }) => (
   <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
@@ -627,6 +628,7 @@ const ReferralSystem = () => {
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
         {/* Header */}
         <div className="text-center mb-10">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="flex flex-wrap items-center justify-center gap-2 text-3xl font-extrabold tracking-tight text-white sm:gap-3 sm:text-4xl md:text-5xl">
             <FaUserFriends className="text-emerald-400" />
             Grow IMALI Together

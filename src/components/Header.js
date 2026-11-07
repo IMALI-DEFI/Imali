@@ -1,157 +1,146 @@
-// src/components/Header.js
-import React, { useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+// src/components/Header.js — desktop: clean pill nav + "More" menu; phone: Demo + big tile menu.
+import React, { useEffect, useRef, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import logo from "../assets/imali-logo.png";
+
+const PRIMARY = [
+  { to: "/", label: "Home", emoji: "🏠", end: true },
+  { to: "/how-it-works", label: "How It Works", emoji: "🧭" },
+  { to: "/live", label: "Watch Live", emoji: "📺" },
+  { to: "/pricing", label: "Plans", emoji: "💎" },
+  { to: "/blog", label: "Learn", emoji: "📰" },
+];
+
+const MORE = [
+  { to: "/enterprise", label: "For Teams", emoji: "🏢" },
+  { to: "/referrals", label: "Earn Rewards", emoji: "🎁" },
+  { to: "/admin-platform", label: "Managed Admin", emoji: "🧱" },
+  { to: "/support", label: "Help", emoji: "🙋" },
+];
+
+const ALL = [...PRIMARY, ...MORE];
+const TILE_COLORS = ["fun-blue", "fun-green", "fun-red", "fun-purple", "fun-orange", "fun-gold"];
 
 export default function Header() {
   const [open, setOpen] = useState(false);
-
-  const navItem =
-    "px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition";
-
-  const active = ({ isActive }) =>
-    `${navItem} ${isActive ? "bg-white/15 text-white" : "text-indigo-100"}`;
-
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  const { pathname } = useLocation();
   const closeMenu = () => setOpen(false);
 
-  return (
-    <header className="fixed top-0 inset-x-0 z-40 backdrop-blur bg-black border-b border-white/10">
-      <div className="mx-auto max-w-7xl px-4 h-20 flex items-center justify-between">
-        {/* Brand */}
-        <Link to="/" onClick={closeMenu} className="flex items-center gap-4">
-          <img
-            src={logo}
-            alt="IMALI"
-            className="h-14 w-auto object-contain"
-            loading="eager"
-          />
+  // close menus on navigation / outside click
+  useEffect(() => { setOpen(false); setMoreOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const onDown = (e) => { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setMoreOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [moreOpen]);
 
+  const moreActive = MORE.some((l) => pathname.startsWith(l.to));
+  const linkClass = ({ isActive }) => `hdr-link ${isActive ? "is-active" : ""}`;
+
+  return (
+    <header className="hdr fixed top-0 inset-x-0 z-40">
+      <div className="mx-auto max-w-7xl px-4 h-20 flex items-center justify-between gap-4">
+        {/* Brand */}
+        <Link to="/" onClick={closeMenu} className="flex items-center gap-3 shrink-0">
+          <img src={logo} alt="IMALI" className="hdr-logo" loading="eager" />
           <div className="flex flex-col leading-tight">
-            <span className="text-white text-2xl font-extrabold tracking-wide">
-              IMALI
-            </span>
-            <span className="text-[12px] uppercase tracking-widest text-white/60">
-              AI Trading Platform
+            <span className="text-white text-2xl font-black tracking-wide">IMALI</span>
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffe07a]">
+              Robot Trading Made Easy
             </span>
           </div>
         </Link>
 
-        {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-1">
-          <NavLink to="/" className={active} end>
-            Home
-          </NavLink>
-
-          <NavLink to="/how-it-works" className={active}>
-            How It Works
-          </NavLink>
-
-          <NavLink to="/blog" className={active}>
-            Blog
-          </NavLink>
-
-          <NavLink to="/pricing" className={active}>
-            Pricing
-          </NavLink>
-
-          <NavLink to="/enterprise" className={active}>
-            For Organizations
-          </NavLink>
-
-          <NavLink to="/referrals" className={active}>
-            Referral Partner
-          </NavLink>
-
-          <NavLink to="/admin-platform" className={active}>
-            Managed Admin
-          </NavLink>
+        {/* Desktop nav (laptop and up) */}
+        <nav className="hdr-nav hidden lg:flex" aria-label="Main menu">
+          {PRIMARY.map((l) => (
+            <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+              <span className="hdr-emoji" aria-hidden="true">{l.emoji}</span>
+              <span>{l.label}</span>
+            </NavLink>
+          ))}
+          <div className="relative" ref={moreRef}>
+            <button
+              type="button"
+              className={`hdr-link ${moreActive || moreOpen ? "is-active" : ""}`}
+              aria-haspopup="true"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <span>More</span>
+              <span className={`hdr-caret ${moreOpen ? "is-open" : ""}`} aria-hidden="true">▾</span>
+            </button>
+            {moreOpen && (
+              <div className="hdr-menu fun-slide-in" role="menu">
+                {MORE.map((l) => l.external ? (
+                  <a key={l.to} href={l.to} role="menuitem" className="hdr-menu-item"><span className="text-lg" aria-hidden="true">{l.emoji}</span>{l.label}</a>
+                ) : (
+                  <NavLink key={l.to} to={l.to} role="menuitem" className={({ isActive }) => `hdr-menu-item ${isActive ? "is-active" : ""}`}>
+                    <span className="text-lg" aria-hidden="true">{l.emoji}</span>
+                    {l.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
 
-        {/* Desktop Buttons */}
-        <div className="hidden md:flex items-center gap-3">
-          <Link
-            to="/live"
-            className="text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
-          >
-            Trading Activity
-          </Link>
-
-          <Link
-            to="/dashboard"
-            className="text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
-          >
-            Member Login
+        {/* Desktop actions */}
+        <div className="hidden lg:flex items-center gap-2 shrink-0">
+          <Link to="/dashboard" className="hdr-btn hdr-btn-ghost">My Account</Link>
+          <Link to="/trade-demo" className="hdr-btn hdr-btn-gold">
+            <span aria-hidden="true">🎮</span> Try the Demo
           </Link>
         </div>
 
-        {/* Mobile Burger */}
-        <button
-          className="md:hidden text-indigo-100 p-2"
-          onClick={() => setOpen((prev) => !prev)}
-          aria-label="Toggle menu"
-          aria-expanded={open}
-        >
-          <svg width="28" height="28" fill="none" stroke="currentColor">
-            {open ? (
-              <path strokeWidth="2" d="M6 6l16 16M22 6L6 22" />
-            ) : (
-              <path strokeWidth="2" d="M4 6h20M4 12h20M4 18h20" />
-            )}
-          </svg>
-        </button>
+        {/* Phone/tablet: demo button + menu */}
+        <div className="flex lg:hidden items-center gap-2">
+          <Link to="/trade-demo" onClick={closeMenu} className="fun-btn fun-gold fun-small fun-nav-glow">
+            🎮 Demo
+          </Link>
+          <button
+            type="button"
+            className="fun-btn fun-ghost fun-small"
+            style={{ paddingLeft: 14, paddingRight: 14 }}
+            onClick={() => setOpen((prev) => !prev)}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+          >
+            {open ? "✖️" : "☰"}
+          </button>
+        </div>
       </div>
 
-      {/* Mobile Panel */}
+      {/* Phone/tablet menu: big tappable tiles */}
       {open && (
-        <div className="md:hidden bg-black border-t border-white/10">
-          <nav className="max-w-7xl mx-auto px-4 py-3 grid gap-2">
-            <NavLink onClick={closeMenu} to="/" className={active} end>
-              Home
-            </NavLink>
-
-            <NavLink
-              onClick={closeMenu}
-              to="/how-it-works"
-              className={active}
-            >
-              How It Works
-            </NavLink>
-
-            <NavLink onClick={closeMenu} to="/blog" className={active}>
-              Blog
-            </NavLink>
-
-            <NavLink onClick={closeMenu} to="/pricing" className={active}>
-              Pricing
-            </NavLink>
-
-            <NavLink onClick={closeMenu} to="/enterprise" className={active}>
-              For Organizations
-            </NavLink>
-
-            <NavLink onClick={closeMenu} to="/referrals" className={active}>
-              Referral Partner
-            </NavLink>
-
-            <NavLink onClick={closeMenu} to="/admin-platform" className={active}>
-              Managed Admin
-            </NavLink>
-
-            <Link
-              to="/live"
-              onClick={closeMenu}
-              className="mt-2 text-center text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
-            >
-              Trading Activity
+        <div className="lg:hidden bg-[#070a1f] border-t-2 border-[#2b3470] fun-slide-in max-h-[calc(100dvh-11rem)] overflow-y-auto overscroll-contain">
+          <nav className="max-w-7xl mx-auto px-3 py-3 pb-6 grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Main menu">
+            <Link to="/login" onClick={closeMenu} className="fun-btn fun-blue col-span-2 sm:col-span-3" style={{ minHeight: 48, padding: "0.5rem" }}>
+              👤 Sign In / My Account
             </Link>
-
-            <Link
-              to="/dashboard"
-              onClick={closeMenu}
-              className="text-center text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
-            >
-              Member Login
+            <Link to="/signup" onClick={closeMenu} className="fun-btn fun-gold col-span-2 sm:col-span-3" style={{ minHeight: 48, padding: "0.5rem" }}>
+              🚀 Sign Up Free
             </Link>
+            {ALL.map((l, i) => l.external ? (
+              <a key={l.to} href={l.to} onClick={closeMenu} className={`fun-tile ${TILE_COLORS[i % TILE_COLORS.length]}`} style={{ minHeight: 90, padding: "0.5rem 0.35rem", borderRadius: 18, gap: "0.2rem" }}><span className="fun-emoji" style={{ fontSize: "1.8rem" }} aria-hidden="true">{l.emoji}</span><strong style={{ fontSize: "0.88rem" }}>{l.label}</strong></a>
+            ) : (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.end}
+                onClick={closeMenu}
+                className={`fun-tile ${TILE_COLORS[i % TILE_COLORS.length]}`}
+                style={{ minHeight: 90, padding: "0.5rem 0.35rem", borderRadius: 18, gap: "0.2rem" }}
+              >
+                <span className="fun-emoji" style={{ fontSize: "1.8rem" }} aria-hidden="true">{l.emoji}</span>
+                <strong style={{ fontSize: "0.88rem" }}>{l.label}</strong>
+              </NavLink>
+            ))}
           </nav>
         </div>
       )}

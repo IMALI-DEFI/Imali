@@ -1,4 +1,3 @@
-import LearningProgress from "./LearningProgress";
 // src/components/Dashboard/MemberDashboard.jsx
 // PRODUCTION-READY IMALI Member Dashboard v3.0
 // FIXED: subscription sync, mobile-first, candlestick chart, AI panel, strategy heatmap
@@ -17,6 +16,10 @@ import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {isRecord, recordRows, safeText, storageGet, storageSet, signOutForRecovery} from "../../utils/dashboardSafety";
 import DashboardErrorBoundary from "./DashboardErrorBoundary";
+import { PlayerHUD, QuestList, TradingSchool, useGameProgress, MascotLogo, BalanceChart, WinRing } from "../game/GameKit";
+import CandlestickChart from "../charts/CandlestickChart";
+
+
 import LiveDashboardOverview from "./LiveDashboardOverview";
 import OptionsTrading from "../../pages/OptionsTrading";
 import { motion } from "framer-motion";
@@ -62,6 +65,37 @@ import nftElite from "../../assets/images/nfts/nft-elite.png";
 
 import LiveBotActivity from "./LiveBotActivity";
 import TradingAlignmentMeters from "./TradingAlignmentMeters";
+
+// ---- Demo-style look for the dashboard (display only) ----
+const GAME_SERVICE_COLORS = { crypto: "fun-gold", okx: "fun-gold", futures: "fun-red", robinhood: "fun-green", stocks: "fun-blue", alpaca: "fun-blue", dex: "fun-purple", options: "fun-orange", kalshi: "fun-purple" };
+const GAME_SERVICE_EMOJI = { crypto: "₿", okx: "₿", futures: "📈", robinhood: "🪙", stocks: "🏛️", alpaca: "🏛️", dex: "🔗", options: "🎯", kalshi: "🔮" };
+const GAME_SERVICE_TAGS = { crypto: "Buy & sell coins", okx: "Buy & sell coins", futures: "Bet up or down", robinhood: "Crypto only", stocks: "Stocks", alpaca: "Stocks", dex: "Wallet tokens", options: "Pro level", kalshi: "Yes / No markets" };
+const GAME_SERVICE_TIPS = {
+  crypto: "The robot buys coins like Bitcoin and sells when the price goes up.",
+  okx: "The robot buys coins like Bitcoin and sells when the price goes up.",
+  futures: "The robot bets on prices going up OR down. Bigger wins, bigger losses.",
+  robinhood: "Crypto trading through your Robinhood account. Your coins stay at Robinhood.",
+  stocks: "A stock is a tiny piece of a company. The robot buys and sells pieces.",
+  alpaca: "A stock is a tiny piece of a company. The robot buys and sells pieces.",
+  dex: "Trades tokens straight from your crypto wallet — no bank in the middle.",
+  options: "Small bets on where a stock goes. You can only lose what you put in.",
+  kalshi: "Yes/No prediction markets — will something happen or not?",
+};
+const GAME_STYLES = [
+  { emoji: "🐢", color: "fun-green", tag: "Slow & Safe", fire: 1, tip: "Small, careful steps. Wins more often, but wins are smaller." },
+  { emoji: "🦉", color: "fun-blue", tag: "Smart Balance", fire: 2, tip: "A little careful, a little brave. A great first pick." },
+  { emoji: "🐇", color: "fun-orange", tag: "Quick Mover", fire: 3, tip: "Hops on chances fast. Bigger swings up and down." },
+  { emoji: "🐉", color: "fun-red", tag: "Wild Ride", fire: 4, tip: "Goes big! Can win a lot — or lose a lot." },
+];
+function gameStyleLook(strategy, idx = 1) {
+  const text = `${strategy?.id || ""} ${strategy?.name || ""} ${strategy?.risk || ""}`.toLowerCase();
+  if (/aggress|extreme|high risk/.test(text)) return GAME_STYLES[3];
+  if (/growth|momentum|higher/.test(text)) return GAME_STYLES[2];
+  if (/conserv|safe|low risk|mean_rev/.test(text)) return GAME_STYLES[0];
+  if (/balanc|medium|ai_weight/.test(text)) return GAME_STYLES[1];
+  return GAME_STYLES[Math.min(GAME_STYLES.length - 1, Math.max(0, idx))];
+}
+
 ChartJS.register(ArcElement, Tooltip);
 
 // ============================================================================
@@ -1398,14 +1432,11 @@ function dashboardReducer(state, action) {
       return { ...state, activeType: action.payload, currentStrategy: selected };
     }
     case ACTIONS.SET_LANE_STRATEGIES: {
-      const lanes = isRecord(action.payload?.lanes) ? action.payload.lanes : {};
-      const availableStrategies = recordRows(action.payload?.strategies).length
-        ? recordRows(action.payload.strategies) : state.strategies;
+      const lanes = isRecord(action.payload) ? action.payload : {};
       const strategyId = lanes[state.activeType];
-      const selected = availableStrategies.find(item => item.id === strategyId) ||
-        availableStrategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
-      return { ...state, laneStrategies: lanes, strategies: availableStrategies,
-        laneStrategiesReady: true, currentStrategy: selected };
+      const selected = state.strategies.find(item => item.id === strategyId) ||
+        state.strategies.find(item => item.recommended) || FALLBACK_STRATEGIES[1];
+      return { ...state, laneStrategies: lanes, laneStrategiesReady: true, currentStrategy: selected };
     }
     case ACTIONS.SET_LANE_STRATEGY: {
       const { lane, strategy } = action.payload;
@@ -1621,12 +1652,6 @@ function MemberDashboardContent() {
   }, [combinedExchangeKey]);
   const combinedPnlValue = combinedPnl.rows.reduce((total,row)=>total+row.amount,0);
   const combinedModes = [...new Set(combinedPnl.rows.map(row=>row.mode))];
-  // Never present an arithmetic sum as one account's live P&L if reports mix
-  // live and paper, omit connected exchanges, or fail to identify their mode.
-  const combinedPnlComparable = combinedPnl.rows.length > 0 &&
-    combinedPnl.unavailable.length === 0 &&
-    combinedPnl.rows.length === combinedExchangeKeys.length &&
-    combinedModes.length === 1 && ['live', 'paper'].includes(combinedModes[0]);
   const activeConnection = useMemo(
     () => state.connections[activeTab.connectionKey],
     [state.connections, activeTab.connectionKey]
@@ -2034,13 +2059,11 @@ function MemberDashboardContent() {
         selectedStrategy = mapped.find((strategy) => strategy.recommended) || mapped[1] || mapped[0];
       }
 
-      // A legacy global preference is not the active service's saved selection.
-      // Set the chosen service only after its lane preferences and strategy
-      // catalog are available together; the reducer applies both atomically.
+      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
       try {
-        const saved = await fetchWithRetry(() => BotAPI.getUserLaneStrategies(), 2);
+        const saved = await BotAPI.getUserLaneStrategies();
         const lanes = saved?.lanes || saved?.data?.lanes || {};
-        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: { lanes, strategies: mapped } });
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: lanes });
       } catch (error) {
         console.warn("Lane strategy preferences unavailable", error);
         // Leave strategies unconfirmed; do not fall back to global saves.
@@ -2498,16 +2521,6 @@ getStrategy, state.debug.failedRequests]);
     }
   }, [activeTab.exchange]);
 
-  const [paperStats, setPaperStats] = useState(null);
-  const [paperStatsError, setPaperStatsError] = useState("");
-  useEffect(() => {
-    let mounted = true;
-    BotAPI.getPaperTradingStats()
-      .then(data => { if (mounted) { setPaperStats(data); setPaperStatsError(""); } })
-      .catch(() => { if (mounted) setPaperStatsError("Paper stats unavailable"); });
-    return () => { mounted = false; };
-  }, []);
-
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetchWithRetry(() =>
@@ -2890,17 +2903,19 @@ getStrategy, state.debug.failedRequests]);
         showError("Stop the bot before changing strategies.");
         return;
       }
-
+      const previous = state.currentStrategy;
+      // Reflect the tapped choice immediately. Never represent an unsaved choice as persisted.
+      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
       try {
-        if (!state.laneStrategiesReady) throw new Error("Per-service strategy storage is not available yet");
         await saveStrategyPreference(strategy.id, activeTab.id);
-        dispatch({ type: ACTIONS.SET_LANE_STRATEGY, payload: {lane: activeTab.id, strategy} });
-        showNotice(`${activeTab.label} preference saved: ${strategy.name}. Running bots are unchanged.`);
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGY, payload: { lane: activeTab.id, strategy } });
+        showNotice(`${activeTab.label} style saved: ${strategy.name}.`);
       } catch (error) {
-        showError(`Unable to save strategy: ${error.message || "please retry"}`);
+        dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: previous });
+        showError(`Could not save ${strategy.name}. Selection restored. ${error.message || "Please retry."}`);
       }
     },
-    [state.botRunning, state.laneStrategiesReady, activeTab.id, activeTab.label, saveStrategyPreference, showNotice, showError]
+    [state.botRunning, state.currentStrategy, activeTab.id, activeTab.label, saveStrategyPreference, showNotice, showError]
   );
 
   const handleConnect = useCallback(() => {
@@ -2964,8 +2979,16 @@ getStrategy, state.debug.failedRequests]);
       return;
     }
     if (!state.laneStrategiesReady) {
-      showError("Per-service strategy configuration has not loaded. Please retry.");
-      return;
+      // Retry the persisted lane configuration instead of silently blocking Start.
+      try {
+        const saved = await BotAPI.getUserLaneStrategies();
+        const lanes = saved?.lanes || saved?.data?.lanes;
+        if (!lanes || typeof lanes !== "object") throw new Error("Invalid saved styles response");
+        dispatch({ type: ACTIONS.SET_LANE_STRATEGIES, payload: lanes });
+      } catch (error) {
+        showError(`Cannot start until saved strategies load: ${error.message || "Service unavailable"}. Please retry.`);
+        return;
+      }
     }
     if (isLocked) {
       showError("Your current plan does not include this trading type.");
@@ -3493,25 +3516,48 @@ getStrategy, state.debug.failedRequests]);
   // Dashboard candles must come from real market data only.
 
   // ============================================================================
+  // GAME LAYER (XP, quests, lessons) — display only, no trading logic
+  // ============================================================================
+  const { lessonsDone, lessonXp, completeLesson } = useGameProgress();
+  const gameTrades = Number(state.stats?.totalTrades || 0);
+  const gameWins = Number(state.stats?.wins || 0);
+  const gameQuests = [
+    { id: "connect", emoji: "🔌", title: "Connect your account", xp: 20,
+      done: Boolean(isConnected || starterPaperOnly),
+      action: { label: "Connect", onClick: handleConnect } },
+    { id: "start", emoji: "▶️", title: "Turn your robot on", xp: 20,
+      done: Boolean(state.botRunning || gameTrades > 0) },
+    { id: "first", emoji: "🌟", title: "Robot makes its first trade", xp: 10, done: gameTrades > 0 },
+    { id: "win", emoji: "🏆", title: "Get your first win", xp: 15, done: gameWins > 0 },
+    { id: "school", emoji: "🎓", title: "Pass 3 Trading School lessons", xp: 75, done: lessonsDone.length >= 3 },
+    { id: "ten", emoji: "🎯", title: "Reach 10 trades", xp: 20, done: gameTrades >= 10 },
+  ];
+  const recentProfitPoints = (() => {
+    const rows = (state.tradeFeed || []).filter((t) => Number.isFinite(Number(t.pnl))).slice(0, 40).reverse();
+    let total = 0;
+    return [0, ...rows.map((t) => (total += Number(t.pnl)))];
+  })();
+  const playerXp = Math.min(gameTrades, 500) * 2 + Math.min(gameWins, 500) * 3 + lessonXp
+    + gameQuests.reduce((sum, q) => sum + (q.done ? q.xp : 0), 0);
+
+  // ============================================================================
   // RENDER
   // ============================================================================
 
 
   return (
     <>
-      <div className="min-h-screen bg-[#050816] text-white pb-10 overflow-x-hidden">
+      <div className="imali-fun-dash fun-game-bg fun-calm min-h-screen bg-[#050816] text-white pb-10 overflow-x-hidden">
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
         <header className="relative border-b border-white/10 bg-black/70 backdrop-blur-xl">
           <div className="mx-auto max-w-7xl px-4 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-2xl sm:text-3xl">
-                🚀
-              </div>
+              <MascotLogo size={52} className="shrink-0" />
               <div className="min-w-0">
                 <h1 className="text-2xl sm:text-3xl font-black leading-none">IMALI</h1>
-                <p className="text-[10px] sm:text-xs tracking-[0.24em] text-white/50 font-black mt-0.5 truncate">
-                  AI TRADING PLATFORM
+                <p className="text-[10px] sm:text-xs tracking-[0.24em] text-[#ffe07a] font-black mt-0.5 truncate">
+                  YOUR ROBOT HQ
                 </p>
               </div>
             </div>
@@ -3519,7 +3565,7 @@ getStrategy, state.debug.failedRequests]);
             <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={() => goToSettings("/billing")}
-                className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-3 sm:px-4 py-2 sm:py-3 font-black transition flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
+                className="fun-btn fun-blue fun-small shrink-0"
               >
                 <FaCog className="inline" />
                 <span className="hidden sm:inline">Settings</span>
@@ -3528,7 +3574,7 @@ getStrategy, state.debug.failedRequests]);
               <button
                 onClick={logout}
                 aria-label="Logout"
-                className="shrink-0 rounded-2xl bg-red-500 px-3 sm:px-4 py-2 sm:py-3 font-black hover:bg-red-400 transition text-sm sm:text-base"
+                className="fun-btn fun-ghost fun-small shrink-0"
               >
                 <FaSignOutAlt className="inline mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Logout</span>
@@ -3543,8 +3589,8 @@ getStrategy, state.debug.failedRequests]);
             <h3>Limited dashboard access</h3><p>No active paid subscription is confirmed. Review plans to access paid features.</p>
             <button className="rounded-xl bg-emerald-700 px-5 py-3 mt-3" onClick={() => navigate('/billing')}>Review plans</button>
           </section>}
-          {!isConnected && <p>Connect an account to load balances and account data.</p>}
-          {!state.botRunning && <p>No running bot. Review your account and bot setup before starting.</p>}
+          {!isConnected && <p className="fun-quest"><span className="text-2xl">🔌</span><span className="font-bold">Connect an account so your robot can see your balances.</span></p>}
+          {!state.botRunning && <p className="fun-quest"><span className="text-2xl">😴</span><span className="font-bold">Your robot is resting. Check your setup, then turn it on.</span></p>}
           {state.error && (
             <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200" role="alert">
               {state.error}
@@ -3557,42 +3603,291 @@ getStrategy, state.debug.failedRequests]);
             </div>
           )}
 
-          {/* Welcome Section */}
-          <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            {currentTierConfig.image && (
-              <img
-                src={currentTierConfig.image}
-                alt={currentTierConfig.alt}
-                className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
-                loading="lazy"
-              />
+          {/* ================= DEMO-STYLE ROBOT HQ (real account data) ================= */}
+          <PlayerHUD
+            name={safeText(user?.displayName || user?.name || user?.firstName, "Trader")}
+            xp={playerXp}
+            coins={formatMoney(state.totalAssetValue)}
+            coinsLabel={normalizeMode(state.botMode) === "live" ? "Account value" : "Practice value"}
+          />
+
+          {/* HERO */}
+          <header className="fun-sparkle p-6 sm:p-8 text-center">
+            <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+            {currentTierConfig.image ? (
+              <img src={currentTierConfig.image} alt={currentTierConfig.alt} className="fun-tier-robot fun-tier-robot-hero mx-auto" />
+            ) : (
+              <MascotLogo size={96} className="mx-auto" />
             )}
+            <h1 className="mt-3 text-3xl sm:text-5xl font-black fun-shine-text">
+              Hi, {safeText(user?.displayName || user?.name || user?.firstName, "Trader")}!
+            </h1>
+            <p className="fun-help text-lg mt-3 max-w-2xl mx-auto">
+              Pick a market, pick your robot's style, and press Start. Your money always stays in your own account.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <span className={`fun-pill ${accountStatus.color || ""}`}>{accountStatus.icon} {accountStatus.label}</span>
+              <span className="fun-pill">{state.botRunning ? "🤖 Robot is ON" : "😴 Robot is resting"}</span>
+              <span className="fun-pill">{normalizeMode(state.botMode) === "live" ? "🔴 Real money" : "🟡 Practice money"}</span>
+              {state.refreshing && <span className="fun-pill"><FaSpinner className="inline animate-spin" /> Updating</span>}
+            </div>
+            {accountStatus.message && <p className="text-sm text-white/60 mt-3">{accountStatus.message}</p>}
+          </header>
 
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-white/50">Welcome back,</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-black truncate">
-                  {safeText(user?.displayName || user?.name || user?.firstName, "Trader")}
-                </h2>
-                <span className={`rounded-lg px-2 py-1 text-[10px] sm:text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
-                  {accountStatus.icon} {accountStatus.label}
-                </span>
-                {state.refreshing && (
-                  <span className="text-xs text-cyan-300">
-                    <FaSpinner className="inline animate-spin mr-1" />
-                    Updating
-                  </span>
-                )}
+          {/* STEP 1: MARKET */}
+          <section className="fun-card" aria-label="Step 1: pick a market">
+            <div className="flex items-start gap-3 mb-4">
+              <span className={`fun-step ${isConnected ? "is-done" : ""}`}>1</span>
+              <div>
+                <h2 className="fun-title">What should your robot trade?</h2>
+                <p className="fun-help mt-1">Each market is its own workspace. 🔒 means your plan doesn't include it yet.</p>
               </div>
-              <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
-              <p className="text-sm text-white/50 truncate">{safeText(user?.email, "Member")}</p>
+            </div>
+            <nav aria-label="Trading services" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+              {visibleTradingTypes.map((tab) => {
+                const locked = !hasTierAccess(effectiveTier, tab.minTier);
+                const active = state.activeType === tab.id;
+                return (
+                  <button key={tab.id} type="button" aria-pressed={active}
+                    onClick={() => dispatch({ type: ACTIONS.SET_ACTIVE_TYPE, payload: tab.id })}
+                    className={`fun-tile ${GAME_SERVICE_COLORS[tab.id] || tab.funColor || "fun-blue"} ${active ? "is-picked" : ""}`}
+                    style={{ minHeight: 120 }}>
+                    <span className="fun-emoji" style={{ fontSize: "2.4rem" }} aria-hidden="true">{GAME_SERVICE_EMOJI[tab.id] || tab.emoji || tab.icon}</span>
+                    <strong style={{ fontSize: ".95rem" }}>{tab.kidLabel || tab.label}</strong>
+                    <small>{locked ? <><FaLock className="inline mr-1" />{String(tab.minTier).toUpperCase()}</> : GAME_SERVICE_TAGS[tab.id] || "Open"}</small>
+                  </button>
+                );
+              })}
+            </nav>
+            <p key={state.activeType} className="fun-help mt-4 fun-slide-in">
+              💡 {GAME_SERVICE_TIPS[state.activeType] || `Your robot will trade ${activeTab.label}.`}
+            </p>
+          </section>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <StatusPill running={state.botRunning} />
-                <ModePill mode={state.botMode} />
+          {/* STEP 2: STYLE */}
+          <section className="fun-card" aria-label="Step 2: pick a robot style">
+            <div className="flex items-start gap-3 mb-4">
+              <span className={`fun-step ${state.laneStrategies?.[activeTab.id] ? "is-done" : ""}`}>2</span>
+              <div>
+                <h2 className="fun-title">Pick your robot's style</h2>
+                <p className="fun-help mt-1">
+                  {state.botRunning
+                    ? "✋ Turn the robot off to change its style."
+                    : !state.laneStrategiesReady
+                    ? "Saved styles unavailable. Tap a style to retry saving, or use Retry below."
+                    : "More 🔥 = bigger ups and downs."}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {state.strategies.map((strategy, idx) => {
+                const look = gameStyleLook(strategy, idx);
+                const picked = state.currentStrategy.id === strategy.id;
+                return (
+                  <button type="button" key={strategy.id} aria-pressed={picked}
+                    onClick={() => handleSelectStrategy(strategy)}
+                    disabled={state.botRunning}
+                    className={`fun-tile ${look.color} ${picked ? "is-picked" : ""}`}>
+                    <span className="fun-emoji" aria-hidden="true">{look.emoji}</span>
+                    <strong>{strategy.name}</strong>
+                    <small>{strategy.risk || look.tag}</small>
+                    <span className="text-sm" aria-label={`Risk ${look.fire} of 4`}>{"🔥".repeat(look.fire)}{"▫️".repeat(4 - look.fire)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!state.laneStrategiesReady && !state.botRunning && (
+              <button type="button" onClick={fetchStrategies} className="fun-btn fun-blue mt-3" style={{ minHeight: 44 }}>🔄 Retry loading saved styles</button>
+            )}
+            <p key={state.currentStrategy.id} className="fun-help mt-4 fun-slide-in">💡 {state.currentStrategy.description || gameStyleLook(state.currentStrategy, 1).tip}</p>
+            {["options", "kalshi"].includes(activeTab.id) && (
+              <p className="mt-2 text-xs text-amber-300">This market uses its own dedicated robot. Use its tools below to set it up.</p>
+            )}
+          </section>
+
+          {/* STEP 3: GO */}
+          <section className="fun-sparkle p-5 sm:p-6" aria-label="Step 3: start">
+            <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+            <div className="flex flex-col md:flex-row items-center gap-5">
+              <div className="text-7xl shrink-0">
+                <span className={state.botRunning ? "fun-bounce" : ""} aria-hidden="true">
+                  {gameStyleLook(state.currentStrategy, Math.max(0, state.strategies.findIndex((s) => s.id === state.currentStrategy.id))).emoji}
+                </span>
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex items-center gap-2 justify-center md:justify-start">
+                  <span className={`fun-step ${state.botRunning || gameTrades > 0 ? "is-done" : ""}`}>3</span>
+                  <h2 className="text-2xl sm:text-3xl font-black">
+                    {state.botRunning ? `Your robot is trading ${activeTab.kidLabel || activeTab.label}!` : "Press Start and watch"}
+                  </h2>
+                </div>
+                <p className="fun-help mt-2">
+                  {state.botRunning
+                    ? `Using the ${state.currentStrategy.name} style with ${normalizeMode(state.botMode) === "live" ? "REAL money 🔴" : "practice money 🟡"}. Stop any time.`
+                    : isLocked
+                    ? `${activeTab.label} needs a bigger plan. Upgrade to unlock it.`
+                    : !isConnected
+                    ? "First connect your account, then press Start."
+                    : `Your robot will trade ${activeTab.label} using the ${state.currentStrategy.name} style.`}
+                </p>
+                <div className="mt-3 flex flex-wrap justify-center md:justify-start gap-2">
+                  <span className="fun-pill">🧺 {state.openPositionsCount} open trade{state.openPositionsCount === 1 ? "" : "s"}</span>
+                  {state.currentStrategy.maxPositions && <span className="fun-pill">Max {state.currentStrategy.maxPositions} at once</span>}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                {!state.botRunning ? (
+                  <button type="button" onClick={handleStartBot} disabled={state.processing}
+                    className={`fun-btn fun-big ${isLocked ? "fun-purple" : !isConnected ? "fun-blue" : "fun-green"}`}>
+                    {state.processing ? <FaSpinner className="animate-spin inline" /> : <span className="fun-btn-emoji" aria-hidden="true">{isLocked ? "🔒" : !isConnected ? "🔌" : "▶️"}</span>}
+                    {isLocked ? "Upgrade to Unlock" : !isConnected ? "Connect to Start" : starterPaperOnly ? "Start Practice Robot" : "Start"}
+                  </button>
+                ) : (
+                  <button type="button" onClick={handleStopBot} disabled={state.processing} className="fun-btn fun-big fun-red">
+                    {state.processing ? <FaSpinner className="animate-spin inline" /> : <span aria-hidden="true">⏸️</span>}
+                    Stop
+                  </button>
+                )}
+                <button type="button" disabled={state.refreshing}
+                  onClick={() => refreshDashboard(true, { refreshBot: true, refreshBalance: true, refreshTrades: true })}
+                  className="fun-btn fun-ghost">🔄 Refresh</button>
               </div>
             </div>
           </section>
+
+          {/* SCOREBOARD */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Scoreboard">
+            <div className="fun-card col-span-2 text-center">
+              <div className="fun-help font-bold">💰 {normalizeMode(state.botMode) === "live" ? "Your account" : "Practice account"}</div>
+              <div key={state.totalAssetValue} className="text-4xl sm:text-5xl font-black mt-1 fun-pop break-words">{formatMoney(state.totalAssetValue)}</div>
+              <div className={`font-black mt-1 ${num(state.stats.totalPnl) >= 0 ? "text-[#4ff0a0]" : "text-[#ff7a80]"}`}>
+                {num(state.stats.totalPnl) >= 0 ? "+" : ""}{formatMoney(state.stats.totalPnl)} {num(state.stats.totalPnl) >= 0 ? "made" : "lost"} on finished trades
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-xl bg-white/5 p-2"><div className="font-black text-base">{state.openPositionsCount}</div>🧺 Open</div>
+                <div className="rounded-xl bg-white/5 p-2"><div className="font-black text-base break-words">{formatMoney(state.usdCashValue)}</div>💵 Cash</div>
+                <div className="rounded-xl bg-white/5 p-2"><div className="font-black text-base break-words">{formatMoney(state.usdtValue)}</div>🪙 USDT</div>
+              </div>
+            </div>
+            <div className="fun-card col-span-2 flex items-center justify-center">
+              <WinRing wins={Number(state.stats.wins || 0)} losses={Number(state.stats.losses || 0)} size={140} />
+            </div>
+          </section>
+
+          {/* PROFIT OVER TIME (real trades) */}
+          <section className="fun-card" aria-label="Profit over recent trades">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h2 className="font-black text-xl">📈 Your robot's results over time</h2>
+              <span className="fun-pill">{activeTab.label}</span>
+            </div>
+            {recentProfitPoints.length > 2 ? (
+              <>
+                <BalanceChart points={recentProfitPoints} start={0} height={190} label="Running profit" />
+                <p className="text-xs text-white/50 mt-2">Running total from your last {recentProfitPoints.length - 1} trades. Above the yellow line = up overall.</p>
+              </>
+            ) : (
+              <div className="py-8 text-center">
+                <MascotLogo size={64} className="mx-auto" />
+                <p className="fun-help mt-2">Your chart fills in once your robot finishes a few trades.</p>
+              </div>
+            )}
+          </section>
+
+          {/* REAL PRICE CHART + STYLE DETAILS */}
+          <div className="grid gap-6 lg:grid-cols-5">
+            <section className="fun-card lg:col-span-3" aria-label="Price chart">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-black text-xl">🕯️ Price chart</h2>
+                <span className="fun-pill">{state.candlesLoading ? "Loading…" : state.candles.length ? "● Real prices" : "No data yet"}</span>
+              </div>
+              <p className="fun-help text-sm mt-1">🟩 Green candle = price went up. 🟥 Red candle = price went down.</p>
+              <div className="fun-candles mt-3">
+                {state.candles.length ? (
+                  <CandlestickChart data={state.candles} height={300} />
+                ) : (
+                  <p className="py-16 text-center fun-help">{["kalshi", "options"].includes(state.activeType) ? "This market doesn't use a price chart." : "Prices load once this market's account is connected."}</p>
+                )}
+              </div>
+            </section>
+
+            <section className="fun-card lg:col-span-2 space-y-3" aria-label="Robot settings">
+              <h2 className="font-black text-xl">🎛️ Robot settings</h2>
+              <div className="fun-quest"><span className="text-2xl">🧠</span><span className="flex-1 font-bold">Style</span><span className="font-black">{state.currentStrategy.name}</span></div>
+              <div className="fun-quest"><span className="text-2xl">🍰</span><span className="flex-1 font-bold">Per trade</span><span className="font-black">{formatPercent(num(state.currentStrategy.tradePct) * 100)}</span></div>
+              <div className="fun-quest"><span className="text-2xl">🎯</span><span className="flex-1 font-bold">Sells for profit at</span><span className="font-black text-[#4ff0a0]">+{formatPercent(num(state.currentStrategy.takeProfitPct) * 100)}</span></div>
+              <div className="fun-quest"><span className="text-2xl">🛑</span><span className="flex-1 font-bold">Stop-loss at</span><span className="font-black text-[#ff7a80]">−{formatPercent(num(state.currentStrategy.stopLossPct) * 100)}</span></div>
+              <div className="fun-quest"><span className="text-2xl">🧺</span><span className="flex-1 font-bold">Max open trades</span><span className="font-black">{state.currentStrategy.maxPositions || "—"}</span></div>
+            </section>
+          </div>
+
+          {/* WHAT YOU OWN + WHAT THE ROBOT DID */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section className="fun-card" aria-label="What you own">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="font-black text-xl">🎒 What you own</h2>
+                <span className="fun-pill">{visibleAssets.length} item{visibleAssets.length === 1 ? "" : "s"}</span>
+              </div>
+              {visibleAssets.length ? (
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  {visibleAssets.map((asset) => (
+                    <AssetRow key={`${asset.symbol}-${asset.value}`} asset={asset} total={state.totalAssetValue} />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <MascotLogo size={64} className="mx-auto" />
+                  <p className="fun-help mt-2">{isConnected ? "Nothing here yet — your robot hasn't bought anything." : "🔌 Connect your account to see what you own."}</p>
+                </div>
+              )}
+            </section>
+
+            <section className="fun-card" aria-label="What the robot did">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="font-black text-xl">🤖 What the robot did</h2>
+                {state.botRunning && <span className="fun-pill"><span className="w-2 h-2 rounded-full bg-[#4ff0a0] animate-pulse" /> Live</span>}
+              </div>
+              <ul className="max-h-80 overflow-y-auto space-y-2 pr-1">
+                {state.tradeFeed.length ? state.tradeFeed.slice(0, 30).map((trade) => {
+                  const pnl = Number(trade.pnl);
+                  const closed = Number.isFinite(pnl) && pnl !== 0;
+                  const won = closed && pnl > 0;
+                  return (
+                    <li key={trade.id} className={`fun-slide-in rounded-2xl p-3 flex items-center gap-3 border-2 ${!closed ? "border-[#5c6ad6] bg-white/5" : won ? "border-[#0fb36a] bg-[#0fb36a1f]" : "border-[#e3263a] bg-[#e3263a1a]"}`}>
+                      <span className="text-2xl" aria-hidden="true">{!closed ? "🛒" : won ? "🎉" : "🛑"}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-sm truncate">
+                          {!closed ? `${String(trade.side || "").toUpperCase() === "SELL" ? "Sold" : "Bought"} ${trade.symbol}` : won ? `Won on ${trade.symbol}` : `Stopped a loss on ${trade.symbol}`}
+                        </div>
+                        <div className="text-xs text-white/60 truncate">
+                          {trade.mode === "live" ? "🔴 Real" : "🟡 Practice"} · {trade.time || ""}
+                        </div>
+                      </div>
+                      <div className={`font-black ${!closed ? "text-white/70" : won ? "text-[#4ff0a0]" : "text-[#ff7a80]"}`}>
+                        {closed ? `${won ? "+" : ""}${formatMoney(pnl)}` : "Open"}
+                      </div>
+                    </li>
+                  );
+                }) : (
+                  <li className="py-8 text-center list-none">
+                    <MascotLogo size={64} className="mx-auto" />
+                    <p className="fun-help mt-2">{state.botRunning ? "Your robot is watching the market. Trades will pop up here." : "Turn your robot on and its trades will pop up here."}</p>
+                  </li>
+                )}
+              </ul>
+            </section>
+          </div>
+
+          {/* QUESTS + SCHOOL */}
+          <div className="grid lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-2"><QuestList title="🗺️ Your Quests" quests={gameQuests} /></div>
+            <div className="lg:col-span-3"><TradingSchool lessonsDone={lessonsDone} onComplete={completeLesson} /></div>
+          </div>
+
+          {/* ================= ACCOUNT TOOLS (connections, billing, advanced) ================= */}
+          <div className="pt-4">
+            <h2 className="text-2xl sm:text-3xl font-black">🔧 Account tools</h2>
+            <p className="fun-help mt-1">Connections, billing and advanced tools for {activeTab.label}.</p>
+          </div>
 
           {/* Floating Market Prices */}
           <div className="border-b border-white/5 bg-black/20 backdrop-blur-sm py-2 -mx-4 px-4">
@@ -3659,16 +3954,6 @@ getStrategy, state.debug.failedRequests]);
             </div>
           )}
 
-          <section aria-label="IMALI learning missions" className="rounded-3xl border border-cyan-400/30 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 p-4 sm:p-5">
-            <h3 className="text-lg font-black">🎮 IMALI Learning Missions</h3>
-            <p className="my-3 text-sm text-white/65">Build research skills without rewarding unnecessary trades. These are guided activities, not verified streaks or profit badges.</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <button type="button" onClick={() => navigate('/trade-demo')} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">1 · Try the simulator</strong><span className="block text-sm text-white/60">Practice without placing a real trade.</span></button>
-              <button type="button" onClick={() => document.getElementById('imali-trading-services')?.scrollIntoView({behavior:'smooth'})} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">2 · Explore services</strong><span className="block text-sm text-white/60">Review trading tabs and connection status.</span></button>
-              <button type="button" onClick={() => navigate('/trade-demo')} className="rounded-xl border border-white/15 bg-white/5 p-4 text-left hover:border-cyan-300"><strong className="block text-emerald-300">3 · Learn risk controls</strong><span className="block text-sm text-white/60">Explore simulated stop and exit settings.</span></button>
-            </div>
-          </section>
-          <LearningProgress />
           {/* Cross-exchange reported realized P&L; not a verified live-only total. */}
           <section className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-slate-900/80 to-cyan-500/10 p-5 sm:p-6" aria-label="Combined trading profit and loss">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -3676,43 +3961,14 @@ getStrategy, state.debug.failedRequests]);
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">{combinedPnl.rows.length} of {combinedExchangeKeys.length} exchanges reporting</span>
             </div>
             <p className={`mt-4 text-3xl font-black sm:text-4xl ${combinedPnlValue < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-              {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnlComparable ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
+              {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnl.rows.length ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
             </p>
-            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()} (${row.mode}): ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
+            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()}: ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
             <p className="mt-3 text-xs text-amber-200/80">
-              {!combinedPnlComparable && combinedPnl.rows.length ? 'Combined amount withheld: missing or mixed live/paper reporting. Individual source figures shown for review only. ' : ''}
               {combinedPnl.unavailable.length ? `Partial total: no usable figures for ${combinedPnl.unavailable.join(', ')}. ` : ''}
               {combinedModes.length === 1 && combinedModes[0] === 'live' ? 'Reported live mode. ' : combinedModes.length === 1 && combinedModes[0] === 'paper' ? 'Reported paper mode. ' : 'Live/paper classification is not fully verified. '}
               Open-position P&L is excluded unless included by the upstream exchange's reported field. DEX wallet data is not yet included.
             </p>
-          </section>
-
-          {/* Trading Types — demo-inspired responsive icon grid */}
-          <section id="imali-trading-services" className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-4 sm:p-5">
-            <div className="mb-4">
-              <h3 className="text-lg font-bold text-white">Trading Services</h3>
-              <p className="text-xs text-white/50">Select a service to view its real account and trading workspace.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" aria-label="Trading services">
-              {visibleTradingTypes.map((tab) => {
-                const locked = !hasTierAccess(effectiveTier, tab.minTier);
-                const active = state.activeType === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => dispatch({type: ACTIONS.SET_ACTIVE_TYPE, payload: tab.id})}
-                    className={`flex min-h-[105px] min-w-0 flex-col items-center justify-center gap-2 rounded-xl border px-3 py-4 text-center text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${active ? "border-emerald-400 bg-emerald-500/20 text-white shadow-lg shadow-emerald-500/10" : "border-white/10 bg-white/5 text-white/65 hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-white"}`}
-                  >
-                    <span aria-hidden="true" className={`text-3xl leading-none ${active ? "text-emerald-300" : "text-cyan-300"}`}>{tab.icon}</span>
-                    <span className="leading-tight">{tab.label}</span>
-                    {locked && <span className="flex items-center gap-1 text-[10px] text-amber-200/70"><FaLock /> {tab.minTier.toUpperCase()}</span>}
-                    {!locked && <span className="text-[10px] text-white/60">{!state.laneStrategiesReady ? "Reconnect to load preferences" : state.laneStrategies[tab.id] ? "Strategy saved" : "Choose strategy"}</span>}
-                  </button>
-                );
-              })}
-            </div>
           </section>
 
           {/* Connection Card */}
@@ -3785,322 +4041,7 @@ getStrategy, state.debug.failedRequests]);
 
           {!["kalshi", "options"].includes(state.activeType) && (
             <>
-          {/* Account Overview */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
-              <div>
-                <h3 className="text-xl font-black">Account Overview</h3>
-                <p className="mt-1 text-xs text-amber-200/80">Realized P&amp;L and win/loss figures below are from the live-trading statistics API; they do not include historical paper-trading results.</p>
-                <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
-                <p className="mt-2 text-3xl sm:text-5xl font-black break-words">
-                  {formatMoney(state.totalAssetValue)}
-                </p>
-                <p
-                  className={`mt-3 font-black ${
-                    state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
-                  }`}
-                >
-                  {state.stats.totalPnl >= 0 ? "+" : ""}
-                  {formatMoney(state.stats.totalPnl)} realized
-                </p>
-
-                <div className="mt-5 grid grid-cols-3 gap-3">
-                  <MiniBox label="Open Positions" value={state.openPositionsCount} />
-                  <MiniBox label="USD Cash" value={formatMoney(state.usdCashValue)} />
-                  <MiniBox label="USDT" value={formatMoney(state.usdtValue)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[140px_1fr] items-center gap-3 sm:gap-4">
-                <div className="relative h-[120px] sm:h-[140px]">
-                  <Doughnut data={donutData} options={donutOptions} />
-                  <div className="absolute inset-0 grid place-items-center text-center">
-                    <div>
-                      <p className="text-base sm:text-2xl font-black">
-                        {formatPercent(winRate)}
-                      </p>
-                      <p className="text-[10px] sm:text-xs text-white/60">Win Rate</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm">
-                  <LegendRow label="Wins" value={state.stats.wins} color="bg-emerald-400" />
-                  <LegendRow label="Losses" value={state.stats.losses} color="bg-red-400" />
-                  <LegendRow label="Trades" value={state.stats.totalTrades} color="bg-white/40" />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Research-only paper outcomes. Never add to live account P&L. */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <h3 className="text-xl font-black">Paper Trading Results</h3>
-            <p className="mt-2 text-xs text-amber-200/80">
-              Historical simulation only. These are not broker-verified results and do not include verified execution fees.
-            </p>
-            {paperStats ? (
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <MiniBox label="Paper wins" value={Number(paperStats.wins || 0).toLocaleString()} />
-                <MiniBox label="Paper losses" value={Number(paperStats.losses || 0).toLocaleString()} />
-                <MiniBox label="Break-even" value={Number(paperStats.breakeven || 0).toLocaleString()} />
-                <MiniBox label="Win rate" value={formatPercent(Number(paperStats.win_rate || 0))} />
-              </div>
-            ) : <p className="mt-3 text-sm text-white/60">{paperStatsError || "Loading paper statistics..."}</p>}
-          </section>
-
-          {/* Assets */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-xl font-black">Assets</h3>
-              <button
-                onClick={() =>
-                  refreshDashboard(true, {
-                    refreshBot: true,
-                    refreshBalance: true,
-                    refreshTrades: true,
-                  })
-                }
-                disabled={state.refreshing}
-                className="text-cyan-300 font-black disabled:opacity-50 transition text-sm sm:text-base"
-              >
-                {state.refreshing ? (
-                  <FaSpinner className="animate-spin inline mr-2" />
-                ) : (
-                  <FaSyncAlt className="inline mr-2" />
-                )}
-                Refresh
-              </button>
-            </div>
-
-            {visibleAssets.length === 0 ? (
-              <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">
-                {isConnected
-                  ? "No assets detected yet"
-                  : "Connect account to load assets"}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {visibleAssets.map((asset) => (
-                  <AssetRow
-                    key={`${asset.symbol}-${asset.value}`}
-                    asset={asset}
-                    total={state.totalAssetValue}
-                  />
-                ))}
-
-                {smallBalancesCount > 0 && (
-                  <div className="mt-4 rounded-2xl bg-black/25 p-4 flex flex-wrap items-center justify-between">
-                    <div>
-                      <p className="font-black">Small balances</p>
-                      <p className="text-sm text-white/40">
-                        {smallBalancesCount} assets under $0.50
-                      </p>
-                    </div>
-                    <FaArrowRight className="text-white/40" />
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Live Trade Feed */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              <div className="flex items-center gap-2">
-                <FaChartLine className="text-emerald-300" />
-                <h3 className="text-xl font-black">Live Trade Feed</h3>
-              </div>
-
-              {state.botRunning && (
-                <div className="flex items-center gap-2 text-emerald-400 text-sm">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Bot Running • {(state.botMode || "paper").toUpperCase()} MODE
-                </div>
-              )}
-            </div>
-
-            {state.tradeFeed.length === 0 ? (
-              <div className="py-16 text-center text-white/30">
-                <div className="text-6xl mb-4">🤖</div>
-                <p>Start the bot to see trades appear here.</p>
-                <p className="text-xs text-white/40 mt-2">
-                  Bot status: {state.botRunning ? "Running" : "Stopped"}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                {state.tradeFeed.map((trade) => (
-                  <TradeItem key={trade.id} trade={trade} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* AI & Bot Status + Performance */}
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div className="space-y-5">
-            </div>
-
-            <GlassCard>
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="text-xl font-black">Performance</h3>
-                <span className="text-cyan-300 text-2xl">
-                  <FaChartLine />
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-white/40">Realized PnL</p>
-                  <p className={`mt-2 text-lg sm:text-2xl font-black ${
-                    state.stats.realizedPnl >= 0 ? "text-emerald-300" : "text-red-300"
-                  }`}>
-                    {formatMoney(state.stats.realizedPnl)}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-white/40">Total PnL</p>
-                  <p className={`mt-2 text-lg sm:text-2xl font-black ${
-                    state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
-                  }`}>
-                    {formatMoney(state.stats.totalPnl)}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-white/40">Total Trades</p>
-                  <p className="mt-2 text-lg sm:text-2xl font-black">
-                    {Number(state.stats.totalTrades || 0).toLocaleString()}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-white/40">Win Rate</p>
-                  <p className="mt-2 text-lg sm:text-2xl font-black">
-                    {formatPercent(winRate)}
-                  </p>
-                </div>
-              </div>
-            </GlassCard>
-          </div>
-
-          {/* Active Bot Controls */}
-          <GlassCard>
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-xl font-black">Active Bot</h3>
-              <span className="text-cyan-300 text-2xl">
-                <FaRobot />
-              </span>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="text-4xl shrink-0">
-                {state.currentStrategy.icon}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-xl sm:text-2xl font-black">
-                    {state.currentStrategy.name}
-                  </h4>
-                  <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
-                    {state.currentStrategy.risk}
-                  </span>
-                </div>
-
-                <p className="text-sm text-white/50">
-                  {state.currentStrategy.description}
-                </p>
-              </div>
-            </div>
-
-            <div className="my-5 h-px bg-white/10" />
-
-            <div className="grid grid-cols-3 gap-3 text-center text-xs sm:text-sm">
-              <div>
-                <p className="text-white/40">Market</p>
-                <p className="font-black">{activeTab.label}</p>
-              </div>
-              <div>
-                <p className="text-white/40">Mode</p>
-                <p className="font-black">{state.botMode.toUpperCase()}</p>
-              </div>
-              <div>
-                <p className="text-white/40">Positions</p>
-                <p className="font-black">
-                  {state.openPositionsCount} / {state.currentStrategy.maxPositions || 5}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              {!state.botRunning ? (
-                <button
-                  onClick={handleStartBot}
-                  disabled={state.processing}
-                  className={`w-full rounded-2xl py-3 sm:py-4 font-black disabled:opacity-50 transition ${
-                    isLocked || !isConnected
-                      ? "bg-cyan-500 text-black hover:bg-cyan-400"
-                      : "bg-emerald-500 text-black hover:bg-emerald-400"
-                  }`}
-                >
-                  {state.processing ? (
-                    <FaSpinner className="animate-spin inline mr-2" />
-                  ) : isLocked ? (
-                    <FaLock className="inline mr-2" />
-                  ) : !isConnected ? (
-                    <FaPlug className="inline mr-2" />
-                  ) : (
-                    <FaPlay className="inline mr-2" />
-                  )}
-                  {isLocked
-                    ? "Upgrade to Unlock"
-                    : !isConnected
-                    ? "Connect to Start"
-                    : starterPaperOnly
-                    ? "Start Paper Bot"
-                    : "Start Bot"}
-                </button>
-              ) : (
-                <button
-                  onClick={handleStopBot}
-                  disabled={state.processing}
-                  className="w-full rounded-2xl bg-red-500 py-3 sm:py-4 font-black hover:bg-red-400 disabled:opacity-50 transition"
-                >
-                  {state.processing ? (
-                    <FaSpinner className="animate-spin inline mr-2" />
-                  ) : (
-                    <FaStop className="inline mr-2" />
-                  )}
-                  Stop Bot
-                </button>
-              )}
-            </div>
-          </GlassCard>
-
-
-          {/* Bot Strategies */}
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <h3 className="mb-2 text-xl sm:text-2xl font-black">
-              {activeTab.label} Strategy Preferences
-            </h3>
-            <p className="mb-4 text-sm text-white/55">{state.laneStrategiesReady
-              ? state.laneStrategies[activeTab.id] ? "Saved for this service. Existing running bot settings do not change until confirmed by the executor." : "No strategy saved for this service yet. Choose a preference below."
-              : "Per-service strategy settings are unavailable. Changes are disabled until they load."}</p>
-            {['options','kalshi'].includes(activeTab.id) && <p className="mb-3 text-xs text-amber-300">This service needs its dedicated executor to apply a strategy. The generic bot launcher is disabled for safety.</p>}
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {state.strategies.map((strategy) => (
-                <StrategyCard
-                  key={strategy.id}
-                  strategy={strategy}
-                  selected={state.currentStrategy.id === strategy.id}
-                  onClick={() => handleSelectStrategy(strategy)}
-                  disabled={state.botRunning || !state.laneStrategiesReady}
-                />
-              ))}
-            </div>
-          </section>
-
+          {/* Existing account, holdings and scoreboard duplicates removed; new Robot HQ above is canonical. */}
           <TradingAlignmentMeters
           exchange={activeTab.exchange}
           running={state.botRunning}

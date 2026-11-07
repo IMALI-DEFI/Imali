@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function SupportedChains() {
   const card = "rounded-xl bg-gray-800/70 border border-white/10 p-6 shadow-lg";
 
@@ -87,6 +88,7 @@ export default function SupportedChains() {
       <div className="max-w-7xl mx-auto px-4 pt-28 pb-24 relative">
         {/* Hero */}
         <div className="text-center mb-10">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight">
             Supported <span className="text-indigo-400">Chains</span>
           </h1>

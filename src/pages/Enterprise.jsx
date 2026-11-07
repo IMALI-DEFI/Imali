@@ -1,6 +1,7 @@
 // src/pages/EnterpriseDemo.jsx
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { MascotLogo } from "../components/game/GameKit";
 import {
   FaChartLine,
   FaUsers,
@@ -73,6 +74,7 @@ export default function EnterpriseDemo() {
           IMALI Enterprise / Community Lab
         </span>
 
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="text-4xl md:text-6xl font-extrabold leading-tight bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
           AI-Powered Financial Automation, Education, and Analytics for Organizations
         </h1>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaCheckCircle, FaEnvelope, FaArrowRight } from 'react-icons/fa';
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function NewsletterSuccess() {
   return (
     <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
@@ -10,6 +11,7 @@ export default function NewsletterSuccess() {
           <FaCheckCircle className="h-10 w-10" />
         </div>
 
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="mt-6 text-4xl font-semibold tracking-tight">
           Subscription Confirmed
         </h1>

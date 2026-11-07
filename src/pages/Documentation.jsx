@@ -1,6 +1,7 @@
 // src/pages/Documentation.jsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { MascotLogo } from "../components/game/GameKit";
 import { 
   FaSearch, FaBook, FaCode, FaLock, FaBuilding, FaCreditCard, 
   FaShieldAlt, FaRocket, FaArrowRight, FaCubes, FaUsers,
@@ -144,6 +145,7 @@ const Documentation = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Hero */}
         <div className="text-center mb-8">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white via-purple-300 to-purple-600 bg-clip-text text-transparent">
             Documentation
           </h1>

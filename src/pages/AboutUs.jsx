@@ -1,9 +1,11 @@
 import React from "react";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function AboutUs() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-indigo-950 text-white">
       <div className="mx-auto max-w-4xl px-6 py-14 space-y-6">
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="text-3xl font-bold">About IMALI</h1>
         <p className="text-white/80">
           IMALI helps newcomers participate in DeFi with clear education,

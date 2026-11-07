@@ -9,6 +9,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { FaEnvelope, FaCheckCircle, FaChartLine, FaShieldAlt, FaBell, FaArrowLeft } from "react-icons/fa";
 
+import { MascotLogo } from "../components/game/GameKit";
 export default function Newsletter() {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -83,6 +84,7 @@ export default function Newsletter() {
               <FaEnvelope className="h-4 w-4" /> Weekly newsletter
             </div>
 
+            <MascotLogo size={84} className="block mx-auto mb-3" />
             <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
               Get market insights, platform updates, and trading tips in one email.
             </h1>

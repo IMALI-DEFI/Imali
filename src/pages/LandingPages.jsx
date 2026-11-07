@@ -18,6 +18,7 @@ import {
 } from "react-icons/fa";
 import { MdKeyboardArrowRight, MdOutlineShowChart } from "react-icons/md";
 
+import { MascotLogo } from "../components/game/GameKit";
 const variants = {
   redditA: {
     source: "Reddit",
@@ -392,6 +393,7 @@ export default function LandingPages() {
                 <FaBolt className="h-4 w-4" /> {config.eyebrow}
               </div>
 
+              <MascotLogo size={84} className="block mx-auto mb-3" />
               <h1 className="max-w-4xl text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
                 {config.title}
               </h1>

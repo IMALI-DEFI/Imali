@@ -6,7 +6,9 @@ import {
   FaArrowRight,
   FaShieldAlt,
 } from "react-icons/fa";
+import { trackMarketingEvent } from "../components/MarketingTracker";
 
+import { MascotLogo } from "../components/game/GameKit";
 const providers = [
   {
     name: "Robinhood Crypto",
@@ -35,6 +37,14 @@ export default function BillingSuccess() {
     refreshActivation().catch((err) => {
       console.warn("[BillingSuccess] refresh failed:", err);
     });
+
+    const tier = localStorage.getItem("IMALI_SELECTED_TIER") || null;
+    const productType = localStorage.getItem("IMALI_PRODUCT_TYPE") || "trading";
+
+    trackMarketingEvent("paid_conversion", {
+      product: productType === "admin" ? "AdminPlatform" : "IMALI",
+      metadata: { tier, productType },
+    });
   }, [refreshActivation]);
 
   return (
@@ -46,6 +56,7 @@ export default function BillingSuccess() {
             <FaCheckCircle className="text-3xl text-emerald-400" />
           </div>
 
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="mt-5 text-3xl font-black sm:text-4xl">
             Payment Complete
           </h1>

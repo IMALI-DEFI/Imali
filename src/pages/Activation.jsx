@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 import { ethers } from "ethers";
 
+import { MascotLogo } from "../components/game/GameKit";
 const StatusBadge = ({ done }) => (
   <span
     className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -395,6 +396,7 @@ export default function Activation() {
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center">
           <div className="text-6xl mb-6">🏢</div>
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-3xl font-bold mb-4">Enterprise Plan</h1>
           <p className="text-gray-400 mb-6">Enterprise accounts require manual approval.</p>
           <button onClick={() => navigate("/dashboard")} className="w-full px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold">

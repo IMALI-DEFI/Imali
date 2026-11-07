@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
+import { MascotLogo } from "../components/game/GameKit";
 import {
   FaArrowRight,
   FaCheckCircle,
@@ -220,6 +221,7 @@ export default function ConnectAlpaca() {
           <div className="rounded-3xl border border-emerald-400/20 bg-emerald-400/[0.06] p-8 text-center">
             <FaCheckCircle className="mx-auto text-5xl text-emerald-400" />
 
+            <MascotLogo size={84} className="block mx-auto mb-3" />
             <h1 className="mt-5 text-3xl font-black">
               Alpaca Connected
             </h1>

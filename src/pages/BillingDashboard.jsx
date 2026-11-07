@@ -272,16 +272,6 @@ export default function BillingDashboard({
                   />
                 )}
 
-                {canUseLiveTrading && (
-                  <StatusBadge
-                    label={
-                      isBotRunning
-                        ? "Bot Running"
-                        : "Bot Ready"
-                    }
-                    active={isBotRunning}
-                  />
-                )}
               </div>
             </div>
           </div>
@@ -365,22 +355,11 @@ export default function BillingDashboard({
             }
           />
 
-          <BotStatus
-            activationStatus={
-              activationStatus
-            }
-            isBotRunning={isBotRunning}
-            isRobinhoodConnected={
-              isRobinhoodConnected
-            }
-            robinhoodMode={robinhoodMode}
-            isOKXConnected={
-              isOKXConnected
-            }
-            isAlpacaConnected={
-              isAlpacaConnected
-            }
-          />
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+            <h2 className="text-xl font-black">Trading Bot</h2>
+            <p className="mt-2 text-white/70">Your current strategy, mode, and running status are shown on your trading dashboard.</p>
+            <button type="button" onClick={() => navigate("/dashboard")} className="mt-4 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-500">Open Trading Dashboard</button>
+          </section>
 
           <TradingConnections
             showRobinhood={canUseRobinhood}
@@ -659,69 +638,6 @@ function SubscriptionSection({
           ? "Canceling..."
           : "Cancel Subscription"}
       </button>
-    </section>
-  );
-}
-
-function BotStatus({
-  activationStatus,
-  isBotRunning,
-  isRobinhoodConnected,
-  robinhoodMode,
-  isOKXConnected,
-  isAlpacaConnected,
-}) {
-  return (
-    <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
-      <div className="flex items-center gap-3">
-        <FaRobot className="text-2xl text-cyan-400" />
-
-        <h2 className="text-xl font-black">
-          Trading Bot
-        </h2>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatusItem
-          label="Status"
-          value={
-            isBotRunning
-              ? "Running"
-              : "Stopped"
-          }
-        />
-
-        <StatusItem
-          label="Mode"
-          value={String(
-            isRobinhoodConnected
-              ? robinhoodMode
-              : activationStatus?.trading_mode ||
-                "paper"
-          ).toUpperCase()}
-        />
-
-        <StatusItem
-          label="Strategy"
-          value={
-            activationStatus?.current_strategy ||
-            "Balanced AI"
-          }
-        />
-
-        <StatusItem
-          label="Exchange"
-          value={
-            isRobinhoodConnected
-              ? "Robinhood Crypto"
-              : isOKXConnected
-                ? "OKX"
-                : isAlpacaConnected
-                  ? "Alpaca"
-                  : "Not Connected"
-          }
-        />
-      </div>
     </section>
   );
 }

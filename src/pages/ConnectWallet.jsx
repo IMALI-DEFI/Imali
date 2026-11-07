@@ -9,6 +9,7 @@ import {
 import { baseSepolia } from "viem/chains";
 import { toAccount } from "viem/accounts";
 import { toSafeSmartAccount } from "permissionless/accounts";
+import { MascotLogo } from "../components/game/GameKit";
 import {
   FaArrowLeft,
   FaCheckCircle,
@@ -510,6 +511,7 @@ export default function ConnectWallet() {
         </button>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6">
+          <MascotLogo size={84} className="block mx-auto mb-3" />
           <h1 className="text-3xl font-black">Connect Wallet</h1>
           <p className="mt-2 text-white/50">
             Used for DEX sniper bots, DeFi features, and IMALI token benefits.

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 import { getGoogleIdToken, signOutGoogle } from "../firebase";
 
+import { MascotLogo } from "../components/game/GameKit";
 function safeInternalPath(path, fallback = "/dashboard") {
   if (!path || typeof path !== "string") return fallback;
   if (!path.startsWith("/")) return fallback;
@@ -375,6 +376,7 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
+        <MascotLogo size={84} className="block mx-auto mb-3" />
         <h1 className="mb-2 text-center text-3xl font-extrabold">Log in to IMALI</h1>
 
         {expiredMessage && !error && (
