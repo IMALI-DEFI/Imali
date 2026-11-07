@@ -597,8 +597,27 @@
   .hdr-btn { padding: 0 14px; }
 }
 
-/* Consistent game visual language across all IMALI routes, including admin. */
-main.imali-fun-site { background:radial-gradient(circle at 50% 0%, #231350 0%, #0b1030 44%, #050816 100%) !important; }
-main.imali-admin-game { color:#f6f5ff; }
-main.imali-admin-game :is(button,a)[class*="rounded-xl"][class*="bg-indigo"], main.imali-admin-game :is(button,a)[class*="rounded-lg"][class*="bg-blue"] { border:2px solid var(--f-blue-b); border-radius:16px; background:var(--f-blue); box-shadow:inset 0 2px 10px #fff6,0 4px 0 var(--f-blue-s); font-weight:800; }
-@media(max-width:640px){ main.imali-fun-site .fun-btn {max-width:100%;white-space:normal;text-align:center;} }
+/* Shared IMALI visual system: private command center and public opportunity board */
+.imali-command-center,.imali-opportunity-board {--imali-royal:#221249;--imali-gold:#ffcf52;}
+.imali-command-center {background:radial-gradient(ellipse at 12% 0%,#432480 0,transparent 40%),radial-gradient(ellipse at 95% 15%,#143c73 0,transparent 40%),#0e102b;}
+.imali-command-header {background:linear-gradient(110deg,#211047f5,#121b45f5);box-shadow:0 5px 25px #05061899;border-bottom:1px solid #d9b45e55;}
+.imali-command-quicklinks {background:linear-gradient(100deg,#2a1556aa,#102a50aa);border-bottom:1px solid #ffffff1b;}
+.imali-command-center aside {background:linear-gradient(180deg,#1b1644f0,#0f1a38f0);}
+.imali-command-center aside>div>div>div {border-radius:15px;}
+.imali-command-center aside h3 {color:#ffe3a0;letter-spacing:.02em;}
+.imali-command-nav-item {background:#ffffff05;}
+.imali-command-nav-item:hover {background:#6245ae44;transform:translateX(2px);}
+.imali-command-nav-item[title] {box-shadow:none;}
+.imali-command-search {background:#0e1535;border:1px solid #e2c77c55;outline:none;}
+.imali-command-search:focus {border-color:#ffcf52;box-shadow:0 0 0 3px #ffcf5225;}
+.imali-command-active {background:linear-gradient(115deg,#41217a88,#193b6a77);box-shadow:0 12px 35px #0003;border-color:#d4b66855;}
+.imali-command-main>section,.imali-command-main>div {max-width:100%;}
+.imali-opportunity-board {background:radial-gradient(ellipse at 50% 0%,#49248977,transparent 52%);}
+.imali-opportunity-board>section:first-child {padding:2rem 1rem;border-radius:26px;background:linear-gradient(125deg,#432182cc,#173568dd);border:1px solid #ffdb8155;box-shadow:0 14px 40px #0004;}
+.imali-opportunity-board h1 {background:linear-gradient(90deg,#fff,#ffe3a0,#fff);background-clip:text;-webkit-background-clip:text;color:transparent;}
+.imali-opportunity-stat {background:linear-gradient(145deg,#462681,#1a3a67);border-color:#e9c66a55;box-shadow:inset 0 2px 0 #ffffff1a,0 8px 22px #0004;}
+.imali-opportunity-panel {background:linear-gradient(125deg,#342061cc,#1b3155cc);border-color:#d4b66844;}
+.imali-opportunity-job {background:linear-gradient(135deg,#342059dd,#182b50ee);border-color:#ffffff2a;transition:transform .2s,border-color .2s,box-shadow .2s;}
+.imali-opportunity-job:hover {transform:translateY(-3px);border-color:#ffcf5280;box-shadow:0 12px 26px #0005;}
+@media (max-width:640px){.imali-command-quicklinks .fun-btn,.imali-opportunity-actions .fun-btn{font-size:.78rem;padding:.45rem .7rem;min-height:40px}.imali-opportunity-board>section:first-child{padding:1.4rem .9rem}}
+@media(prefers-reduced-motion:reduce){.imali-opportunity-job,.imali-command-nav-item{transition:none}.imali-opportunity-job:hover,.imali-command-nav-item:hover{transform:none}}

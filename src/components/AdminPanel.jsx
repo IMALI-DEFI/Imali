@@ -565,6 +565,7 @@ const TAB_SECTIONS=[
 {id:'system',name:'System',emoji:'⚙️',tabs:['health','audit','access']},
 ].map(s=>({...s,tabs:s.tabs.map(k=>byKey[k])}));
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
+const sectionMatches = (section, term) => !term || section.name.toLowerCase().includes(term.toLowerCase()) || section.tabs.some(t => (t.label + " " + t.description).toLowerCase().includes(term.toLowerCase()));
 
 const SectionBadge = ({ emoji, name, description }) => (
   <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 transition hover:border-white/20">
@@ -582,7 +583,7 @@ function SidebarButton({ tab, isActive, onClick, busy }) {
       onClick={onClick}
       disabled={busy}
       className={[
-        "w-full rounded-xl border px-3 py-3 text-left transition-all duration-200",
+        "imali-command-nav-item w-full rounded-xl border px-3 py-2.5 text-left transition-all duration-200",
         isActive
           ? "border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
           : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5",
@@ -594,7 +595,7 @@ function SidebarButton({ tab, isActive, onClick, busy }) {
         <span className="pt-0.5 text-xl">{tab.emoji}</span>
         <div className="min-w-0 flex-1">
           <span className="truncate text-sm font-medium">{tab.label}</span>
-          <p className="mt-1 line-clamp-2 text-xs text-white/45">{tab.description}</p>
+          <p className="mt-1 line-clamp-1 text-xs text-white/55">{tab.description}</p>
         </div>
       </div>
     </button>
@@ -630,6 +631,8 @@ export default function AdminPanel({ forceOwner = false }) {
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [navigationSearch, setNavigationSearch] = useState("");
+  const [expandedSections, setExpandedSections] = useState({overview:true,customers:true});
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
   const [apiError, setApiError] = useState(null);
@@ -967,7 +970,7 @@ export default function AdminPanel({ forceOwner = false }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-950 to-black text-white">
+    <div className="imali-command-center min-h-screen text-white">
       {toast && (
         <div
           className={`fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur ${
@@ -996,7 +999,7 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       )}
 
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-gray-950/90 backdrop-blur">
+      <header className="imali-command-header sticky top-0 z-50 border-b border-white/10 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -1010,10 +1013,10 @@ export default function AdminPanel({ forceOwner = false }) {
             </button>
             <div>
               <h1 className="bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-xl font-bold text-transparent">
-                IMALI Admin Panel
+                IMALI · Command Center
               </h1>
               <p className="hidden text-xs text-white/45 sm:block">
-                Manage users, trades, finances, marketing, enterprise, and platform settings.
+                Your apps, customers, trading, and opportunities — all in one place.
               </p>
             </div>
           </div>
@@ -1048,7 +1051,14 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-3 border-b border-white/10 bg-gray-950 px-4 py-3"><AttentionBadge/><Link to="/admin/social" className="rounded-xl bg-emerald-500/15 px-3 py-2 text-sm text-emerald-200">SOCIAL MEDIA →</Link></div>
+      <div className="imali-command-quicklinks mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-4 py-4 lg:px-6">
+        <AttentionBadge/>
+        <button onClick={() => navigateToTab("overview")} className="fun-btn fun-purple fun-small">🏠 Overview</button>
+        <button onClick={() => navigateToTab("users")} className="fun-btn fun-blue fun-small">👥 Users</button>
+        <button onClick={() => navigateToTab("bid-desk")} className="fun-btn fun-orange fun-small">💼 Opportunities</button>
+        <Link to="/opportunity" className="fun-btn fun-green fun-small">🌍 Public Board</Link>
+        <Link to="/admin/social" className="fun-btn fun-gold fun-small">📱 Social Media</Link>
+      </div>
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
@@ -1068,8 +1078,9 @@ export default function AdminPanel({ forceOwner = false }) {
               </button>
             </div>
 
-            <div className="space-y-6">
-              {TAB_SECTIONS.map((section) => (
+            <input aria-label="Find admin tools" value={navigationSearch} onChange={e => setNavigationSearch(e.target.value)} placeholder="🔎 Find a tool or page..." className="imali-command-search mb-4 w-full rounded-xl px-3 py-3 text-sm text-white" />
+            <div className="space-y-4">
+              {TAB_SECTIONS.filter(section => sectionMatches(section,navigationSearch)).map((section) => (
                 <div key={section.id}>
                   <div className="mb-2 flex items-center gap-2">
                     <span className="text-xl">{section.emoji}</span>
@@ -1107,8 +1118,9 @@ export default function AdminPanel({ forceOwner = false }) {
       <div className="mx-auto flex max-w-[1600px]">
         <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
           <div className="sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto p-4">
-            <div className="space-y-6">
-              {TAB_SECTIONS.map((section) => (
+            <input aria-label="Find admin tools" value={navigationSearch} onChange={e => setNavigationSearch(e.target.value)} placeholder="🔎 Find a tool or page..." className="imali-command-search mb-4 w-full rounded-xl px-3 py-3 text-sm text-white" />
+            <div className="space-y-4">
+              {TAB_SECTIONS.filter(section => sectionMatches(section,navigationSearch)).map((section) => (
                 <div key={section.id}>
                   <div className="mb-2 flex items-center gap-2">
                     <span className="text-lg">{section.emoji}</span>
@@ -1142,7 +1154,7 @@ export default function AdminPanel({ forceOwner = false }) {
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
+        <main className="imali-command-main min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
           {false && stats && (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
@@ -1166,7 +1178,7 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           )}
 
-          <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+          <section className="imali-command-active mb-6 rounded-3xl border border-white/10 p-4 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex items-start gap-3">
                 <span className="text-4xl">{activeTab.emoji}</span>

@@ -17,7 +17,7 @@ const KSTATUS = { scored: "🏁 Scored", submitted: "📤 Submitted", ready: "�
 
 function Big({ n, label, emoji }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
+    <div className="imali-opportunity-stat rounded-2xl border border-white/10 p-4 text-center">
       <div className="text-3xl font-extrabold">{emoji} {num(n)}</div>
       <div className="mt-1 text-xs text-white/60">{label}</div>
     </div>
@@ -41,15 +41,20 @@ export default function OpportunityBoard() {
   const jobs = (d?.jobs || []).filter((j) => filter === "all" || j.decision === filter);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 text-white">
+    <main className="imali-opportunity-board mx-auto max-w-6xl px-4 py-10 text-white">
       <section className="text-center">
-        <p className="text-sm uppercase tracking-widest text-emerald-300">Live · updates every 30 minutes</p>
-        <h1 className="mt-2 text-3xl font-extrabold sm:text-5xl">🤖 The Opportunity Robot</h1>
+        <p className="text-sm uppercase tracking-widest text-emerald-300">IMALI Opportunity Engine · live board</p>
+        <h1 className="mt-2 text-3xl font-extrabold sm:text-5xl">🤖 Your Opportunity Headquarters</h1>
         <p className="mx-auto mt-3 max-w-2xl text-white/70">
-          It reads every new government job, picks the good ones, and finds local companies to do the work.
+          We find government work, explain it in plain English, and look for qualified local teams to do the job.
         </p>
       </section>
 
+      <div className="imali-opportunity-actions mt-6 flex flex-wrap justify-center gap-3">
+          <a href="#open-jobs" className="fun-btn fun-gold fun-small">🏛️ See Open Jobs</a>
+          <Link to="/subcontractors" className="fun-btn fun-green fun-small">🛠️ Join as a Pro</Link>
+          <a href="#how-it-works" className="fun-btn fun-purple fun-small">❓ How It Works</a>
+        </div>
       <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Big emoji="🔎" n={s.jobs_checked} label="Jobs checked" />
         <Big emoji="📄" n={s.files_read} label="Government files read" />
@@ -57,7 +62,7 @@ export default function OpportunityBoard() {
         <Big emoji="🛠️" n={s.subs} label="Local pros in the network" />
       </section>
 
-      <section className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+      <section id="how-it-works" className="imali-opportunity-panel mt-6 rounded-2xl border border-white/10 p-5">
         <h2 className="text-lg font-bold">How it works</h2>
         <ol className="mt-2 grid gap-2 text-sm text-white/75 sm:grid-cols-4">
           <li>1️⃣ <b>Find.</b> Robot checks SAM.gov all day.</li>
@@ -85,7 +90,7 @@ export default function OpportunityBoard() {
         </section>
       )}
 
-      <section className="mt-8">
+      <section id="open-jobs" className="mt-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-bold">🏛️ Open government jobs</h2>
           <div className="flex gap-2 text-sm">
@@ -103,7 +108,7 @@ export default function OpportunityBoard() {
           {jobs.map((j) => {
             const t = TAG[j.decision] || TAG.maybe;
             return (
-              <article key={j.id} className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-4">
+              <article key={j.id} className="imali-opportunity-job rounded-2xl border border-white/10 p-4">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className={`rounded-full border px-2 py-0.5 font-bold ${t[2]}`}>{t[0]} {t[1]}</span>
                   <span className="text-white/60">⏰ {left(j.due_at)} · {day(j.due_at)}</span>
@@ -139,7 +144,7 @@ export default function OpportunityBoard() {
         </section>
       )}
 
-      <section className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+      <section className="imali-opportunity-panel mt-10 rounded-2xl border border-white/10 p-5 text-center">
         <h2 className="text-lg font-bold">Got a crew? Get government work.</h2>
         <p className="mt-1 text-sm text-white/65">Free to join. We only email jobs that fit your trade and area.</p>
         <Link to="/subcontractors" className="mt-3 inline-block rounded-xl bg-emerald-500 px-5 py-2 font-bold text-black hover:bg-emerald-400">Join the network →</Link>
