@@ -621,3 +621,10 @@
 .imali-opportunity-job:hover {transform:translateY(-3px);border-color:#ffcf5280;box-shadow:0 12px 26px #0005;}
 @media (max-width:640px){.imali-command-quicklinks .fun-btn,.imali-opportunity-actions .fun-btn{font-size:.78rem;padding:.45rem .7rem;min-height:40px}.imali-opportunity-board>section:first-child{padding:1.4rem .9rem}}
 @media(prefers-reduced-motion:reduce){.imali-opportunity-job,.imali-command-nav-item{transition:none}.imali-opportunity-job:hover,.imali-command-nav-item:hover{transform:none}}
+
+/* Unified Bid Desk: same glossy visual language as the IMALI command center */
+.imali-bid-desk .imali-bid-stat {min-height:125px;background:linear-gradient(140deg,#34205bdc,#1c3159ed);border-color:#d6bd754a;box-shadow:inset 0 2px 0 #ffffff18,0 7px 20px #0004;display:flex;flex-direction:column;justify-content:center;}
+.imali-bid-desk .imali-bid-stat>div:first-child {font-variant-numeric:tabular-nums;color:#fff5d7;}
+.imali-bid-desk .imali-bid-job {background:linear-gradient(135deg,#392365df,#1c3155f0);border-color:#d6bd7545;box-shadow:0 9px 26px #0004;}
+.imali-bid-desk .imali-bid-job:hover {border-color:#ffcf5280;}
+.imali-bid-desk button:focus-visible {outline:2px solid #ffcf52;outline-offset:2px;}

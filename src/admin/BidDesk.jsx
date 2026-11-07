@@ -7,6 +7,7 @@ const BASE = "/api/admin/work-agent/bid-desk";
 const post = (path, body) => apiFetch(BASE + path, { method: "POST", body: JSON.stringify(body || {}) });
 const usd = (n) => (n === null || n === undefined || n === "" ? "—" : "$" + Math.round(Number(n)).toLocaleString());
 const day = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—");
+const count = (n) => n === undefined || n === null ? "—" : Number(n).toLocaleString();
 const daysLeft = (d) => (d ? Math.ceil((new Date(d) - Date.now()) / 86400000) : null);
 
 const LOOK = {
@@ -19,9 +20,9 @@ const OWNER = { you: "👤 You", sub: "🛠️ Sub", robot: "🤖 Robot" };
 
 function Stat({ n, label, emoji }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-      <div className="text-2xl font-bold">{emoji} {n ?? "—"}</div>
-      <div className="text-xs text-white/60">{label}</div>
+    <div className="imali-bid-stat rounded-2xl border p-4">
+      <div className="text-2xl font-bold">{emoji} {count(n)}</div>
+      <div className="mt-2 text-xs font-medium text-white/75">{label}</div>
     </div>
   );
 }
@@ -134,7 +135,7 @@ function BidCard({ b, onChange }) {
   const look = LOOK[b.decision] || LOOK.skip;
   const left = daysLeft(b.due_at);
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-4">
+    <div className="imali-bid-job rounded-2xl border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${look.ring}`}>{look.emoji} {look.label} · {b.go_score}</span>
         <span className={`text-xs ${left !== null && left <= 5 ? "text-rose-300" : "text-white/60"}`}>
@@ -170,26 +171,49 @@ export default function BidDesk() {
   const [kaggle, setKaggle] = useState([]);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const [sum, list, appr] = await Promise.all([
-        apiFetch(`${BASE}/summary`), apiFetch(`${BASE}/briefs?decision=${tab}&limit=60`), apiFetch(`${BASE}/approved-waiting`)]);
-      setS(sum); setItems(list.items || []); setWaiting(appr.items || []); setErr(null);
-      apiFetch(`${BASE}/kaggle`).then((k) => setKaggle(k.items || [])).catch(() => {});
-    } catch (e) { setErr(e.message || "Bid Desk is not reachable yet."); }
+      const results = await Promise.allSettled([
+        apiFetch(`${BASE}/summary`),
+        apiFetch(`${BASE}/briefs?decision=${tab}&limit=60`),
+        apiFetch(`${BASE}/approved-waiting`),
+        apiFetch(`${BASE}/kaggle`)
+      ]);
+      const [sum, list, appr, contests] = results;
+      if (sum.status === "fulfilled") setS(sum.value);
+      if (list.status === "fulfilled") setItems(list.value.items || []);
+      if (appr.status === "fulfilled") setWaiting(appr.value.items || []);
+      if (contests.status === "fulfilled") setKaggle(contests.value.items || []);
+      const failed = results.slice(0,3).filter(r => r.status === "rejected");
+      if (failed.length) {
+        const first = failed[0].reason;
+        setErr(first?.status === 401 || first?.status === 403
+          ? "Your admin session needs attention. Sign in again to see private opportunity data."
+          : "Some live admin data could not be loaded. Older figures, if shown, may be out of date. Try Refresh.");
+      } else { setErr(null); setUpdatedAt(new Date()); }
+    } catch (e) { setErr("The Bid Desk could not refresh. Try again shortly."); }
+    finally { setRefreshing(false); }
+
   }, [tab]);
   useEffect(() => { load(); const t = setInterval(load, 120000); return () => clearInterval(t); }, [load]);
 
   const dec = s?.decisions || {};
   return (
-    <div className="space-y-5">
+    <div className="imali-bid-desk space-y-5">
       <div>
         <h2 className="text-xl font-bold">🏛️ Bid Desk</h2>
         <p className="text-sm text-white/60">Government jobs in plain words. The robot reads the papers, finds subs, asks for prices, and does the math.</p>
       </div>
 
-      {err && <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm">{err}</div>}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/5 p-3">
+        <span className="text-xs text-white/70">{updatedAt ? `Last successful refresh: ${updatedAt.toLocaleTimeString()}` : "Waiting for live admin data"}{err ? " · Some figures may be outdated" : " · Refreshes every 2 minutes"}</span>
+        <button onClick={load} disabled={refreshing} className="fun-btn fun-blue fun-small">{refreshing ? "Refreshing…" : "↻ Refresh now"}</button>
+      </div>
+      {err && <div role="alert" className="rounded-xl border border-rose-400/40 bg-rose-500/15 p-4 text-sm text-rose-100">⚠️ {err} {!s && "Counts are hidden until the service responds."}</div>}
 
       {s && !s.sam_registered && (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm">
@@ -204,10 +228,10 @@ export default function BidDesk() {
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat emoji="🟢" n={dec.go || 0} label="Go — worth bidding" />
-        <Stat emoji="🟡" n={dec.maybe || 0} label="Maybe" />
-        <Stat emoji="💬" n={dec.answer || 0} label="Just answer (no bid yet)" />
-        <Stat emoji="⚪" n={dec.skip || 0} label="Skip" />
+        <Stat emoji="🟢" n={s ? dec.go : null} label="Go — worth bidding" />
+        <Stat emoji="🟡" n={s ? dec.maybe : null} label="Maybe" />
+        <Stat emoji="💬" n={s ? dec.answer : null} label="Just answer (no bid yet)" />
+        <Stat emoji="⚪" n={s ? dec.skip : null} label="Skip" />
         <Stat emoji="✉️" n={s?.rfq?.sent} label={`Price requests sent (${s?.rfq?.sent_today ?? 0} today)`} />
         <Stat emoji="📝" n={s?.rfq?.drafts} label="Price requests ready to send" />
         <Stat emoji="💵" n={s?.rfq?.quotes} label="Sub prices received" />
@@ -238,14 +262,14 @@ export default function BidDesk() {
         {["go", "maybe", "answer", "skip"].map((k) => (
           <button key={k} onClick={() => setTab(k)}
             className={`rounded-full border px-3 py-1 text-sm ${tab === k ? LOOK[k].ring : "border-white/10 text-white/60"}`}>
-            {LOOK[k].emoji} {LOOK[k].label} ({dec[k] || 0})
+            {LOOK[k].emoji} {LOOK[k].label} ({s ? count(dec[k]) : "—"})
           </button>
         ))}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {items.map((b) => <BidCard key={b.id} b={b} onChange={load} />)}
-        {!items.length && <p className="text-sm text-white/50">Nothing here right now. The robot checks every 30 minutes.</p>}
+        {!items.length && !err && <p className="text-sm text-white/50">No jobs in this group right now.</p>}
       </div>
 
       {!!waiting.length && (
