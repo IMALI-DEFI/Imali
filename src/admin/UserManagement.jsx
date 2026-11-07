@@ -42,6 +42,7 @@ export default function UserManagement({ apiBase, showToast }) {
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const [search, setSearch] = useState("");
+  const [product, setProduct] = useState("all");
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedUser, setSelectedUser] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -66,6 +67,7 @@ export default function UserManagement({ apiBase, showToast }) {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search.trim()) params.set("search", search.trim());
+      if (product !== "all") params.set("product", product);
       const data = await api(`/api/admin/users?${params}`);
       const raw = data.data?.users || [];
       setUsers(raw.map(u => ({
@@ -74,12 +76,13 @@ export default function UserManagement({ apiBase, showToast }) {
         is_admin: fmtBool(u.is_admin), billing_complete: fmtBool(u.billing_complete),
         okx_connected: fmtBool(u.okx_connected), alpaca_connected: fmtBool(u.alpaca_connected),
         created_at: u.created_at, organization_role: u.organization_role || null,
+        marketing_product: u.marketing_product || "unknown", welcome_email_event: u.welcome_email_event || null,
       })));
       setTotalPages(data.data?.pagination?.totalPages || 1);
       setTotalUsers(data.data?.pagination?.total || data.data?.total || raw.length);
     } catch (e) { toast(e.message, "error"); }
     finally { setLoading(false); }
-  }, [api, limit, page, search, toast]);
+  }, [api, limit, page, search, product, toast]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -154,6 +157,12 @@ export default function UserManagement({ apiBase, showToast }) {
           <button type="submit" className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold">Search</button>
         </form>
 
+        <div className="flex gap-2 flex-wrap items-center mb-3">
+          <label htmlFor="app-filter" className="text-sm text-white/70">App:</label>
+          <select id="app-filter" value={product} onChange={e => { setPage(1); setProduct(e.target.value); }} className="rounded-lg border border-white/20 bg-[#171c39] p-2 text-sm text-white">
+            <option value="all">All apps</option><option value="imali">IMALI</option><option value="sports_jedi">Sports Jedi</option><option value="black_culture_vault">Black Culture Vault</option><option value="unknown">Unlabeled / older users</option>
+          </select>
+        </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => { setAddForm({ email: "", password: "", tier: "starter", strategy: "ai_weighted" }); setShowAdd(true); }} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold"><FaUserPlus /> Add</button>
           {selectedIds.size > 0 && (
@@ -185,6 +194,7 @@ export default function UserManagement({ apiBase, showToast }) {
               <span>Billing: {u.billing_complete ? "✅" : "✗"}</span>
               <span>Trading: {u.trading_enabled ? "✅" : "✗"}</span>
             </div>
+            <p className="text-xs text-white/70 mb-2">App: {u.marketing_product.replaceAll("_", " ")} · Welcome: {u.welcome_email_event === "signup_welcome_sent" ? "Accepted by email provider" : u.welcome_email_event === "signup_welcome_failed" ? "Failed" : "Not recorded"}</p>
             <div className="flex gap-1 flex-wrap">
               <button onClick={() => { setSelectedUser(u); setShowView(true); }} className="text-xs px-2 py-1 rounded bg-white/10"><FaEye className="inline mr-1" />View</button>
               <button onClick={() => { setSelectedUser(u); setEditForm({ email: u.email, tier: u.tier, strategy: u.strategy, trading_enabled: u.trading_enabled, is_admin: u.is_admin }); setShowEdit(true); }} className="text-xs px-2 py-1 rounded bg-white/10"><FaEdit className="inline mr-1" />Edit</button>
@@ -202,7 +212,7 @@ export default function UserManagement({ apiBase, showToast }) {
             <tr>
               <th className="p-3 w-10"><button onClick={toggleAll}>{selectedIds.size === users.length ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare className="text-white/30" />}</button></th>
               <th className="p-3">Email</th>
-              <th className="p-3">Tier</th>
+              <th className="p-3">App</th><th className="p-3">Welcome email</th><th className="p-3">Tier</th>
               <th className="p-3">OKX</th>
               <th className="p-3">Alpaca</th>
               <th className="p-3">Billing</th>
@@ -217,6 +227,8 @@ export default function UserManagement({ apiBase, showToast }) {
               <tr key={u.id} className={`hover:bg-white/5 ${selectedIds.has(u.id) ? 'bg-emerald-500/10' : ''}`}>
                 <td className="p-3"><button onClick={() => toggleSelect(u.id)}>{selectedIds.has(u.id) ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare className="text-white/30" />}</button></td>
                 <td className="p-3 font-medium max-w-[200px] truncate">{u.email}</td>
+                <td className="p-3 text-xs capitalize">{u.marketing_product.replaceAll("_", " ")}</td>
+                <td className="p-3 text-xs">{u.welcome_email_event === "signup_welcome_sent" ? "Accepted" : u.welcome_email_event === "signup_welcome_failed" ? "Failed" : "Not recorded"}</td>
                 <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded-full ${tierBadge(u.tier)}`}>{u.tier}</span></td>
                 <td className="p-3">{u.okx_connected ? "✅" : "—"}</td>
                 <td className="p-3">{u.alpaca_connected ? "✅" : "—"}</td>

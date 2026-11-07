@@ -13,84 +13,29 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.c
 // =============================================
 const CONVERSION_SEQUENCES = [
   {
-    id: "day1-welcome",
-    name: "Day 1 — Welcome & Platform Tour",
-    sendAfterDays: 0,
-    subject: "Welcome to IMALI — Here's What You Can Do",
-    segment: "new_users",
-    html: `<h2>Welcome to IMALI!</h2>
-<p>You've joined the smartest automated trading platform. Here's what you can do right now:</p>
-<ul>
-<li>📊 <a href="https://imali-defi.com/live">Watch live paper trades</a> — see the bot in action</li>
-<li>🤖 <a href="https://imali-defi.com/dashboard">Try paper trading</a> — $1,000 virtual credits</li>
-<li>📈 <a href="https://imali-defi.com/how-it-works">Learn how it works</a></li>
-</ul>
-<p><strong>Ready for real trading?</strong> Upgrade to Pro and connect your exchange.</p>
-<p><a href="https://imali-defi.com/billing?tier=pro" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Upgrade to Pro →</a></p>`
+    id: "day1-welcome", name: "Day 1 — Welcome and First Steps", sendAfterDays: 0,
+    subject: "Welcome to IMALI — Here Are 3 Easy Steps", segment: "new_users",
+    html: `<h2>Welcome to IMALI!</h2><p>Your account is ready. Here are three easy steps:</p><ol><li><a href="https://imali-defi.com/login">Sign in</a> to your account.</li><li><a href="https://imali-defi.com/trade-demo">Try the demo</a> to see how the trading robots work.</li><li><a href="https://imali-defi.com/pricing">See the plans</a> if you want to upgrade.</li></ol><p>Starter is free. Pro costs $19 a month. Elite costs $49 a month. You can choose a plan and follow the payment steps. Trading involves risk and you can lose money.</p>`
   },
   {
-    id: "day3-success",
-    name: "Day 3 — Real Results from Live Trading",
-    sendAfterDays: 3,
-    subject: "See What IMALI's Bot Did This Week",
-    segment: "new_users",
-    html: `<h2>This Week's Trading Results</h2>
-<p>Our trading bot has been running 24/7. Here are the latest trades:</p>
-<div style="background:#f0fdf4;padding:15px;border-radius:8px;margin:15px 0;">
-<p style="font-size:18px;"><strong>📊 Recent Performance:</strong></p>
-<p>✅ BTC/USDT +3.2% | ✅ ETH/USDT +2.8% | ✅ SOL/USDT +4.1%</p>
-<p style="font-size:12px;color:#666;">Past performance does not guarantee future results.</p>
-</div>
-<p>These trades happened automatically with stop-loss protection on every position.</p>
-<p><a href="https://imali-defi.com/billing?tier=pro" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Start Live Trading →</a></p>`
+    id: "day3-success", name: "Day 3 — Understand the Robots", sendAfterDays: 3,
+    subject: "What Does an IMALI Trading Robot Do?", segment: "new_users",
+    html: `<h2>Meet your trading robots</h2><p>IMALI helps you choose a trading style. A robot can watch markets and place trades when your account is connected and trading is enabled.</p><p>Try the <a href="https://imali-defi.com/trade-demo">free demo</a> first. The demo is for learning, not real money.</p><p>Want more features? <a href="https://imali-defi.com/pricing">Compare the plans</a>. Trading can lose money.</p>`
   },
   {
-    id: "day5-testimonial",
-    name: "Day 5 — Traders Are Seeing Results",
-    sendAfterDays: 5,
-    subject: "What IMALI Users Are Saying",
-    segment: "new_users",
-    html: `<h2>Real Traders, Real Results</h2>
-<div style="background:#f0f7ff;padding:15px;border-radius:8px;margin:10px 0;">
-<p>"I was skeptical at first, but the stop-loss protection alone saved me from a 15% drawdown. The bot is disciplined."</p>
-<p style="font-size:12px;color:#666;">— IMALI Pro User</p>
-</div>
-<p>IMALI isn't about get-rich-quick. It's about consistent, automated execution with risk controls.</p>
-<p><strong>Your paper trading credits are still active.</strong> But they expire soon.</p>
-<p><a href="https://imali-defi.com/billing?tier=pro" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Upgrade Before Credits Expire →</a></p>`
+    id: "day5-testimonial", name: "Day 5 — Choosing a Plan", sendAfterDays: 5,
+    subject: "IMALI Plans Made Simple", segment: "new_users",
+    html: `<h2>Which plan fits you?</h2><p><b>Starter:</b> Free. Start exploring IMALI.</p><p><b>Pro:</b> $19 per month.</p><p><b>Elite:</b> $49 per month.</p><p>To upgrade: <b>1.</b> <a href="https://imali-defi.com/pricing">Open Plans</a>. <b>2.</b> Pick Pro or Elite. <b>3.</b> Follow the payment steps.</p><p>You do not need to pay just to explore the demo.</p>`
   },
   {
-    id: "day7-offer",
-    name: "Day 7 — Special Offer (Last Chance)",
-    sendAfterDays: 7,
-    subject: "Your Trial is Ending — Special Offer Inside",
-    segment: "new_users",
-    html: `<h2>Your Free Trial is Almost Over</h2>
-<p>You've had a week to explore IMALI. Here's a special offer to continue:</p>
-<div style="background:#fef3c7;padding:15px;border-radius:8px;margin:15px 0;text-align:center;">
-<p style="font-size:24px;font-weight:bold;margin:0;">20% OFF</p>
-<p style="margin:5px 0;">Your First Month of Pro</p>
-<p style="font-size:12px;">Use code: <strong>IMALI20</strong></p>
-</div>
-<p>That's just <strong>$15.20</strong> for your first month of live automated trading with stop-loss protection.</p>
-<p><a href="https://imali-defi.com/billing?tier=pro" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Claim Your Discount →</a></p>`
+    id: "day7-offer", name: "Day 7 — Explore Your Options", sendAfterDays: 7,
+    subject: "Ready for the Next Step with IMALI?", segment: "new_users",
+    html: `<h2>Ready to explore more?</h2><p>You can keep learning about IMALI and compare your options.</p><p><a href="https://imali-defi.com/pricing">See all plans</a>. Pro is $19 per month and Elite is $49 per month. Pick a plan, then follow the payment steps if you decide to upgrade.</p><p>No special discount is promised in this email. Trading involves risk.</p>`
   },
   {
-    id: "day14-final",
-    name: "Day 14 — We Miss You",
-    sendAfterDays: 14,
-    subject: "Still Interested in Automated Trading?",
-    segment: "new_users",
-    html: `<h2>Hey — We Noticed You Haven't Started Trading Yet</h2>
-<p>No pressure. But if you're still interested, here's what you're missing:</p>
-<ul>
-<li>🤖 300+ crypto pairs scanned 24/7</li>
-<li>🛡️ Stop-loss on every trade</li>
-<li>📈 Trailing take-profit locks in gains</li>
-<li>📊 Real-time dashboard</li>
-</ul>
-<p>Your account is still active. Come back anytime.</p>
-<p><a href="https://imali-defi.com/dashboard" style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Go to Dashboard →</a></p>`
+    id: "day14-final", name: "Day 14 — Come Back Anytime", sendAfterDays: 14,
+    subject: "Your IMALI Account Is Here When You Need It", segment: "new_users",
+    html: `<h2>Come back anytime</h2><p>Want another look? <a href="https://imali-defi.com/trade-demo">Try the demo</a> or <a href="https://imali-defi.com/login">sign in</a>.</p><p>Need to upgrade? <a href="https://imali-defi.com/pricing">Open Plans</a>, pick a plan, and follow the payment steps.</p><p>Trading can lose money. Start with the demo if you are new.</p>`
   },
 ];
 
