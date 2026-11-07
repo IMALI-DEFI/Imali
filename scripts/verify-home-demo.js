@@ -3,8 +3,8 @@ const home = fs.readFileSync('src/pages/Home.jsx', 'utf8');
 const demo = fs.readFileSync('src/pages/TradeDemo.jsx', 'utf8');
 const component = fs.readFileSync('src/components/demo/MultiServiceDemo.jsx', 'utf8');
 const required = [
-  [home.includes('MultiServiceDemo'), 'homepage interactive preview'],
-  [home.includes('preview'), 'preview mode'],
+  [home.includes('Robot HQ preview'), 'homepage game-style preview'],
+  [home.includes('fun-game-bg'), 'game-style homepage'],
   [home.includes('to="/trade-demo"'), 'full demo link'],
   [demo.includes('MultiServiceDemo'), 'full interactive demo'],
   [['Spot','DEX','Stocks','Futures','Options'].every(x => component.includes(x + ':')), 'five services'],

@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import RecentSocialShowcase from "../components/RecentSocialShowcase";
 import { MascotLogo } from "../components/game/GameKit";
 import { ShadowLabCard } from "../components/game/ShadowLab";
-import MultiServiceDemo from "../components/demo/MultiServiceDemo";
 
 const STEPS = [
   { emoji: "📝", color: "fun-gold", title: "Make your account", text: "Sign up and pick the plan you want." },
@@ -80,13 +79,6 @@ export default function Home() {
             </div>
             <p className="mt-4 text-center font-black text-[#ffe07a]">Tap to play →</p>
           </Link>
-        </section>
-
-        <section id="interactive-trading-demo" className="fun-card p-4 sm:p-6 scroll-mt-6">
-          <h2 className="text-2xl sm:text-3xl font-black mb-3">🎮 Interactive Trading Demo</h2>
-          <p className="fun-help mb-4">Try simulated trades and switch between services. No real orders are placed.</p>
-          <MultiServiceDemo preview />
-          <Link to="/trade-demo" className="fun-btn fun-gold mt-4">Open Full Demo</Link>
         </section>
 
         <ShadowLabCard />

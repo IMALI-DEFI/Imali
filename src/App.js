@@ -242,7 +242,7 @@ function MainAppRoutes() {
       <Header />
       <main
         className={`min-h-screen pt-20 bg-[#050816] text-white ${
-          isAdminPath ? "imali-admin-mobile" : "imali-fun-site"
+          isAdminPath ? "imali-admin-mobile imali-fun-site imali-admin-game" : "imali-fun-site"
         }`}
       >
         <Suspense fallback={<PageFallback />}>
