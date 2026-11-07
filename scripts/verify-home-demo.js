@@ -6,9 +6,9 @@ const required = [
   [home.includes('Robot HQ preview'), 'homepage game-style preview'],
   [home.includes('fun-game-bg'), 'game-style homepage'],
   [home.includes('to="/trade-demo"'), 'full demo link'],
-  [demo.includes('MultiServiceDemo'), 'full interactive demo'],
-  [['Spot','DEX','Stocks','Futures','Options'].every(x => component.includes(x + ':')), 'five services'],
-  [component.includes('Place simulated'), 'simulated trade controls']
+  [demo.includes('Robot Trading Playground') && demo.includes('simulateServiceTick') && demo.includes('Try one trade'), 'game-style interactive demo'],
+  [['OKX Spot','DEX','Alpaca','Futures','Options'].every(x => demo.includes(x)), 'five services'],
+  [demo.includes('setRunning') && demo.includes('orderOnce'), 'simulated trade controls']
 ];
 const missing = required.filter(([ok]) => !ok).map(([,name]) => name);
 if (missing.length) {
