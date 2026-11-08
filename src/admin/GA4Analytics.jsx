@@ -141,6 +141,15 @@ export default function GA4Analytics({ apiBase, showToast }) {
         )}
       </div>
 
+      <section className="rounded-2xl border border-amber-300/40 bg-gradient-to-br from-purple-900/70 to-blue-950/70 p-5">
+        <h4 className="text-lg font-bold text-amber-200">📊 IMALI Portfolio Analytics</h4>
+        <p className="mt-2 text-sm text-white/80">Track all three websites in one GA4 property, then separate them by the <strong>Host name</strong> dimension in Looker Studio. The report below is your existing Looker report; editing its charts requires Google account access.</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[['🤖 IMALI DeFi','imali-defi.com'],['🏀 Sports Jedi','sportsjedi.com'],['🎮 Black Culture Vault','blackculturevault.com']].map(([name,host])=><div key={host} className="rounded-xl border border-white/20 bg-white/10 p-4"><strong className="block text-amber-100">{name}</strong><span className="mt-1 block text-xs text-white/70">{host}</span></div>)}
+        </div>
+        <p className="mt-4 text-sm text-white/70">Recommended report pages: Portfolio Overview · Visitors &amp; Traffic Sources · Signup Funnel · Upgrades &amp; Revenue · Per-App Performance. Only display conversion or revenue totals after their events are verified in GA4.</p>
+        <div className="mt-3 flex flex-wrap gap-3"><a href="https://analytics.google.com" target="_blank" rel="noopener noreferrer" className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950">Open GA4</a><a href="https://lookerstudio.google.com/reporting/2e04368f-5882-4e35-83ed-0f54efe5bf83/page/rL0PF" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/40 px-4 py-2 text-sm text-white">Edit Looker Report</a></div>
+      </section>
       {/* Looker Studio Dashboard Embed */}
       {showDashboard && (
         <div className="rounded-xl border border-white/10 bg-white/5 p-2 overflow-hidden">
