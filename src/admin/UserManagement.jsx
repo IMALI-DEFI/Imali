@@ -36,6 +36,7 @@ export default function UserManagement({ apiBase, showToast }) {
   const base = apiBase || API_BASE;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [working, setWorking] = useState(false);
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
@@ -52,7 +53,7 @@ export default function UserManagement({ apiBase, showToast }) {
   const [addForm, setAddForm] = useState({ email: "", password: "", tier: "starter", strategy: "ai_weighted" });
   const [editForm, setEditForm] = useState({});
 
-  const toast = (msg, type = "info") => { if (showToast) showToast(msg, type); else console.log(`[${type}]`, msg); };
+  const toast = useCallback((msg, type = "info") => { if (showToast) showToast(msg, type); else console.log(`[${type}]`, msg); }, [showToast]);
 
   const api = useCallback(async (path, opts = {}) => {
     const token = getToken();
@@ -70,6 +71,7 @@ export default function UserManagement({ apiBase, showToast }) {
       if (product !== "all") params.set("product", product);
       const data = await api(`/api/admin/users?${params}`);
       const raw = data.data?.users || [];
+      setFetchError("");
       setUsers(raw.map(u => ({
         id: u.id, email: fmt(u.email), tier: fmt(u.tier, "starter"), strategy: fmt(u.strategy, "ai_weighted"),
         trading_enabled: fmtBool(u.trading_enabled), paper_trading_enabled: fmtBool(u.paper_trading_enabled),
@@ -80,7 +82,7 @@ export default function UserManagement({ apiBase, showToast }) {
       })));
       setTotalPages(data.data?.pagination?.totalPages || 1);
       setTotalUsers(data.data?.pagination?.total || data.data?.total || raw.length);
-    } catch (e) { toast(e.message, "error"); }
+    } catch (e) { setFetchError(e.message || "Unable to load users"); }
     finally { setLoading(false); }
   }, [api, limit, page, search, product, toast]);
 
@@ -143,6 +145,7 @@ export default function UserManagement({ apiBase, showToast }) {
   if (loading && !users.length) return <div className="flex justify-center py-16"><FaSpinner className="animate-spin text-3xl text-emerald-400" /></div>;
 
   return (
+
     <div className="space-y-4">
       {/* Header */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
