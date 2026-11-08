@@ -193,9 +193,7 @@ export default function HowItWorks() {
                     </h1>
 
                     <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
-                        Connect a supported trading account, choose a
-                        strategy and trade size, set your risk preferences,
-                        and manage supported automation from one dashboard.
+                        Try IMALI with pretend money first. When you are ready, connect a supported trading account, pick a trading style, and control it from your dashboard.
                     </p>
 
                     <Callout
@@ -208,6 +206,7 @@ export default function HowItWorks() {
                     </Callout>
                 </section>
 
+                <section className="mb-12 rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-6 shadow-sm sm:p-8"><h2 className="text-2xl font-black text-slate-900">🚀 New here? Start with these easy steps.</h2><p className="mt-2 text-slate-700">You do not need to know how to trade to try the demo.</p><ol className="mt-5 space-y-4 text-slate-800"><li><strong>1. Make an account.</strong> Enter your first name, email, and a password. Pick Starter to begin without a credit card.</li><li><strong>2. Try practice mode.</strong> Use pretend money to see how IMALI works. No real money is traded in practice mode.</li><li><strong>3. Pick one market.</strong> Choose crypto, stocks, or another available service. Some services need a separate trading account.</li><li><strong>4. Choose how the bot trades.</strong> A strategy is a set of rules the bot follows. Start with the option you understand best.</li><li><strong>5. Check everything before going live.</strong> Only connect a supported account and turn on real trading when you are ready. Real trades can lose money.</li></ol><div className="mt-6 flex flex-wrap gap-3"><Link to="/signup?tier=starter" className="rounded-xl bg-indigo-700 px-5 py-3 font-bold text-white">Create a free account</Link><Link to="/trade-demo" className="rounded-xl border border-indigo-400 px-5 py-3 font-bold text-indigo-800">Try the demo first</Link></div></section>
                 {/* Setup */}
                 <section className="mb-16">
                     <SectionTitle icon={FaCog}>
@@ -226,28 +225,23 @@ export default function HowItWorks() {
 
                         <StepCard
                             number="2"
-                            title="Connect an Exchange"
+                            title="Connect a Trading Account"
                         >
-                            Connect Robinhood Crypto or OKX for cryptocurrency trading, Alpaca for U.S. stocks and ETFs, Kalshi for supported prediction markets, or a supported wallet for DEX trading.
+                            Choose where you want to trade. IMALI can connect to supported crypto accounts, stock accounts, or wallets. You can skip this while trying the demo.
                         </StepCard>
 
                         <StepCard
                             number="3"
-                            title="Choose Your Strategy"
+                            title="Pick Your Trading Style"
                         >
-                            Select Conservative, Balanced AI, Growth,
-                            or Aggressive based on your goals and risk
-                            tolerance.
+                            A trading style tells the bot when to buy and sell. Choose one you understand. No style can promise a profit.
                         </StepCard>
 
                         <StepCard
                             number="4"
                             title="Review and Start"
                         >
-                            Confirm your market, account balance,
-                            strategy, and risk settings. Then start the
-                            bot and monitor activity from your
-                            dashboard.
+                            Check your account, trading style, and limits. Start in practice mode. Turn on live trading only if you understand the risks.
                         </StepCard>
                     </div>
                 </section>

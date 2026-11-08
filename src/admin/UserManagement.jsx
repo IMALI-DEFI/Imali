@@ -73,7 +73,7 @@ export default function UserManagement({ apiBase, showToast }) {
       const raw = data.data?.users || [];
       setFetchError("");
       setUsers(raw.map(u => ({
-        id: u.id, email: fmt(u.email), tier: fmt(u.tier, "starter"), strategy: fmt(u.strategy, "ai_weighted"),
+        id: u.id, email: fmt(u.email), first_name: fmt(u.first_name, ""), tier: fmt(u.tier, "starter"), strategy: fmt(u.strategy, "ai_weighted"),
         trading_enabled: fmtBool(u.trading_enabled), paper_trading_enabled: fmtBool(u.paper_trading_enabled),
         is_admin: fmtBool(u.is_admin), billing_complete: fmtBool(u.billing_complete),
         okx_connected: fmtBool(u.okx_connected), alpaca_connected: fmtBool(u.alpaca_connected),
@@ -187,7 +187,7 @@ export default function UserManagement({ apiBase, showToast }) {
             <div className="flex items-center justify-between mb-2">
               <button onClick={() => toggleSelect(u.id)} className="flex items-center gap-2 text-sm">
                 {selectedIds.has(u.id) ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare className="text-white/40" />}
-                <span className="font-semibold text-sm truncate max-w-[180px]">{u.email}</span>
+                <span className="font-semibold text-sm truncate max-w-[180px]">{u.first_name ? `${u.first_name} · ` : ""}{u.email}</span>
               </button>
               <span className={`text-[10px] px-2 py-0.5 rounded-full ${tierBadge(u.tier)}`}>{u.tier}</span>
             </div>
@@ -229,7 +229,7 @@ export default function UserManagement({ apiBase, showToast }) {
             {users.map(u => (
               <tr key={u.id} className={`hover:bg-white/5 ${selectedIds.has(u.id) ? 'bg-emerald-500/10' : ''}`}>
                 <td className="p-3"><button onClick={() => toggleSelect(u.id)}>{selectedIds.has(u.id) ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare className="text-white/30" />}</button></td>
-                <td className="p-3 font-medium max-w-[200px] truncate">{u.email}</td>
+                <td className="p-3 font-medium max-w-[200px] truncate">{u.first_name ? `${u.first_name} · ` : ""}{u.email}</td>
                 <td className="p-3 text-xs capitalize">{u.marketing_product.replaceAll("_", " ")}</td>
                 <td className="p-3 text-xs">{u.welcome_email_event === "signup_welcome_sent" ? "Accepted" : u.welcome_email_event === "signup_welcome_failed" ? "Failed" : "Not recorded"}</td>
                 <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded-full ${tierBadge(u.tier)}`}>{u.tier}</span></td>

@@ -138,6 +138,7 @@ export default function SignupForm() {
   const [form, setForm] = useState({
     // NEW: Admin platform fields
     name: "",
+    firstName: "",
     company: "",
     organizationName: "",
     email: "",
@@ -195,6 +196,8 @@ export default function SignupForm() {
   };
 
   const validate = () => {
+    if (!form.firstName.trim()) return "Please enter your first name";
+    if (form.firstName.trim().length > 80) return "First name is too long";
     if (!form.email.trim()) return "Email is required";
     if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return "Enter a valid email address";
     if (form.password.length < 8) return "Password must be at least 8 characters";
@@ -262,6 +265,10 @@ export default function SignupForm() {
       return;
     }
 
+    if (!form.firstName.trim()) {
+      setError("Please enter your first name before continuing with Google.");
+      return;
+    }
     if (!form.acceptTerms) {
       setError("You must accept the Terms and Privacy Policy before continuing with Google.");
       return;
@@ -281,6 +288,7 @@ export default function SignupForm() {
         strategy: "ai_weighted",
         acceptedTerms: true,
         newsletterSubscribed: form.newsletterSubscribed,
+        first_name: form.firstName.trim(),
         productType: form.productType,
         billingModel: form.billingModel,
         profitSharePct: form.profitSharePct,
@@ -356,6 +364,7 @@ export default function SignupForm() {
       // MODIFIED: Include admin platform fields in signup
       const signupData = {
         email: form.email.trim().toLowerCase(),
+        first_name: form.firstName.trim(),
         password: form.password,
         tier: form.tier,
         accepted_terms: form.acceptTerms,
@@ -440,7 +449,7 @@ export default function SignupForm() {
             {isAdminSignup ? "Create your admin account" : form.tier === "starter" ? "Get your free robot" : "Create your account"}
           </h1>
           {!isAdminSignup && form.tier === "starter" && (
-            <p className="fun-help mt-2">Takes about a minute. 7 days free with <b className="text-[#ffe07a]">$1,000 in practice money</b> — no card needed.</p>
+            <p className="fun-help mt-2">Takes about a minute. 7 days to try it with <b className="text-[#ffe07a]">$1,000 in pretend money</b>. No credit card needed.</p>
           )}
           <p className="text-gray-300 mt-2 font-bold">
             {currentTier.name} Plan
@@ -457,7 +466,7 @@ export default function SignupForm() {
 
         {/* Tier Selection */}
         <div className="mb-6">
-          <p className="text-sm font-black text-white mb-3">1️⃣ Pick a plan <span className="fun-help font-bold">(you can change it later)</span></p>
+          <p className="text-sm font-black text-white mb-3">1️⃣ Choose your plan <span className="fun-help font-bold">(you can change it later)</span></p>
           <div className={`grid gap-2 ${Object.keys(availableTiers).length >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
             {Object.entries(availableTiers).map(([id, tier], i) => (
               <button
@@ -481,7 +490,7 @@ export default function SignupForm() {
         </div>
 
         <div className="fun-card">
-          <p className="text-sm font-black text-white mb-3">2️⃣ Make your login</p>
+          <p className="text-sm font-black text-white mb-3">2️⃣ Tell us your name and make your login</p>
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
               {error}
@@ -533,6 +542,7 @@ export default function SignupForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div><label htmlFor="signup-first-name" className="mb-2 block text-sm font-bold text-white">Your first name</label><input id="signup-first-name" type="text" autoComplete="given-name" maxLength={80} required placeholder="What should we call you?" value={form.firstName} onChange={e=>setForm(f=>({...f,firstName:e.target.value}))} className="w-full rounded-xl border border-white/20 bg-black/60 px-4 py-3 text-white" disabled={loading}/><p className="mt-1 text-xs text-gray-400">We'll use this to make your account and messages more personal.</p></div>
             {/* NEW: Admin platform fields */}
             {isAdminSignup && (
               <>

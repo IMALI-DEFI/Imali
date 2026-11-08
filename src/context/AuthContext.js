@@ -633,6 +633,7 @@ export function AuthProvider({ children }) {
 
           // Preserve signup metadata instead of silently dropping it.
           name: userData.name || null,
+          first_name: userData.first_name || null,
           company: userData.company || null,
           organization_name: userData.organization_name || null,
           product_type: userData.product_type || userData.productType || "trading",
