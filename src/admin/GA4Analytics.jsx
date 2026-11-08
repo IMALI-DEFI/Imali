@@ -1,5 +1,6 @@
 // src/admin/GA4Analytics.jsx
 import React, { useEffect, useState } from 'react';
+import {apiFetch} from '../context/AuthContext';
 
 // Track GA4 events helper
 const trackGA4 = (eventName, params = {}) => {
@@ -94,6 +95,7 @@ export default function GA4Analytics({ apiBase, showToast }) {
       </div>
 
       <section className="imali-traffic-dashboard"><h3 className="text-xl font-bold text-amber-200">🌐 Traffic Command Center · All Products</h3><p className="imali-traffic-notice">Verified GA4 snapshot, last 30 days, cached November 8, 2026 at 04:58 UTC. Not a live feed. Other domains have no reported data yet, not necessarily zero traffic.</p><div className="imali-traffic-metrics">{[['👥 Active users','417'],['📊 Sessions','566'],['👀 Page views','1,379']].map(([label,value])=><div key={label} className="imali-traffic-metric"><span>{label}</span><strong>{value}</strong><small>Reported IMALI data only</small></div>)}</div><div className="imali-traffic-products mt-4">{[['🤖 IMALI DeFi','imali-defi.com','566 visits'],['🏀 Sports Jedi','sportsjedi.com','Awaiting GA4 data'],['🎮 Black Culture Vault','blackculturevault.com','Awaiting GA4 data']].map(([name,host,value])=><div key={host} className="imali-traffic-product"><span>{name}</span><strong>{value}</strong><small>{host}</small></div>)}</div><div className="imali-traffic-panel mt-4"><h4>IMALI traffic sources · sessions</h4>{[['Direct',253],['Email',146],['Organic Social',85],['AI Assistant',29],['Organic Search',25],['Unassigned',19],['Referral',9]].map(([name,n])=><div key={name} className="imali-traffic-channel"><span>{name}</span><div className="imali-traffic-track"><div style={{width:(n/253*100)+'%'}}/></div><strong>{n}</strong></div>)}</div><p className="imali-traffic-notice">For current figures, use the live GA4 or embedded Looker Studio report below. Signup and revenue figures are not shown until verified.</p><a href="https://analytics.google.com" target="_blank" rel="noreferrer" className="text-amber-200 underline">Open live GA4 ↗</a></section>
+      <UpgradeAttribution />
       {/* GA4 Status Card */}
       <div className={`rounded-xl border p-4 ${
         ga4Status === 'active' 
@@ -290,4 +292,12 @@ export default function GA4Analytics({ apiBase, showToast }) {
       </div>
     </div>
   );
+}
+
+
+function UpgradeAttribution(){
+ const [days,setDays]=useState(30),[data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let alive=true;setBusy(true);apiFetch('/api/admin/marketing/upgrade-attribution?days='+days).then(r=>{if(alive){setData(r);setError('')}}).catch(()=>{if(alive){setError('Paid-upgrade attribution is unavailable.');setData(null)}}).finally(()=>{if(alive)setBusy(false)});return()=>{alive=false}},[days]);
+ const rows=data?.rows||[];const paid=rows.reduce((n,r)=>n+(Number(r.paid_upgrades)||0),0),signups=rows.reduce((n,r)=>n+(Number(r.signups)||0),0);
+ return <section className="imali-traffic-dashboard" aria-label="Paid upgrade attribution"><div className="imali-traffic-heading"><div><h3>💳 Paid Upgrades · Winning Messages</h3><p>Which ads and posts bring paying customers?</p></div><label>Period <select className="rounded-lg bg-slate-900 p-2" value={days} onChange={e=>setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label></div><p className="imali-traffic-notice">Based on recorded signup events and Stripe-confirmed purchases. Message = UTM content. Unattributed means the original message was not recorded. This is event-based reporting, not a user cohort or revenue report.</p>{error&&<p role="alert" className="text-amber-200">{error}</p>}{busy&&<p>Refreshing upgrade data…</p>}{data&&<><div className="imali-traffic-metrics"><div className="imali-traffic-metric"><span>Recorded signups</span><strong>{signups}</strong></div><div className="imali-traffic-metric"><span>Recorded paid upgrades</span><strong>{paid}</strong></div><div className="imali-traffic-metric"><span>Tracked messages</span><strong>{rows.filter(r=>r.message!=='unattributed').length}</strong></div></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="text-amber-200"><th className="p-2">Product</th><th className="p-2">Source / campaign</th><th className="p-2">Ad or message</th><th className="p-2">Signups</th><th className="p-2">Paid upgrades</th></tr></thead><tbody>{rows.map((r,i)=><tr key={i} className="border-t border-white/20"><td className="p-2">{r.product}</td><td className="p-2">{r.source} / {r.campaign}</td><td className="p-2">{r.message}</td><td className="p-2">{r.signups}</td><td className="p-2 font-bold text-amber-200">{r.paid_upgrades}</td></tr>)}</tbody></table>{rows.length===0&&<p className="p-4 text-white/70">No matching recorded events for this period. New campaigns should include source, campaign and message tags.</p>}</div></>}</section>
 }
