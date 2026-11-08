@@ -1,62 +1,12 @@
-// src/hooks/useAdmin.js
-import { useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, {useCallback,useEffect,useState} from 'react';
+import {apiFetch} from '../context/AuthContext';
 
-export default function useAdmin() {
-  const { user, isAdmin, token } = useAuth();
-
-  const getAuthToken = useCallback(() => {
-    // Try multiple sources
-    const tokenFromStorage = localStorage.getItem('imali_token') || 
-                             sessionStorage.getItem('imali_token');
-    
-    // Also check cookies if needed
-    const cookieMatch = document.cookie.match(/token=([^;]+)/);
-    const tokenFromCookie = cookieMatch ? cookieMatch[1] : null;
-    
-    return tokenFromStorage || tokenFromCookie || token;
-  }, [token]);
-
-  const adminFetch = useCallback(async (endpoint, options = {}) => {
-    const authToken = getAuthToken();
-    
-    if (!authToken) {
-      const error = new Error('No authentication token found');
-      error.status = 401;
-      throw error;
-    }
-
-    const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'https://api.imali-defi.com'}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-        ...options.headers,
-      },
-    });
-
-    if (response.status === 401) {
-      localStorage.removeItem('imali_token');
-      sessionStorage.removeItem('imali_token');
-      const error = new Error('Session expired. Please log in again.');
-      error.status = 401;
-      throw error;
-    }
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || `Request failed with status ${response.status}`);
-    }
-    
-    return data;
-  }, [getAuthToken]);
-
-  return {
-    adminFetch,
-    isAuthenticated: !!getAuthToken(),
-    isAdmin,
-    user,
-    isLoading: false
-  };
+export default function ReferralPartners(){
+ const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[selected,setSelected]=useState(null),[details,setDetails]=useState(null);
+ const refresh=useCallback(async()=>{setLoading(true);try{const response=await apiFetch('/api/admin/referrals/partners');if(!response?.success||!response?.data)throw new Error('Referral data unavailable');setData(response.data);setError('')}catch(e){setError(e?.message||'Could not load referrals')}finally{setLoading(false)}},[]);
+ useEffect(()=>{refresh()},[refresh]);
+ const showDetails=async partner=>{setSelected(partner);setDetails(null);try{const response=await apiFetch('/api/admin/referrals/partners/'+encodeURIComponent(partner.user_id));setDetails(response?.data||{error:'No details available'})}catch(e){setDetails({error:e?.message||'Details unavailable'})}};
+ const partners=data?.referrals||[],stats=data?.stats;
+ const num=n=>Number(n||0).toLocaleString();
+ return <div className="sm-center sm-executive" style={{padding:0,minHeight:0}}><section className="imali-app-counts"><div className="imali-app-counts-title"><h2>🤝 Referral Partners</h2><button type="button" onClick={refresh} disabled={loading}>↻ {loading?'Loading…':'Refresh'}</button></div><p className="imali-app-counts-caption">See who brought new customers using their personal referral code. GA4 website referrals are different from partner signups.</p>{error&&<p role="alert" className="sm-error">{error}</p>}<div className="sm-posts"><div className="sm-post"><strong>{stats?num(stats.total_referrers):'—'}</strong><b>Partners with recorded referrals</b></div><div className="sm-post"><strong>{stats?num(stats.total_referrals):'—'}</strong><b>Referred customers</b></div><div className="sm-post"><strong>{stats?num(stats.qualified_referrals):'—'}</strong><b>Qualified referrals</b></div><div className="sm-post"><strong>{stats?num(stats.pending_payouts):'—'}</strong><b>Pending rewards (recorded amount)</b></div></div>{data&&partners.length===0&&<p className="imali-app-counts-caption">No partner referral events recorded yet.</p>}{partners.length>0&&<div className="overflow-x-auto mt-5"><table className="w-full min-w-[520px] text-left text-sm"><thead><tr><th className="p-3">Partner</th><th className="p-3">Code</th><th className="p-3">Signups</th><th className="p-3">Qualified</th><th className="p-3">Details</th></tr></thead><tbody>{partners.map(p=><tr key={p.user_id} className="border-t border-white/20"><td className="p-3">{p.email}</td><td className="p-3">{p.referral_code||'—'}</td><td className="p-3">{num(p.total_referrals)}</td><td className="p-3">{num(p.qualified_referrals)}</td><td className="p-3"><button type="button" onClick={()=>showDetails(p)} className="rounded-lg border border-amber-300/50 px-3 py-2">View</button></td></tr>)}</tbody></table></div>}{selected&&<div className="mt-5 rounded-xl border border-amber-300/40 p-4"><div className="flex items-center justify-between gap-3"><h3 className="font-bold">{selected.email}</h3><button onClick={()=>{setSelected(null);setDetails(null)}}>Close ✕</button></div>{!details?<p>Loading partner details…</p>:details.error?<p role="alert">{details.error}</p>:<><p className="mt-2">Referred customers: {num(details.total_referrals)} · Qualified: {num(details.qualified_referrals)}</p><div className="mt-3 space-y-2">{(details.referred_users||[]).map((u,i)=><div key={u.user_id||i} className="rounded-lg bg-white/10 p-3 text-sm">{u.email} · {u.qualified?'Qualified':'Not yet qualified'} · {u.status||'Pending'}</div>)}</div></>}</div>}<p className="imali-app-counts-caption mt-4">Paid upgrades by partner are not shown until confirmed payments are matched to the referred account.</p></section></div>
 }
