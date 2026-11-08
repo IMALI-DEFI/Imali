@@ -590,6 +590,7 @@ function SidebarButton({ tab, isActive, onClick, busy }) {
         busy ? "cursor-not-allowed opacity-50" : "cursor-pointer",
       ].join(" ")}
       title={tab.description}
+      aria-current={isActive ? "page" : undefined}
     >
       <div className="flex items-start gap-3">
         <span className="pt-0.5 text-xl">{tab.emoji}</span>
@@ -1065,7 +1066,7 @@ export default function AdminPanel({ forceOwner = false }) {
           onClick={() => setMobileMenuOpen(false)}
         >
           <aside
-            className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-20 shadow-2xl"
+            className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
