@@ -118,8 +118,8 @@ export default function Header() {
 
       {/* Phone/tablet menu: big tappable tiles */}
       {open && (
-        <div className="lg:hidden bg-[#070a1f] border-t-2 border-[#2b3470] fun-slide-in max-h-[calc(100dvh-11rem)] overflow-y-auto overscroll-contain">
-          <nav className="max-w-7xl mx-auto px-3 py-3 pb-6 grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Main menu">
+        <div className="lg:hidden bg-[#070a1f] border-t-2 border-[#2b3470] fun-slide-in max-h-[min(65dvh,470px)] overflow-y-auto overscroll-contain shadow-2xl">
+          <nav className="max-w-7xl mx-auto px-3 py-3 pb-4 grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Main menu">
             <Link to="/login" onClick={closeMenu} className="fun-btn fun-blue col-span-2 sm:col-span-3" style={{ minHeight: 48, padding: "0.5rem" }}>
               👤 Sign In / My Account
             </Link>
@@ -127,7 +127,7 @@ export default function Header() {
               🚀 Sign Up Free
             </Link>
             {ALL.map((l, i) => l.external ? (
-              <a key={l.to} href={l.to} onClick={closeMenu} className={`fun-tile ${TILE_COLORS[i % TILE_COLORS.length]}`} style={{ minHeight: 90, padding: "0.5rem 0.35rem", borderRadius: 18, gap: "0.2rem" }}><span className="fun-emoji" style={{ fontSize: "1.8rem" }} aria-hidden="true">{l.emoji}</span><strong style={{ fontSize: "0.88rem" }}>{l.label}</strong></a>
+              <a key={l.to} href={l.to} onClick={closeMenu} className={`fun-tile ${TILE_COLORS[i % TILE_COLORS.length]}`} style={{ minHeight: 64, padding: "0.35rem 0.25rem", borderRadius: 18, gap: "0.2rem" }}><span className="fun-emoji" style={{ fontSize: "1.35rem" }} aria-hidden="true">{l.emoji}</span><strong style={{ fontSize: "0.88rem" }}>{l.label}</strong></a>
             ) : (
               <NavLink
                 key={l.to}
@@ -135,9 +135,9 @@ export default function Header() {
                 end={l.end}
                 onClick={closeMenu}
                 className={`fun-tile ${TILE_COLORS[i % TILE_COLORS.length]}`}
-                style={{ minHeight: 90, padding: "0.5rem 0.35rem", borderRadius: 18, gap: "0.2rem" }}
+                style={{ minHeight: 64, padding: "0.35rem 0.25rem", borderRadius: 18, gap: "0.2rem" }}
               >
-                <span className="fun-emoji" style={{ fontSize: "1.8rem" }} aria-hidden="true">{l.emoji}</span>
+                <span className="fun-emoji" style={{ fontSize: "1.35rem" }} aria-hidden="true">{l.emoji}</span>
                 <strong style={{ fontSize: "0.88rem" }}>{l.label}</strong>
               </NavLink>
             ))}
