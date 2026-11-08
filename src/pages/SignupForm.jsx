@@ -97,6 +97,9 @@ export default function SignupForm() {
   // Read tier and product_type from URL
   const params = new URLSearchParams(location.search);
   const routeTier = location.pathname.split("/").pop();
+  // Keep the partner's referral code even when the visitor changes plans.
+  const referralFromUrl = (params.get("ref") || params.get("referral") || "").trim().slice(0,100);
+  useEffect(() => { if (referralFromUrl) localStorage.setItem("pending_referral_code", referralFromUrl); }, [referralFromUrl]);
   
   // MODIFIED: Check for product_type
   const urlProductType = params.get("product_type") || params.get("product");
@@ -185,7 +188,7 @@ export default function SignupForm() {
     setForm(f => ({ ...f, tier: tierId }));
     localStorage.setItem("IMALI_SELECTED_TIER", tierId);
     const basePath = isAdminSignup ? "/admin-platform/signup" : "/signup";
-    navigate(`${basePath}?tier=${tierId}&product_type=${form.productType}`, { 
+    navigate(`${basePath}?tier=${tierId}&product_type=${form.productType}${referralFromUrl ? `&ref=${encodeURIComponent(referralFromUrl)}` : ""}`, { 
       replace: true, 
       state: { 
         ...location.state,
@@ -365,6 +368,7 @@ export default function SignupForm() {
       const signupData = {
         email: form.email.trim().toLowerCase(),
         first_name: form.firstName.trim(),
+        referral_code: referralFromUrl || localStorage.getItem("pending_referral_code") || null,
         password: form.password,
         tier: form.tier,
         accepted_terms: form.acceptTerms,
