@@ -715,7 +715,7 @@ const TierUpgradeCard = memo(({ currentTier, onUpgrade }) => {
     {
       id: "pro",
       config: TIER_CONFIG.pro,
-      price: "$19/mo",
+      price: "$19.95/mo",
       description: "Live crypto & stock trading, AI strategies",
     },
     {

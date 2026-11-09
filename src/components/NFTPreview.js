@@ -9,9 +9,9 @@ const TIER_IMAGES = {
 };
 
 const TIERS = {
-  Bronze: ["Basic staking access", "Royalties"],
-  Silver: ["Boosted APY", "Royalties", "Yield access"],
-  Gold: ["Highest APY boost", "All perks", "DAO voting"],
+  Bronze: ["Basic staking access", "Member badge"],
+  Silver: ["Early access", "Member badge", "Yield access"],
+  Gold: ["Priority support", "All perks", "DAO voting"],
 };
 
 const NFTPreview = ({ tier }) => {

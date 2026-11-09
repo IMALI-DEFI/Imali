@@ -135,8 +135,36 @@ function normalizeTrade(trade) {
   };
 }
 
+// Hide records whose numbers can't be right (bad prices, mismatched % return).
+const MAX_PLAUSIBLE_RETURN_PCT = 100;
+const NOTABLE_MAX_AGE_DAYS = 30;
+
+function isPlausibleTrade(trade) {
+  const pct = safeNumber(trade?.pnl_percent, 0);
+  if (!Number.isFinite(pct) || Math.abs(pct) > MAX_PLAUSIBLE_RETURN_PCT) return false;
+  const entry = safeNumber(trade?.price, 0);
+  const exit = trade?.exit_price !== null && trade?.exit_price !== undefined ? safeNumber(trade.exit_price, 0) : null;
+  if (exit !== null && entry > 0 && exit > 0) {
+    const side = String(trade?.side || "buy").toLowerCase();
+    const isShort = side === "sell" || side === "short";
+    const implied = ((isShort ? entry - exit : exit - entry) / entry) * 100;
+    // Leveraged futures can legitimately differ, so allow a wide margin.
+    if (Math.abs(implied - pct) > Math.max(10, Math.abs(implied) * 2)) return false;
+  }
+  return true;
+}
+
+function isNotableTrade(trade) {
+  if (!isPlausibleTrade(trade)) return false;
+  if (trade?.exit_price === null || trade?.exit_price === undefined) return false;
+  if (safeNumber(trade?.pnl_percent, 0) <= 0) return false;
+  const created = new Date(trade?.created_at || 0).getTime();
+  if (!created) return false;
+  return Date.now() - created <= NOTABLE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function buildActivitySeries(trades = []) {
-  if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
+  if (!trades.length) return [0, 0, 0, 0, 0, 0, 0];
   
   const dayMap = {
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
@@ -283,7 +311,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
           {botNotableTrades.length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-indigo-100">
-                <span>🏆</span> Notable Trades (Top {botNotableTrades.length} by % Return)
+                <span>🏆</span> Best closed trades, last 30 days
               </div>
               <div className="max-h-[440px] space-y-2 overflow-y-auto pr-1">
                 {botNotableTrades.map((trade, idx) => (
@@ -506,7 +534,7 @@ export default function PublicDashboard() {
 
       if (statsResponse.data?.success) {
         const apiData = statsResponse.data.data || {};
-        const trades = (apiData.recent_trades || []).map(normalizeTrade);
+        const trades = (apiData.recent_trades || []).map(normalizeTrade).filter(isPlausibleTrade);
         const summary = apiData.summary || {};
 
         // Build bot stats
@@ -558,11 +586,13 @@ export default function PublicDashboard() {
           // Group trades by bot
           const groupedByBot = {};
           allTrades.forEach(trade => {
+            const normalized = normalizeTrade(trade);
+            if (!isNotableTrade(normalized)) return;
             const botName = normalizeBotName(trade.bot || trade.bot_name);
             if (!groupedByBot[botName]) {
               groupedByBot[botName] = [];
             }
-            groupedByBot[botName].push(normalizeTrade(trade));
+            groupedByBot[botName].push(normalized);
           });
           
           // Sort each bot's trades by percentage return (highest first)
@@ -637,9 +667,8 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter((t) => t.status === "closed").length },
   ];
 
-  const bots = Object.keys(notableTrades).length > 0 
-  ? Object.keys(notableTrades).filter(bot => notableTrades[bot]?.length > 0)
-  : ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
+  // Show every bot that has trades, whether or not it has a recent notable win.
+  const bots = ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
 
   if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
@@ -709,6 +738,16 @@ export default function PublicDashboard() {
           <p className="mt-2 text-center text-[9px] text-gray-400">Relative trading activity based on P&L volume</p>
         </div>
 
+        <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-center">
+          <p className="text-sm font-bold text-gray-900">Every robot trade, out in the open.</p>
+          <p className="mt-1 text-xs text-gray-600">Try the same robots free with $1,000 in pretend money. Ready for your real account? Pro is $19.95/month and never takes a cut of your profits.</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <Link to="/trade-demo" className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700">🎮 Play the free demo</Link>
+            <Link to="/signup?plan=pro&tier=pro&product_type=trading" className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white">🚀 Start Pro — $19.95/month</Link>
+          </div>
+          <p className="mt-2 text-[10px] text-gray-400">Trading can lose money. Past results don't promise future results.</p>
+        </div>
+
         <div className="mb-5 grid grid-cols-2 gap-3">
           <StatMiniCard title="Total Trades" value={formatNumber(totalTrades)} valueClassName="text-purple-600" />
           <StatMiniCard title="Win Rate" value={`${winRate.toFixed(1)}%`} valueClassName="text-emerald-600" subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`} />
@@ -716,8 +755,8 @@ export default function PublicDashboard() {
 
         <div className="mb-5">
           <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-gray-900">
-            <span>🏆</span> Notable Trades by Bot
-            <span className="ml-1 text-[10px] font-normal text-gray-400">Top winning trades by percentage return</span>
+            <span>🤖</span> Robot Results by Bot
+            <span className="ml-1 text-[10px] font-normal text-gray-400">Wins and losses for every robot. Records with incomplete price data are hidden.</span>
           </h2>
           <div className="grid grid-cols-1 gap-3">
             {bots.map((bot) => (

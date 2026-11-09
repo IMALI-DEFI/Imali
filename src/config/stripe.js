@@ -94,7 +94,7 @@ const STRIPE_CONFIG = {
       
       const tradingPrices = {
         'starter': 0,
-        'pro': 19,
+        'pro': 19.95,
         'elite': 49,
         'stock': 29,
         'bundle': 59,

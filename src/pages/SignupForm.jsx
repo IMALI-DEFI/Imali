@@ -24,7 +24,7 @@ const TIERS = {
   starter: {
     name: "Starter",
     price: "$0",
-    period: "7‑day trial",
+    period: " · free forever",
     icon: "🌱",
     requiresPayment: false,
     redirectTo: "/dashboard",
@@ -32,7 +32,7 @@ const TIERS = {
   },
   pro: {
     name: "Pro",
-    price: "$19",
+    price: "$19.95",
     period: "/month",
     icon: "⭐",
     requiresPayment: true,
@@ -453,7 +453,7 @@ export default function SignupForm() {
             {isAdminSignup ? "Create your admin account" : form.tier === "starter" ? "Get your free robot" : "Create your account"}
           </h1>
           {!isAdminSignup && form.tier === "starter" && (
-            <p className="fun-help mt-2">Takes about a minute. 7 days to try it with <b className="text-[#ffe07a]">$1,000 in pretend money</b>. No credit card needed.</p>
+            <p className="fun-help mt-2">Takes about a minute. Practice free forever with <b className="text-[#ffe07a]">$1,000 in pretend money</b>. No credit card needed.</p>
           )}
           <p className="text-gray-300 mt-2 font-bold">
             {currentTier.name} Plan
@@ -677,7 +677,7 @@ export default function SignupForm() {
             </>
           ) : (
             <div className="flex flex-wrap justify-center gap-2">
-              <span className="fun-pill">✅ 7-day free trial</span>
+              <span className="fun-pill">✅ Free forever</span>
               <span className="fun-pill">💰 $1,000 practice money</span>
               <span className="fun-pill">🔒 No credit card</span>
               <span className="fun-pill">🎓 Free Trading School</span>

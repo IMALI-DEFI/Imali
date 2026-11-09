@@ -147,13 +147,8 @@ export default function ReferralSystemDashboard() {
   const [note, setNote] = useState("");
 
   // Leaderboard data
-  const [leaderboard, setLeaderboard] = useState([
-    { name: "TraderPro", referrals: 128 },
-    { name: "CryptoWhale", referrals: 94 },
-    { name: "DeFiKing", referrals: 73 },
-    { name: "SignalMaster", referrals: 56 },
-    { name: "BotRunner", referrals: 42 },
-  ]);
+  // Real leaderboard only: stays empty (and hidden) until live data is wired in.
+  const [leaderboard, setLeaderboard] = useState([]);
 
   // Decide the best "identity" for code generation
   const referralCode = useMemo(() => {
@@ -195,20 +190,20 @@ export default function ReferralSystemDashboard() {
       } catch (e) {
         if (!mounted) return;
 
-        // Fallback demo values
+        // API unavailable: show real zeros, never made-up stats
         setReferralData((p) => ({
           ...p,
           code: p.code || referralCode || "",
-          totalReferrals: p.totalReferrals || 14,
-          paidSubscribers: p.paidSubscribers || 6,
-          subscriptionCredits: p.subscriptionCredits || 114,
-          freeMonthsEarned: p.freeMonthsEarned || 3,
-          referralStatus: p.referralStatus || "Silver",
+          totalReferrals: p.totalReferrals || 0,
+          paidSubscribers: p.paidSubscribers || 0,
+          subscriptionCredits: p.subscriptionCredits || 0,
+          freeMonthsEarned: p.freeMonthsEarned || 0,
+          referralStatus: p.referralStatus || "Bronze",
           nextReward: p.nextReward || "2 referrals",
         }));
 
         setNote(
-          "Referral API not connected yet — showing demo stats (link + QR are real)."
+          "Referral stats are temporarily unavailable. Your link and QR code still work."
         );
       }
     }
@@ -605,7 +600,8 @@ export default function ReferralSystemDashboard() {
                 </div>
               </GlassCard>
 
-              {/* Leaderboard */}
+              {/* Leaderboard (hidden until real data exists) */}
+              {leaderboard.length > 0 && (
               <GlassCard className="p-6" gradient="from-white/5 to-white/5">
                 <div className="flex items-center gap-3 mb-4">
                   <FaTrophy className="text-amber-400 text-xl" />
@@ -637,6 +633,7 @@ export default function ReferralSystemDashboard() {
                   ))}
                 </div>
               </GlassCard>
+              )}
 
               {/* Apply Referral Code */}
               <GlassCard className="p-6 border-amber-400/30" gradient="from-amber-500/10 to-amber-900/10">

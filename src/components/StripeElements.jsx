@@ -44,8 +44,8 @@ function PaymentForm({
     if (step === "success") return "✓ Payment Method Added!";
     
     // Show tier-specific button text
-    if (tier === "starter") return "Start Free Trial";
-    if (tier === "pro") return "Start Pro - $19/month";
+    if (tier === "starter") return "Start Free";
+    if (tier === "pro") return "Start Pro - $19.95/month";
     if (tier === "elite") return "Start Elite - $49/month";
     
     return buttonLabel;

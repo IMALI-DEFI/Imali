@@ -19,24 +19,24 @@ const TIERS = [
     name: "Bronze",
     benefits: [
       "Basic staking access",
-      "Earn passive royalties",
+      "Member badge",
       "Entry to IMALI community"
     ],
-    description: "Ideal for beginners. Start earning with minimal risk."
+    description: "Ideal for beginners. A simple way to join the community."
   },
   {
     name: "Silver",
     benefits: [
-      "Boosted APY on staking",
+      "Early access to new features",
       "Eligible for yield farming",
-      "Earn enhanced royalties"
+      "Silver member badge"
     ],
     description: "For active users ready to level up rewards."
   },
   {
     name: "Gold",
     benefits: [
-      "Highest APY boost",
+      "Priority support",
       "DAO voting rights",
       "Priority access to new pools",
       "All Silver & Bronze perks"

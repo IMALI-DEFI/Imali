@@ -87,8 +87,8 @@ const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
 
 // Tier display mapping matching pricing page
 const TIER_DISPLAY = {
-  starter: { name: "Starter", displayName: "Starter", price: "$0", period: "7-day trial", badge: "🌱", requiresPayment: false, tierLevel: 0 },
-  pro: { name: "Pro", displayName: "Pro", price: "$19", period: "month", badge: "⭐", requiresPayment: true, tierLevel: 1 },
+  starter: { name: "Starter", displayName: "Starter", price: "$0", period: "free forever", badge: "🌱", requiresPayment: false, tierLevel: 0 },
+  pro: { name: "Pro", displayName: "Pro", price: "$19.95", period: "month", badge: "⭐", requiresPayment: true, tierLevel: 1 },
   elite: { name: "Elite", displayName: "Elite", price: "$49", period: "month", badge: "👑", requiresPayment: true, tierLevel: 2 },
   enterprise: { name: "Enterprise", displayName: "Enterprise", price: "Custom", period: "", badge: "🏢", requiresPayment: false, tierLevel: 3 },
 };

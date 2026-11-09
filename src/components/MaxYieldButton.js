@@ -90,7 +90,7 @@ const MaxYieldButton = () => {
           Swap {amount || "0"} ETH → {amount ? (parseFloat(amount) * 1000).toFixed(2) : "0"} IMALI
         </p>
         <p>
-          Stake at {amount ? "15.5" : "0"}% APY
+          Staking rate is set by the protocol and can change
         </p>
       </div>
     </div>

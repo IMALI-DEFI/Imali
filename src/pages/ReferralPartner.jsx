@@ -370,13 +370,8 @@ const ReferralSystem = () => {
   const [connectionError, setConnectionError] = useState("");
 
   // Leaderboard data
-  const [leaderboard] = useState([
-    { name: "TraderPro", referrals: 128 },
-    { name: "CryptoWhale", referrals: 94 },
-    { name: "DeFiKing", referrals: 73 },
-    { name: "SignalMaster", referrals: 56 },
-    { name: "BotRunner", referrals: 42 },
-  ]);
+  // Real leaderboard only: stays empty (and hidden) until live data is wired in.
+  const [leaderboard] = useState([]);
 
   const generateReferralCode = (wallet) => {
     if (!wallet) return "";
@@ -395,11 +390,11 @@ const ReferralSystem = () => {
       if (isAuthenticated && user) {
         setReferralData({
           code: user.referral_code || (account ? generateReferralCode(account) : ""),
-          totalReferrals: user.referral_count || 14,
-          paidSubscribers: user.paid_subscribers || 6,
-          subscriptionCredits: user.subscription_credits || 114,
-          freeMonthsEarned: user.free_months_earned || 3,
-          referralStatus: user.referral_status || "Silver",
+          totalReferrals: user.referral_count || 0,
+          paidSubscribers: user.paid_subscribers || 0,
+          subscriptionCredits: user.subscription_credits || 0,
+          freeMonthsEarned: user.free_months_earned || 0,
+          referralStatus: user.referral_status || "Bronze",
           nextReward: user.next_reward || "2 referrals",
         });
         return;
@@ -1030,7 +1025,8 @@ const ReferralSystem = () => {
               </div>
             </GlassCard>
 
-            {/* Leaderboard */}
+            {/* Leaderboard (hidden until real data exists) */}
+            {leaderboard.length > 0 && (
             <GlassCard className="p-6" gradient="from-white/5 to-white/5">
               <div className="flex items-center gap-3 mb-4">
                 <FaTrophy className="text-amber-400 text-xl" />
@@ -1062,6 +1058,7 @@ const ReferralSystem = () => {
                 ))}
               </div>
             </GlassCard>
+            )}
 
             {/* Apply Referral Code */}
             <GlassCard className="p-6 border-amber-400/30" gradient="from-amber-500/10 to-amber-500/10">

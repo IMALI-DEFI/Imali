@@ -15,7 +15,7 @@ const CONVERSION_SEQUENCES = [
   {
     id: "day1-welcome", name: "Day 1 — Welcome and First Steps", sendAfterDays: 0,
     subject: "Welcome to IMALI — Here Are 3 Easy Steps", segment: "new_users",
-    html: `<h2>Welcome to IMALI!</h2><p>Your account is ready. Here are three easy steps:</p><ol><li><a href="https://imali-defi.com/login">Sign in</a> to your account.</li><li><a href="https://imali-defi.com/trade-demo">Try the demo</a> to see how the trading robots work.</li><li><a href="https://imali-defi.com/pricing">See the plans</a> if you want to upgrade.</li></ol><p>Starter is free. Pro costs $19 a month. Elite costs $49 a month. You can choose a plan and follow the payment steps. Trading involves risk and you can lose money.</p>`
+    html: `<h2>Welcome to IMALI!</h2><p>Your account is ready. Here are three easy steps:</p><ol><li><a href="https://imali-defi.com/login">Sign in</a> to your account.</li><li><a href="https://imali-defi.com/trade-demo">Try the demo</a> to see how the trading robots work.</li><li><a href="https://imali-defi.com/pricing">See the plans</a> if you want to upgrade.</li></ol><p>Starter is free. Pro costs $19.95 a month. Elite costs $49 a month. You can choose a plan and follow the payment steps. Trading involves risk and you can lose money.</p>`
   },
   {
     id: "day3-success", name: "Day 3 — Understand the Robots", sendAfterDays: 3,
@@ -25,12 +25,12 @@ const CONVERSION_SEQUENCES = [
   {
     id: "day5-testimonial", name: "Day 5 — Choosing a Plan", sendAfterDays: 5,
     subject: "IMALI Plans Made Simple", segment: "new_users",
-    html: `<h2>Which plan fits you?</h2><p><b>Starter:</b> Free. Start exploring IMALI.</p><p><b>Pro:</b> $19 per month.</p><p><b>Elite:</b> $49 per month.</p><p>To upgrade: <b>1.</b> <a href="https://imali-defi.com/pricing">Open Plans</a>. <b>2.</b> Pick Pro or Elite. <b>3.</b> Follow the payment steps.</p><p>You do not need to pay just to explore the demo.</p>`
+    html: `<h2>Which plan fits you?</h2><p><b>Starter:</b> Free. Start exploring IMALI.</p><p><b>Pro:</b> $19.95 per month.</p><p><b>Elite:</b> $49 per month.</p><p>To upgrade: <b>1.</b> <a href="https://imali-defi.com/pricing">Open Plans</a>. <b>2.</b> Pick Pro or Elite. <b>3.</b> Follow the payment steps.</p><p>You do not need to pay just to explore the demo.</p>`
   },
   {
     id: "day7-offer", name: "Day 7 — Explore Your Options", sendAfterDays: 7,
     subject: "Ready for the Next Step with IMALI?", segment: "new_users",
-    html: `<h2>Ready to explore more?</h2><p>You can keep learning about IMALI and compare your options.</p><p><a href="https://imali-defi.com/pricing">See all plans</a>. Pro is $19 per month and Elite is $49 per month. Pick a plan, then follow the payment steps if you decide to upgrade.</p><p>No special discount is promised in this email. Trading involves risk.</p>`
+    html: `<h2>Ready to explore more?</h2><p>You can keep learning about IMALI and compare your options.</p><p><a href="https://imali-defi.com/pricing">See all plans</a>. Pro is $19.95 per month and Elite is $49 per month. Pick a plan, then follow the payment steps if you decide to upgrade.</p><p>No special discount is promised in this email. Trading involves risk.</p>`
   },
   {
     id: "day14-final", name: "Day 14 — Come Back Anytime", sendAfterDays: 14,

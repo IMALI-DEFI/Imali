@@ -23,7 +23,7 @@ const variants = {
   redditA: {
     source: "Reddit",
     title: "Solo Developer Built This AI Trading Platform",
-    subtitle: "Public dashboard live. 1 week free paper trading. Cancel anytime.",
+    subtitle: "Public dashboard live. Free paper trading, no time limit. Cancel anytime.",
     cta: "Get Early Access",
     eyebrow: "Built in public",
     audience:
@@ -116,8 +116,8 @@ const variants = {
 };
 
 const metrics = [
-  { label: "Paper trading access", value: "7 days free" },
-  { label: "Pricing model", value: "Pay on performance" },
+  { label: "Paper trading access", value: "Free forever" },
+  { label: "Pricing model", value: "Flat monthly price" },
   { label: "Supported flows", value: "Stocks • Crypto • DeFi" },
   { label: "Beta capacity", value: "First 50 users" },
 ];
@@ -222,7 +222,7 @@ function DashboardMock() {
         </div>
         <div className="rounded-2xl bg-slate-800 p-4">
           <p className="text-xs text-slate-400">Beta Offer</p>
-          <p className="mt-2 text-2xl font-semibold">7-Day Trial</p>
+          <p className="mt-2 text-2xl font-semibold">Free Forever</p>
         </div>
       </div>
 
@@ -431,7 +431,7 @@ export default function LandingPages() {
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-medium">1 week free paper trading</p>
+                <p className="text-sm font-medium">Free paper trading, no time limit</p>
                 <p className="mt-1 text-sm text-slate-400">Test without risking capital first.</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">

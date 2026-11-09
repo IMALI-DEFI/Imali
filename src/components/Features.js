@@ -13,13 +13,13 @@ const Features = () => {
       icon: "🌾", // Emoji for Yield Farming
       title: "Yield Farming",
       description:
-        "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
+        "Provide liquidity to supported DeFi pools. Pool rewards vary and you can lose money.",
     },
     {
       icon: "💰", // Emoji for Staking
       title: "Staking",
       description:
-        "Stake your tokens and earn passive income with competitive APY rates.",
+        "Stake supported tokens through DeFi protocols. Rates are set by the protocol, change often and are not guaranteed.",
     },
     {
       icon: "📜", // Emoji for Governance

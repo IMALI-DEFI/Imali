@@ -253,8 +253,8 @@ const faqs = [
     a: "Credit card, PayPal, and crypto (USDC, USDT, IMALI with 10% discount).",
   },
   {
-    q: "How does profit sharing work?",
-    a: "You keep 100% of your first 3% monthly return. We only take a share of profits above that threshold. $0 when you don't profit.",
+    q: "Do you take a cut of my profits?",
+    a: "No. IMALI is a flat monthly price: Starter is free, Pro is $19.95/month and Elite is $49/month. We never take a percentage of your trades or profits.",
   },
   {
     q: "Is my API key safe?",
@@ -288,7 +288,10 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
 
   const fixedPrice =
     typeof plan.price === "number"
-      ? Math.round(plan.price * (1 - tokenDiscount / 100))
+      ? (() => {
+          const discounted = Math.round(plan.price * (1 - tokenDiscount / 100) * 100) / 100;
+          return Number.isInteger(discounted) ? discounted : discounted.toFixed(2);
+        })()
       : plan.price;
 
   const profitSharePct =
@@ -668,18 +671,13 @@ export default function Pricing() {
             <div className="flex flex-col items-center text-center">
               <FaCoins className="text-6xl text-emerald-400" />
               <h2 className="mt-4 text-3xl font-extrabold">IMALI Token Utility</h2>
-              <p className="mt-3 max-w-2xl text-slate-300">Hold IMALI tokens to unlock platform discounts, governance rights, and exclusive benefits.</p>
+              <p className="mt-3 max-w-2xl text-slate-300">Hold IMALI tokens to get a plan discount and a vote on new features. Tokens do not pay interest, yield or a share of revenue.</p>
             </div>
-            <div className="mt-8 grid gap-6 md:grid-cols-3">
+            <div className="mt-8 grid gap-6 md:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
                 <FaPercentage className="mx-auto text-3xl text-emerald-400" />
                 <h3 className="mt-3 text-xl font-bold">Fee Discounts</h3>
-                <p className="mt-2 text-sm text-slate-300">Up to 20% discount on trading fees when paying with IMALI tokens.</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-                <FaStar className="mx-auto text-3xl text-amber-400" />
-                <h3 className="mt-3 text-xl font-bold">Token & DeFi Benefits</h3>
-                <p className="mt-2 text-sm text-slate-300">Stake IMALI tokens to earn platform revenue share (up to 12% APY).</p>
+                <p className="mt-2 text-sm text-slate-300">Hold IMALI tokens for up to 20% off your monthly plan.</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
                 <FaUsers className="mx-auto text-3xl text-purple-400" />

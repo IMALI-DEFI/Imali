@@ -37,7 +37,7 @@ const Footer = () => {
               <MascotLogo size={84} className="shrink-0" />
               <div className="flex-1">
                 <h2 className="text-2xl sm:text-3xl font-black">Get your own trading robot — free</h2>
-                <p className="fun-help mt-1">Free 7-day Starter trial — no card. Or play the demo with pretend money first.</p>
+                <p className="fun-help mt-1">Starter is free forever — no card. Or play the demo with pretend money first.</p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 shrink-0">
                 <Link to="/signup?tier=starter" className="fun-btn fun-gold fun-big"><span className="fun-btn-emoji" aria-hidden="true">🚀</span> Join Free</Link>

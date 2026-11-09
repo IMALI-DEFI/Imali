@@ -20,7 +20,7 @@ const TIER_CARD = {
     ],
   },
   pro_stocks: {
-    label: "Pro Stocks ($19/mo)",
+    label: "Pro Stocks ($19.95/mo)",
     bullets: [
       "Includes: Stock bot",
       "Performance fee: 5% on net profits over +3%",

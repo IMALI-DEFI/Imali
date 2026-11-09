@@ -38,7 +38,7 @@ const TIER_CONFIG = {
   pro: {
     label: "Pro",
     icon: "⭐",
-    price: "$19/mo",
+    price: "$19.95/mo",
     description:
       "Live trading and advanced strategy signals.",
     borderColor: "border-blue-500/30",
