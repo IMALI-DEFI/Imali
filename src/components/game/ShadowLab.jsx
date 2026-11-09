@@ -1,6 +1,6 @@
 // src/components/game/ShadowLab.jsx
-// Shadow Lab logo + live update card. Reads /shadow-lab/latest.json,
-// published from the research machine by publish_shadow_lab.py.
+// Shadow Lab logo + live status card. Reads /api/public/lab-status,
+// published every 15 min by imali-lab-publish.timer on the lab server.
 import React, { useEffect, useState } from "react";
 
 /** Shadow Lab emblem: hex badge, glowing flask, shadow-bot eyes inside. */
@@ -60,23 +60,29 @@ function timeAgo(iso) {
   return `${Math.round(hrs / 24)} days ago`;
 }
 
-const pct = (v) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${Number(v).toFixed(2)}%`);
+const fmt = (n) => (Number.isFinite(Number(n)) ? Number(n).toLocaleString("en-US") : "—");
 
-/** Bar pair comparing the tested idea vs. simply holding everything. */
-function CompareBars({ idea, all }) {
-  const max = Math.max(Math.abs(idea || 0), Math.abs(all || 0), 1);
-  const bar = (v, color) => (
-    <div className="h-4 rounded-full bg-white/10 overflow-hidden">
-      <div className="h-full rounded-full" style={{ width: `${(Math.abs(v || 0) / max) * 100}%`, background: color, transition: "width .6s ease" }} />
-    </div>
-  );
-  return (
-    <div className="space-y-2 text-sm font-bold">
-      <div><div className="flex justify-between"><span>🧪 Lab idea</span><span className="text-[#4ff0a0]">{pct(idea)}</span></div>{bar(idea, "linear-gradient(90deg,#0fb36a,#4ff0a0)")}</div>
-      <div><div className="flex justify-between"><span>🧺 Holding everything</span><span className="text-[#c9d2ff]">{pct(all)}</span></div>{bar(all, "linear-gradient(90deg,#5c6ad6,#9fd0ff)")}</div>
-    </div>
-  );
+// Live status is published every 15 min by the lab server. Try the site's /api proxy first,
+// then the API domain directly (public JSON, CORS open). Hidden if neither answers.
+const SOURCES = ["/api/public/lab-status", "https://api.imali-defi.com/api/public/lab-status"];
+
+async function loadLabStatus() {
+  for (const url of SOURCES) {
+    try {
+      const r = await fetch(`${url}?ts=${Date.now()}`, { headers: { Accept: "application/json" } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j && j.version >= 2) return j;
+    } catch (_) { /* try next source */ }
+  }
+  return null;
 }
+
+const STATUS_TEXT = {
+  collecting: "Collecting data",
+  testing: "Testing ideas",
+  promoted: "Upgrade went live",
+};
 
 /** Home-page card: what the Shadow Lab is doing right now. Hidden if no data. */
 export function ShadowLabCard() {
@@ -84,81 +90,119 @@ export function ShadowLabCard() {
 
   useEffect(() => {
     let on = true;
-    fetch(`/shadow-lab/latest.json?ts=${Date.now()}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (on && j) setLab(j); })
-      .catch(() => {});
-    return () => { on = false; };
+    loadLabStatus().then((j) => { if (on && j) setLab(j); });
+    const t = setInterval(() => loadLabStatus().then((j) => { if (on && j) setLab(j); }), 5 * 60 * 1000);
+    return () => { on = false; clearInterval(t); };
   }, []);
 
   if (!lab) return null;
-  const scan = lab.last_scan;
-  const indep = lab.research?.periods?.independent;
-  const checksMissing = Number(lab.checks_missing || 0);
-  const checksTotal = Math.max(checksMissing, 8);
-  const passed = checksTotal - checksMissing;
+  const live = lab.live_upgrades || [];
+  const testing = lab.testing || [];
+  const mood = lab.market_mood || {};
+  const stats = lab.stats || {};
+  const updates = (lab.updates || []).slice(0, 4);
+  const up = mood.btc_trend === "up";
 
   return (
-    <section className="fun-card" aria-label="Shadow Lab update">
+    <section id="shadow-lab" className="fun-card scroll-mt-24" aria-label="Shadow Lab live status">
       <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
         <ShadowLabLogo size={92} className="shrink-0" />
         <div className="flex-1">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
             <h2 className="text-2xl sm:text-3xl font-black">Shadow Lab</h2>
-            <span className="fun-pill">🔬 Research only</span>
-            {!lab.live_orders_authorized && <span className="fun-pill">🔒 No real trades</span>}
+            <span className="fun-pill">
+              <span className="inline-block h-2 w-2 rounded-full bg-[#4ff0a0] animate-pulse mr-1" />Live
+            </span>
+            <span className="fun-pill">🧪 Tested before it trades</span>
           </div>
           <p className="fun-help mt-1">
-            Where IMALI tests new robot ideas in the shadows — with pretend money — before any of them are allowed near a real account.
+            Every robot idea is tested in the lab first. Only ideas that pass every check get promoted to real trading —
+            and they're pulled back automatically if they stop working.
           </p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-3">
-        {/* live scan */}
+        {/* what is live */}
         <div className="rounded-2xl border-2 border-[#5c6ad6] bg-white/5 p-4">
-          <div className="flex items-center gap-2 font-black">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#4ff0a0] animate-pulse" /> Latest scan
-          </div>
-          {scan ? (
-            <>
-              <p className="text-3xl font-black mt-2">{scan.markets_checked ?? "—"}</p>
-              <p className="fun-help text-sm">markets checked {timeAgo(scan.at)}</p>
-              <p className="text-sm font-bold mt-2">
-                {scan.watchlist_count > 0
-                  ? `👀 ${scan.watchlist_count} looked interesting`
-                  : "😌 None met the rules — so it sat tight."}
-              </p>
-            </>
-          ) : <p className="fun-help mt-2">Waiting for the next scan.</p>}
-          {lab.scans_last_24h > 0 && <p className="text-xs text-white/50 mt-2">🔁 {lab.scans_last_24h} scans in the last 24 hours</p>}
+          <div className="font-black">🚀 Live upgrades</div>
+          {live.length ? (
+            <ul className="mt-2 space-y-2">
+              {live.slice(0, 3).map((u) => (
+                <li key={u.id} className="text-sm">
+                  <span className="font-bold">{u.kind === "safety_filter" ? "🛡️ " : "⚡ "}{u.title}</span>
+                  <span className="block text-xs text-white/55">{u.strategy} · {u.venue} · live {timeAgo(u.since)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="fun-help text-sm mt-2">Nothing has earned a spot yet — the lab keeps testing.</p>
+          )}
         </div>
 
-        {/* research result */}
+        {/* what is being tested */}
         <div className="rounded-2xl border-2 border-[#5c6ad6] bg-white/5 p-4">
-          <div className="font-black">🧪 Latest experiment</div>
-          {indep ? (
-            <>
-              <p className="fun-help text-sm mt-1 mb-3">Tested on past prices it hadn't seen before:</p>
-              <CompareBars idea={indep.selected_return_pct} all={indep.all_return_pct} />
-              <p className="text-xs text-white/60 mt-2">Biggest dip along the way: <b className="text-[#ff9aa0]">{pct(indep.selected_drawdown_pct)}</b></p>
-            </>
-          ) : <p className="fun-help mt-2">New experiment coming soon.</p>}
+          <div className="font-black">🔬 Being tested</div>
+          {testing.length ? (
+            <div className="mt-2 space-y-3">
+              {testing.slice(0, 3).map((t) => (
+                <div key={t.venue + t.strategy}>
+                  <div className="flex justify-between text-sm font-bold">
+                    <span>{t.strategy} · {t.venue}</span>
+                    <span className="text-[#4ff0a0]">{STATUS_TEXT[t.status] || t.status}</span>
+                  </div>
+                  <div className="fun-xp mt-1">
+                    <div style={{ width: `${Math.max(4, t.progress_pct)}%` }} />
+                    <span>{fmt(t.samples)} / {fmt(t.needed)} test trades</span>
+                  </div>
+                  <p className="text-xs text-white/50 mt-1">{t.ideas_tested} ideas in the running</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="fun-help text-sm mt-2">Setting up the next experiment.</p>
+          )}
         </div>
 
-        {/* safety gate */}
+        {/* market check */}
         <div className="rounded-2xl border-2 border-[#5c6ad6] bg-white/5 p-4">
-          <div className="font-black">🛡️ Safety gate</div>
-          <p className="fun-help text-sm mt-1">An idea must pass every check before it can ever trade for real.</p>
-          <div className="fun-xp mt-3"><div style={{ width: `${(passed / checksTotal) * 100}%` }} /><span>{passed} / {checksTotal} checks passed</span></div>
-          <p className="text-sm font-bold mt-3">
-            {lab.live_orders_authorized ? "✅ Cleared for live trading" : "🔒 Staying in the lab for now"}
+          <div className="font-black">🛡️ Market check</div>
+          <p className="text-3xl mt-2" aria-hidden="true">{up ? "📈" : mood.btc_trend === "down" ? "📉" : "⏳"}</p>
+          <p className="text-sm font-bold mt-1">{mood.note}</p>
+          <p className="text-xs text-white/50 mt-3">
+            🔁 {fmt(stats.shadow_setups_recorded)} setups recorded · {fmt(stats.real_trades_analyzed)} real trades studied
           </p>
+          {stats.last_validation_at && (
+            <p className="text-xs text-white/50">Checked again every {stats.validation_every_hours || 2} hrs · last {timeAgo(stats.last_validation_at)}</p>
+          )}
         </div>
       </div>
 
+      {updates.length > 0 && (
+        <div className="mt-5">
+          <div className="font-black mb-2">📣 Lab updates</div>
+          <ul className="space-y-1">
+            {updates.map((u, i) => (
+              <li key={i} className="text-sm flex gap-2">
+                <span className="text-white/45 shrink-0 w-20">{timeAgo(u.at)}</span>
+                <span>{u.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {Array.isArray(lab.checks) && lab.checks.length > 0 && (
+        <details className="mt-4">
+          <summary className="cursor-pointer font-bold text-sm">✅ The {lab.checks.length} checks every idea must pass</summary>
+          <ol className="list-decimal ml-6 mt-2 space-y-1 text-sm text-white/80">
+            {lab.checks.map((c) => <li key={c}>{c}</li>)}
+          </ol>
+        </details>
+      )}
+
       <p className="text-xs text-white/45 mt-4">
-        Research results use past data and modeled fees. They are not live results and don't promise future returns.
+        {lab.disclaimer || "Research results are not a promise of future returns."}
         {lab.published_at ? ` Updated ${timeAgo(lab.published_at)}.` : ""}
       </p>
     </section>
