@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Link } from "react-router-dom";
+import PlanStrip from "../components/PlanStrip";
 import { MascotLogo, TradingSchool, useGameProgress } from "../components/game/GameKit";
 import {
     FaBolt,
@@ -353,6 +354,19 @@ export default function HowItWorks() {
                             </ul>
                         </div>
                     </div>
+                </section>
+
+                {/* Which plan do I need? */}
+                <section className="mb-16">
+                    <div className="mb-6 rounded-3xl border border-amber-300 bg-amber-50 p-6 text-slate-900 sm:p-8">
+                        <h2 className="text-2xl font-black">🧭 Which plan do I need?</h2>
+                        <ul className="mt-4 space-y-2 text-slate-800">
+                            <li><strong>Just learning?</strong> Free. Practice with $1,000 in pretend money, forever.</li>
+                            <li><strong>Robinhood Crypto, OKX spot or Alpaca stocks?</strong> Pro, $19.95/month.</li>
+                            <li><strong>Futures, DEX wallet trading or staking?</strong> Elite, $49/month.</li>
+                        </ul>
+                    </div>
+                    <PlanStrip from="how-it-works" title="Pick the plan that matches your account" />
                 </section>
 
                 {/* Bot Systems */}

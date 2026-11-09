@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import RecentSocialShowcase from "../components/RecentSocialShowcase";
 import { MascotLogo } from "../components/game/GameKit";
 import { ShadowLabCard } from "../components/game/ShadowLab";
+import PlanStrip from "../components/PlanStrip";
 
 const STEPS = [
   { emoji: "📝", color: "fun-gold", title: "Make your account", text: "Sign up and pick the plan you want." },
@@ -117,31 +118,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* OFFER */}
-        <section className="fun-sparkle p-6 sm:p-10 max-w-3xl mx-auto text-center">
-          <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
-          <span className="fun-pill">🚀 IMALI Pro</span>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-black">Put a robot to work on your trading</h2>
-          <p className="fun-help mt-3 max-w-xl mx-auto">
-            Connect a supported account, pick your settings, and let IMALI find chances and make eligible trades for you.
-          </p>
-          <div className="mt-6 flex items-end justify-center gap-2">
-            <span className="text-6xl font-black text-[#ffe07a]">$19.95</span>
-            <span className="mb-2 text-lg fun-help">/month</span>
-          </div>
-          <Link
-            to="/signup?plan=pro&tier=pro&product_type=trading"
-            state={{ tier: "pro", product_type: "trading", from: "home-video-demo" }}
-            className="fun-btn fun-gold fun-big mt-6 w-full sm:w-auto"
-          >
-            <span className="fun-btn-emoji" aria-hidden="true">🚀</span> Start Trading with IMALI
-          </Link>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <span className="fun-pill">🔒 Non-custodial</span>
-            <span className="fun-pill">✅ Your money stays in your account</span>
-            <span className="fun-pill">⏹️ Cancel any time</span>
-          </div>
-        </section>
+        {/* PLANS: what you get by upgrading */}
+        <PlanStrip from="home" />
 
         {/* FINAL CTA */}
         <section className="fun-card p-8 text-center">

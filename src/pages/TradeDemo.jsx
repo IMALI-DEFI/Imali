@@ -24,6 +24,7 @@ import {
 } from "react-icons/fa";
 
 import CandlestickChart from "../components/charts/CandlestickChart";
+import PlanStrip from "../components/PlanStrip";
 import { createInitialCandles, createNextCandle, updateLiveCandle } from "../utils/demoCandleGenerator";
 import { PlayerHUD, QuestList, TradingSchool, useGameProgress, MascotLogo, BalanceChart, WinRing } from "../components/game/GameKit";
 
@@ -644,7 +645,7 @@ export default function TradeDemo() {
   const playerXp = gameTrades * 2 + gameWins * 3 + lessonXp + demoQuests.reduce((s, q) => s + (q.done ? q.xp : 0), 0);
 
   const SERVICE_COLORS = { okx: "fun-gold", futures: "fun-red", robinhood: "fun-green", alpaca: "fun-blue", dex: "fun-purple", options: "fun-orange", kalshi: "fun-purple" };
-  const SERVICE_TAGS = { okx: "Buy & sell coins", futures: "Bet up or down", robinhood: "Crypto only", alpaca: "Stocks", dex: "Wallet tokens", options: "Pro level", kalshi: "Yes / No markets" };
+  const SERVICE_TAGS = { okx: "Coins · live on Pro", futures: "Up or down · Elite", robinhood: "Crypto · live on Pro", alpaca: "Stocks · live on Pro", dex: "Wallet tokens · Elite", options: "Pro level", kalshi: "Yes / No · Elite" };
   const STYLE_LOOK = {
     safe: { emoji: "🐢", nick: "Turtle", color: "fun-green", tag: "Slow & Safe", fire: 1, tip: "Small, careful steps. Wins more often, but wins are smaller." },
     balanced: { emoji: "🦉", nick: "Owl", color: "fun-blue", tag: "Smart Balance", fire: 2, tip: "A little careful, a little brave. A great first pick." },
@@ -906,10 +907,10 @@ export default function TradeDemo() {
           <section className="fun-sparkle p-6 text-center fun-slide-in">
             <div className="fun-sparkles" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
             <MascotLogo size={80} className="mx-auto" />
-            <h2 className="text-2xl sm:text-3xl font-black mt-2">Nice work! Want your own robot?</h2>
-            <p className="fun-help mt-2 max-w-xl mx-auto">Connect your own account and IMALI trades for you. Your money always stays in your account.</p>
+            <h2 className="text-2xl sm:text-3xl font-black mt-2">Nice work! Want to run it for real?</h2>
+            <p className="fun-help mt-2 max-w-xl mx-auto">Your robot just traded with pretend money. On Pro, it follows the same rules on your real Robinhood, OKX or Alpaca account, all day. Your money always stays in your account.</p>
             <div className="flex flex-wrap justify-center gap-3 mt-5">
-              <Link to="/signup" className="fun-btn fun-gold fun-big"><span className="fun-btn-emoji">🚀</span> Get Started</Link>
+              <Link to="/signup?plan=pro&tier=pro&product_type=trading" state={{ tier: "pro", product_type: "trading", from: "demo-prompt" }} className="fun-btn fun-gold fun-big"><span className="fun-btn-emoji">🚀</span> Run it for real: Pro $19.95/mo</Link>
               <button type="button" onClick={() => navigate("/pricing")} className="fun-btn fun-blue">💎 See Plans</button>
             </div>
           </section>
@@ -920,11 +921,7 @@ export default function TradeDemo() {
         </p>
 
         {!(showDemoPrompt || gameTrades >= 10) && (
-          <section className="fun-card text-center">
-            <h2 className="text-2xl font-black">Ready to try IMALI for real?</h2>
-            <p className="fun-help mt-2">Sign up, then connect a supported account whenever you're ready.</p>
-            <Link to="/signup" className="fun-btn fun-gold fun-big mt-5"><span className="fun-btn-emoji">🚀</span> Get Started</Link>
-          </section>
+          <PlanStrip from="demo" title="Ready to try IMALI for real?" subtitle="Keep practicing free, or let your robot trade your own account. Flat monthly price, no cut of your profits." />
         )}
       </div>
     </main>

@@ -58,6 +58,14 @@ const TIERS = {
   },
 };
 
+// One-line "what you get" for the selected plan, shown under the plan picker.
+const PLAN_LINES = {
+  starter: "Free forever: practice with $1,000 in pretend money. No card.",
+  pro: "Pro: your robot trades your real Robinhood, OKX and Alpaca accounts from one dashboard.",
+  elite: "Elite: every robot unlocked, including futures, DEX wallet trading and staking.",
+  enterprise: "Enterprise: custom dashboards, team roles and white-label options.",
+};
+
 // NEW: Admin platform tiers
 const ADMIN_TIERS = {
   professional: {
@@ -491,6 +499,9 @@ export default function SignupForm() {
               </button>
             ))}
           </div>
+          {PLAN_LINES[form.tier] && (
+            <p className="fun-help mt-3 text-center text-sm font-bold">{PLAN_LINES[form.tier]}</p>
+          )}
         </div>
 
         <div className="fun-card">

@@ -82,8 +82,8 @@ const plans = [
     category: "trading",
     stripePriceId: STRIPE_CONFIG.PRO_PRICE_ID,
     features: [
-      "Alpaca stock trading (Paper OAuth; live API connections where supported)",
-      "Crypto trading workflows with OKX and Robinhood Crypto",
+      "Stock trading through Alpaca",
+      "Crypto trading with OKX and Robinhood Crypto",
       "AI‑assisted strategies",
       "Take‑profit / stop‑loss",
       "Performance dashboard",
@@ -111,7 +111,7 @@ const plans = [
     features: [
       "Everything in Pro",
       "DEX wallet trading and authorization tools",
-      "Kalshi prediction-market trading",
+      "Kalshi prediction markets (coming soon)",
       "Prediction Market Intelligence",
       "Futures trading",
       "Staking & Lending",
@@ -120,7 +120,7 @@ const plans = [
       "Referral rewards",
       "Advanced risk tools",
     ],
-    locked: ["DAO governance", "Treasury tools", "White‑label"],
+    locked: ["Vote on new features", "Treasury tools", "White‑label"],
   },
   {
     id: "enterprise",
@@ -446,15 +446,12 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       <div className="mt-6">
         <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-[#8dffc4]">✅ You get</h4>
         <ul className="space-y-2">
-          {plan.features.slice(0, 6).map((feature) => (
+          {plan.features.map((feature) => (
             <li key={feature} className="flex items-start gap-2 text-sm text-slate-200">
               <FaCheck className="mt-0.5 shrink-0 text-emerald-400 text-xs" />
               <span>{feature}</span>
             </li>
           ))}
-          {plan.features.length > 6 && (
-            <li className="text-xs text-white/40 pl-5">+{plan.features.length - 6} more features</li>
-          )}
         </ul>
       </div>
 
@@ -548,7 +545,7 @@ export default function Pricing() {
 
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
             {activeTab === "trading"
-              ? "Start with paper trading, then activate supported live connections when available for your selected platform."
+              ? "Free lets you practice. Pro trades your real account. Elite unlocks every robot. One dashboard for all your trading accounts, one flat price, and we never take a cut of your profits."
               : "Everything you need in an admin panel. Already built. User management, billing, analytics, and more."}
           </p>
 
@@ -743,10 +740,10 @@ export default function Pricing() {
                     ["Paper Trading", true, true, true, true],
                     ["Robinhood Crypto", false, true, true, true],
                     ["Live Crypto (OKX)", false, true, true, true],
-                    ["Alpaca Stocks (Paper OAuth / supported live API)", false, true, true, true],
-                    ["Kalshi Prediction Markets", false, false, true, true],
+                    ["Stock trading (Alpaca)", false, true, true, true],
+                    ["Kalshi Prediction Markets (coming soon)", false, false, true, true],
                     ["DEX / Wallet Trading Tools", false, false, true, true],
-                    ["RPC Access (+$5/mo add-on)", false, true, true, true],
+                    ["Faster wallet connection (+$5/mo add-on)", false, true, true, true],
                     ["Futures Trading", false, false, true, true],
                     ["Staking / Lending", false, false, true, true],
                     ["Token Discounts", false, false, true, true],
