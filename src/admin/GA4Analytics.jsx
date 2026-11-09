@@ -96,8 +96,24 @@ export default function GA4Analytics({ apiBase, showToast }) {
         </div>
       </div>
 
-      <section className="imali-traffic-dashboard"><h3 className="text-xl font-bold text-amber-200">🌐 Traffic Command Center · All Products</h3><p className="imali-traffic-notice">Verified GA4 snapshot, last 30 days, cached November 8, 2026 at 04:58 UTC. Not a live feed. Sports Jedi and Black Culture Vault have the shared GA4 tag installed, but this dashboard cannot read their hostname-level figures yet. Missing values are not zero traffic.</p><div className="imali-traffic-metrics">{[['👥 Active users','417'],['📊 Sessions','566'],['👀 Page views','1,379']].map(([label,value])=><div key={label} className="imali-traffic-metric"><span>{label}</span><strong>{value}</strong><small>Reported IMALI data only</small></div>)}</div><div className="imali-traffic-products mt-4">{[['🤖 IMALI DeFi','imali-defi.com','566 visits'],['🏀 Sports Jedi','sportsjedi.com','Tracking tag found · report not connected'],['🎮 Black Culture Vault','blackculturevault.com','Tracking tag found · report not connected']].map(([name,host,value])=><div key={host} className="imali-traffic-product"><span>{name}</span><strong>{value}</strong><small>{host}</small></div>)}</div><div className="imali-traffic-panel mt-4"><h4>IMALI traffic sources · sessions</h4>{[['Direct',253],['Email',146],['Organic Social',85],['AI Assistant',29],['Organic Search',25],['Unassigned',19],['Referral',9]].map(([name,n])=><div key={name} className="imali-traffic-channel"><span>{name}</span><div className="imali-traffic-track"><div style={{width:(n/253*100)+'%'}}/></div><strong>{n}</strong></div>)}</div><p className="imali-traffic-notice">To see each site now, open GA4 → Reports → Engagement → Pages and screens, add the Hostname dimension, and filter to imali-defi.com, sportsjedi.com, or blackculturevault.com. These cards will remain unverified until the GA4 Data API reporting connection is authorized.</p><a href="https://analytics.google.com" target="_blank" rel="noreferrer" className="text-amber-200 underline">Open live GA4 ↗</a></section>
-      <section className="imali-traffic-dashboard"><h3 className="text-xl font-bold text-amber-200">🌐 Website analytics connections</h3><p className="imali-traffic-notice">Each website has its own GA4 stream. Traffic totals will appear when authenticated GA4 reporting access is configured; a measurement ID alone cannot read reports.</p><div className="sm-posts">{[['IMALI DeFi','imali-defi.com',null],['Sports Jedi','sportsjedi.com','G-4XCK3RBFC6'],['Black Culture Vault','blackculturevault.com','G-3PFR3M37Y3']].map(([name,domain,id])=><div className="sm-post" key={domain}><strong>{portfolio?.sites?.[domain]?.sessions?.toLocaleString()??'—'}</strong><b>{name} · Sessions</b><span>{portfolio?.sites?.[domain] ? portfolio.sites[domain].visitors.toLocaleString()+' visitors · '+portfolio.sites[domain].pageViews.toLocaleString()+' page views' : 'GA4 reporting pending'} · {id||'Existing IMALI stream'}</span></div>)}</div></section>
+      <section className="imali-traffic-dashboard">
+        <h3 className="text-xl font-bold text-amber-200">🌐 Traffic by website</h3>
+        <p className="imali-traffic-notice">Live Google Analytics reporting · last 30 days · refreshes every 5 minutes. Visitors means active users; sessions means visits.</p>
+        <div className="imali-traffic-products mt-4" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,240px),1fr))',gap:12}}>
+          {[['🤖 IMALI DeFi','imali-defi.com'],['🏀 Sports Jedi','sportsjedi.com'],['🎮 Black Culture Vault','blackculturevault.com']].map(([name,domain])=>{
+            const metrics=portfolio?.sites?.[domain];
+            return <div key={domain} className="imali-traffic-product" style={{minWidth:0,overflowWrap:'anywhere'}}>
+              <span>{name}</span>
+              <strong style={{fontSize:'clamp(20px,4vw,29px)'}}>{metrics ? metrics.sessions.toLocaleString()+' sessions' : 'Loading reporting…'}</strong>
+              <small>{metrics ? metrics.visitors.toLocaleString()+' visitors · '+metrics.pageViews.toLocaleString()+' page views' : 'No verified figures available yet'}</small>
+              <small>{domain}</small>
+            </div>;
+          })}
+        </div>
+        <div className="imali-traffic-panel mt-4"><h4>IMALI traffic sources · saved November 8 snapshot (not live)</h4>
+          { [['Direct',253],['Email',146],['Organic Social',85],['AI Assistant',29],['Organic Search',25],['Unassigned',19],['Referral',9]].map(([name,n])=><div key={name} className="imali-traffic-channel"><span>{name}</span><div className="imali-traffic-track"><div style={{width:(n/253*100)+'%'}}/></div><strong>{n}</strong></div>)}
+        </div>
+      </section>
       <TrafficDefinitions />
       <PartnerReferralTracking />
       <UpgradeAttribution />
