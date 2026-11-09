@@ -642,3 +642,23 @@
 .imali-command-center .imali-command-nav-item p{color:#e0d8f1!important}
 @media(max-width:1023px){.imali-command-header{position:relative!important;top:auto!important;z-index:30!important}.imali-command-header>div{gap:10px}.imali-command-header h1{font-size:1.15rem!important;line-height:1.3!important}.imali-command-center .imali-command-nav-item{min-height:76px;padding:12px!important}.imali-command-center .imali-command-nav-item p{font-size:.75rem!important}.imali-command-center .imali-command-quicklinks{gap:7px}.imali-command-center .imali-command-main{padding-top:14px}.imali-command-center aside{overscroll-behavior:contain}}
 @media(prefers-reduced-motion:reduce){.imali-command-center .imali-command-nav-item::before{animation:none}.imali-command-center .imali-command-nav-item{transition:none!important}}
+
+/* IMALI Command Center unified 2026 design: applies to EVERY admin tab, not only Overview. */
+.imali-command-center{--admin-gold:#ffe29a;--admin-teal:#78f0d2;background:radial-gradient(ellipse at 12% 0%,#31205c 0%,transparent 46%),radial-gradient(ellipse at 90% 40%,#172d60 0%,transparent 45%),#0b0e28;color:#f6f2ff}
+.imali-command-center .imali-command-header{background:linear-gradient(115deg,#231347,#122653)!important;border-bottom:1px solid #c69a6170!important;box-shadow:0 8px 26px #0005}
+.imali-command-center .imali-command-active{background:linear-gradient(120deg,#38206d,#17365e)!important;border:1px solid #e5bc7470!important;box-shadow:inset 0 1px #ffffff25,0 12px 26px #05051b60!important}
+.imali-command-center .imali-command-main{min-width:0;overflow-wrap:anywhere}
+.imali-command-center .imali-command-main :is(.rounded-2xl,.rounded-3xl,.rounded-xl):is(section,article,div):not(.sm-error):not(.sm-dialog):not(.sm-backdrop):not(.sm-post):not(.imali-traffic-track):not(.imali-traffic-channel):not(.imali-traffic-metrics):not(.imali-traffic-products){border-color:#b89a7460;}
+.imali-command-center .imali-command-main :is(.bg-white\/5,.bg-gray-900,.bg-slate-900,.bg-gray-800,.bg-\[\#101c2d\],.bg-\[\#171c39\]){background:linear-gradient(145deg,#35205d,#1a2c59)!important;box-shadow:inset 0 1px #ffffff15,0 8px 24px #0004}
+.imali-command-center .imali-command-main :is(.sm-post,.imali-app-count-card,.imali-traffic-metric,.imali-traffic-product,.sm-kpis button){background:linear-gradient(145deg,#45237c,#20356c)!important;border:1px solid #e0b86d80!important;border-radius:20px!important;box-shadow:inset 0 1px #ffffff30,0 8px 22px #0006!important;position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease!important}
+.imali-command-center .imali-command-main :is(.sm-post,.imali-app-count-card,.imali-traffic-metric,.imali-traffic-product,.sm-kpis button):hover{transform:translateY(-2px);box-shadow:0 12px 26px #0008!important}
+.imali-command-center .imali-command-main :is(.sm-post,.imali-app-count-card,.imali-traffic-metric,.imali-traffic-product,.sm-kpis button)::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 25%,#ffffff0c 50%,transparent 75%);transform:translateX(-110%);animation:imali-card-sheen 8s ease-in-out infinite}
+.imali-command-center .imali-command-main :is(.sm-post,.imali-app-count-card,.imali-traffic-metric,.imali-traffic-product) strong{color:var(--admin-gold)}
+.imali-command-center .imali-command-main :is(button,a)[class*="rounded"]:focus-visible{outline:3px solid #7cf4d4;outline-offset:2px}
+.imali-command-center .imali-command-main table{max-width:100%;border-collapse:separate;border-spacing:0;}
+.imali-command-center .imali-command-main th{background:#37235b;color:#ffe3a2;font-weight:750}
+.imali-command-center .imali-command-main td{border-bottom:1px solid #ffffff1b}
+.imali-command-center .imali-command-main :is(input,select,textarea){color:#fff;max-width:100%}
+.imali-command-center .imali-command-main :is(.sm-posts,.grid)>*{min-width:0}
+@media(max-width:640px){.imali-command-center .imali-command-main{padding:12px!important}.imali-command-center .imali-command-main .sm-center{padding:10px!important}.imali-command-center .imali-command-main .sm-posts{grid-template-columns:repeat(2,minmax(0,1fr))}.imali-command-center .imali-command-main .sm-post{min-width:0;padding:12px}.imali-command-center .imali-command-main table{font-size:12px}.imali-command-center .imali-command-main :is(th,td){padding:8px}}
+@media(prefers-reduced-motion:reduce){.imali-command-center .imali-command-main :is(.sm-post,.imali-app-count-card,.imali-traffic-metric,.imali-traffic-product,.sm-kpis button)::after{animation:none}}
