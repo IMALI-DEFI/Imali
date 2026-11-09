@@ -216,10 +216,10 @@ function BotActivityChart({ trades = [] }) {
 
 function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+    <div className="rounded-xl border border-indigo-400/25 bg-[#1b2750] p-3 text-center">
       <div className={`text-lg font-bold ${valueClassName}`}>{value}</div>
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{title}</div>
-      {subtext && <div className="mt-0.5 text-[9px] text-gray-400">{subtext}</div>}
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-indigo-200">{title}</div>
+      {subtext && <div className="mt-0.5 text-[9px] text-indigo-200">{subtext}</div>}
     </div>
   );
 }
@@ -239,12 +239,12 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   if (!hasTrades) return null;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
-      <div className="cursor-pointer p-4 transition-colors hover:bg-gray-50" onClick={() => setExpanded(!expanded)}>
+    <div className="overflow-hidden rounded-2xl border border-indigo-400/40 bg-[#121b3b] text-white shadow-sm transition-all hover:shadow-md">
+      <div className="cursor-pointer p-4 transition-colors hover:bg-indigo-900/30" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{getBotIcon(bot)}</span>
-            <h3 className="font-bold text-gray-900">{getBotDisplayName(bot)}</h3>
+            <h3 className="font-bold text-white">{getBotDisplayName(bot)}</h3>
             <span className={`h-2 w-2 rounded-full ${totalTrades > 0 ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
           </div>
           <div className="flex items-center gap-4">
@@ -264,7 +264,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-100 bg-gray-50/50 p-4">
+        <div className="border-t border-indigo-400/25 bg-[#121b3b] p-4">
           <div className="mb-4 grid grid-cols-3 gap-3">
             <div className="text-center">
               <div className="text-lg font-bold text-emerald-600">{wins.toLocaleString()}</div>
@@ -282,7 +282,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
 
           {botNotableTrades.length > 0 && (
             <div>
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-indigo-100">
                 <span>🏆</span> Notable Trades (Top {botNotableTrades.length} by % Return)
               </div>
               <div className="max-h-[440px] space-y-2 overflow-y-auto pr-1">
