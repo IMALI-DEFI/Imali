@@ -41,7 +41,7 @@ export default function ConnectOKX() {
 
   const handleConnect = async () => {
     if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) {
-      setMessage("Enter all three OKX credentials.");
+      setMessage("Please fill in all 3 boxes: API key, Secret key and passphrase.");
       return;
     }
 
@@ -93,7 +93,7 @@ export default function ConnectOKX() {
           </h1>
 
           <p className="mt-3 text-white/55">
-            IMALI is ready to use your OKX trading connection.
+            Your robot can now trade in your OKX account.
           </p>
 
           <button
@@ -116,7 +116,7 @@ export default function ConnectOKX() {
           <h1 className="mt-4 text-3xl font-black">Connect OKX</h1>
 
           <p className="mt-3 text-white/55">
-            Create an OKX trading API key, then paste the three credentials below.
+            Your robot needs 3 codes from OKX. It takes about 5 minutes.
           </p>
 
           <a
@@ -125,24 +125,33 @@ export default function ConnectOKX() {
             rel="noopener noreferrer"
             className="mt-5 inline-flex items-center gap-2 font-bold text-cyan-400 hover:text-cyan-300"
           >
-            Open OKX API Settings
+            Open the OKX API page
             <FaExternalLinkAlt />
           </a>
         </div>
 
-        <div className="mt-8 space-y-4 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
+        <ol className="mt-8 list-decimal list-inside space-y-3 rounded-3xl border border-cyan-400/20 bg-cyan-400/[0.05] p-6 text-sm leading-6 text-white/80">
+          <li>Log in to OKX. Tap your <b>profile picture</b> (top right), then tap <b>API</b>.</li>
+          <li>Tap <b>Create V5 API key</b> and pick <b>API trading</b>.</li>
+          <li>Give it a name, like <b>IMALI</b>.</li>
+          <li>Make up a <b>passphrase</b> (a password just for this key). Write it down.</li>
+          <li>Turn on <b>Read</b> and <b>Trade</b>. Leave <b>Withdraw OFF</b> so no one can take money out.</li>
+          <li>Tap <b>Confirm</b> and finish the security check. Copy the <b>API key</b> and <b>Secret key</b> right away. OKX shows the Secret key only once.</li>
+        </ol>
+
+        <div className="mt-6 space-y-4 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
           <Input
             label="API Key"
             value={apiKey}
             onChange={setApiKey}
-            placeholder="Paste API key"
+            placeholder="Paste the API key from step 6"
           />
 
           <Input
             label="Secret Key"
             value={secretKey}
             onChange={setSecretKey}
-            placeholder="Paste secret key"
+            placeholder="Paste the Secret key from step 6"
             secret
           />
 
@@ -150,7 +159,7 @@ export default function ConnectOKX() {
             label="Passphrase"
             value={passphrase}
             onChange={setPassphrase}
-            placeholder="Enter API passphrase"
+            placeholder="Type the passphrase you made in step 4"
             secret
           />
 
@@ -170,7 +179,7 @@ export default function ConnectOKX() {
 
           <div className="flex items-center justify-center gap-2 text-xs text-white/35">
             <FaShieldAlt className="text-emerald-400" />
-            Use trading permissions only. Do not enable withdrawals.
+            Keep Withdraw OFF. Your money stays in your OKX account.
           </div>
         </div>
 

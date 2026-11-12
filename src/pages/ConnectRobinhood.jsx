@@ -252,7 +252,7 @@ const [loading, setLoading] = useState(true);
           </h1>
 
           <p className="mt-2 text-sm sm:text-base text-white/60 max-w-2xl">
-            Connect your Robinhood Crypto account using supported Robinhood Crypto Trading API credentials.
+            Let your robot trade crypto in your Robinhood account. It's 3 short steps.
           </p>
         </div>
 

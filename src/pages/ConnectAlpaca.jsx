@@ -264,13 +264,13 @@ export default function ConnectAlpaca() {
             {!isLive && authType !== "api_key" && (
               <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-left">
                 <div className="font-bold text-amber-300">
-                  OAuth Paper Connection
+                  Connected with practice money
                 </div>
 
                 <p className="mt-2 text-sm leading-6 text-white/65">
-                  IMALI's Alpaca OAuth connection is currently using
-                  Alpaca Paper Trading. Live OAuth access will be enabled
-                  after Alpaca approves IMALI for live Connect access.
+                  Right now, signing in with Alpaca connects your practice
+                  (Paper) account. Real-money sign-in is coming once Alpaca
+                  approves IMALI.
                 </p>
               </div>
             )}
@@ -331,7 +331,7 @@ export default function ConnectAlpaca() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-2xl text-white/55">
-            Choose how you want to connect your Alpaca account to IMALI.
+            Alpaca is where your robot trades stocks. Pick one way to connect.
           </p>
         </div>
 
@@ -357,43 +357,42 @@ export default function ConnectAlpaca() {
             <FaShieldAlt className="text-3xl text-emerald-400" />
 
             <h2 className="mt-5 text-2xl font-black">
-              Connect with Alpaca OAuth
+              Easy way: sign in with Alpaca
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-white/65">
-              Sign in directly with Alpaca and authorize IMALI without
-              copying API credentials into the connection form.
+              Log in to Alpaca and tap Allow. No codes to copy.
             </p>
 
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 p-4">
                 <span className="text-sm text-white/65">
-                  Paper Trading
+                  Practice money
                 </span>
                 <span className="font-black text-emerald-300">
-                  Available
+                  Works now
                 </span>
               </div>
 
               <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 p-4">
                 <span className="text-sm text-white/65">
-                  Live OAuth
+                  Real money
                 </span>
                 <span className="text-right text-sm font-black text-amber-300">
-                  Pending Alpaca Approval
+                  Coming soon
                 </span>
               </div>
             </div>
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
               <h3 className="font-bold">
-                What you are authorizing
+                What IMALI can do
               </h3>
 
               <ul className="mt-3 space-y-2 text-sm text-white/60">
-                <li>• View your Alpaca account information</li>
-                <li>• View account balances and positions</li>
-                <li>• Place and manage trades when the authorized account mode and IMALI execution path support it</li>
+                <li>• See your Alpaca account</li>
+                <li>• See your balance and what you own</li>
+                <li>• Buy and sell for you when your robot is on</li>
               </ul>
             </div>
 
@@ -417,8 +416,8 @@ export default function ConnectAlpaca() {
             </button>
 
             <p className="mt-4 text-center text-xs leading-5 text-white/40">
-              You will be redirected to Alpaca to authorize your Paper
-              account while IMALI's live OAuth application is under review.
+              You'll go to Alpaca, tap Allow, and come right back.
+              For now this connects your practice (Paper) account.
             </p>
           </section>
 
@@ -427,22 +426,23 @@ export default function ConnectAlpaca() {
             <FaKey className="text-3xl text-amber-300" />
 
             <h2 className="mt-5 text-2xl font-black">
-              Connect with API Keys
+              Other way: paste your keys
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-white/65">
-              Already have Alpaca API credentials? Connect your own
-              Alpaca account manually.
+              Use this to connect a real-money (Live) account.
             </p>
 
             <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-500/[0.06] p-4">
               <div className="font-bold text-amber-300">
-                Manual / Advanced
+                How to get your keys
               </div>
 
               <p className="mt-2 text-xs leading-5 text-white/55">
-                Use credentials created in your own Alpaca account.
-                Choose Paper or Live based on the credentials you created.
+                1. Log in at <b>app.alpaca.markets</b>.<br />
+                2. At the top left, pick <b>Paper</b> (practice money) or <b>Live</b> (real money).<br />
+                3. Find the <b>API Keys</b> box on the right and tap <b>Generate New Keys</b>.<br />
+                4. Copy both keys now. Alpaca shows the Secret key only once.
               </p>
             </div>
 
@@ -501,16 +501,15 @@ export default function ConnectAlpaca() {
                   onChange={(e) => setManualMode(e.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-cyan-400/50"
                 >
-                  <option value="paper">Paper Trading</option>
-                  <option value="live">Live Trading</option>
+                  <option value="paper">Paper (practice money)</option>
+                  <option value="live">Live (real money)</option>
                 </select>
               </div>
 
               {manualMode === "live" && (
                 <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200">
-                  Live mode can place real-money trades. Only use Alpaca
-                  Live API credentials when you intend to connect a real
-                  brokerage account.
+                  Live uses real money. Only pick this if you made your
+                  keys in Alpaca's Live account.
                 </div>
               )}
 
@@ -527,7 +526,7 @@ export default function ConnectAlpaca() {
                 ) : (
                   <>
                     <FaKey className="mr-2 inline" />
-                    Connect with API Keys
+                    Connect my keys
                   </>
                 )}
               </button>

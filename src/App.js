@@ -36,6 +36,7 @@ import FundingGuide from "./pages/FundingGuide";
 import PublicDashboard from "./pages/PublicDashboard";
 import ReferralSystem from "./pages/ReferralPartner";
 import LandingPages from "./pages/LandingPages";
+import PainLanding from "./pages/PainLanding";
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
 import SEOLanding from "./pages/SEOLanding";
@@ -280,6 +281,9 @@ function MainAppRoutes() {
             <Route path="/socialB" element={<LandingPages />} />
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
+            <Route path="/too-many-apps" element={<PainLanding />} />
+            <Route path="/learn-to-trade" element={<PainLanding />} />
+            <Route path="/no-time-to-trade" element={<PainLanding />} />
             <Route path="/ai-crypto-trading-bot" element={<SEOLanding />} />
             <Route path="/automated-crypto-trading" element={<SEOLanding />} />
             <Route path="/crypto-trading-software" element={<SEOLanding />} />

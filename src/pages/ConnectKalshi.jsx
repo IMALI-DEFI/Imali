@@ -67,7 +67,7 @@ export default function ConnectKalshi() {
 
     if (!cleanApiKey || !cleanPrivateKey) {
       setMessage(
-        "Enter both your Kalshi API key and private key."
+        "Please fill in both boxes: the Key ID and the private key."
       );
       return;
     }
@@ -77,7 +77,7 @@ export default function ConnectKalshi() {
       !cleanPrivateKey.includes("PRIVATE KEY-----")
     ) {
       setMessage(
-        "The private key does not appear to be a valid PEM private key."
+        "That doesn't look like the key file. Copy everything in the file, including the BEGIN and END lines."
       );
       return;
     }
@@ -322,9 +322,8 @@ export default function ConnectKalshi() {
           </h1>
 
           <p className="mt-3 text-white/55">
-            Connect your Kalshi account so IMALI can
-            analyze prediction markets and display
-            account intelligence.
+            Connect Kalshi so IMALI can study
+            yes/no markets for you.
           </p>
 
         </div>
@@ -338,13 +337,12 @@ export default function ConnectKalshi() {
             <div>
 
               <div className="font-bold text-amber-200">
-                Read-only intelligence
+                Look-only for now
               </div>
 
               <p className="mt-1 text-sm leading-6 text-white/60">
-                Live automated Kalshi trading is currently
-                disabled. Connecting your account does not
-                allow IMALI to submit live orders.
+                IMALI can look at your Kalshi account,
+                but it can't place bets for you.
               </p>
 
             </div>
@@ -353,18 +351,25 @@ export default function ConnectKalshi() {
 
         </div>
 
+        <ol className="mt-6 list-decimal list-inside space-y-3 rounded-3xl border border-cyan-400/20 bg-cyan-400/[0.05] p-6 text-sm leading-6 text-white/80">
+          <li>Log in at <b>kalshi.com</b>. Tap your <b>profile picture</b> (top right), then <b>Account &amp; security</b>.</li>
+          <li>Find <b>API Keys</b> and tap <b>Create Key</b>.</li>
+          <li>Copy the <b>Key ID</b> and paste it in the first box below.</li>
+          <li>A key file downloads. Open it (Notepad on Windows, TextEdit on Mac), copy <b>everything</b> including the BEGIN and END lines, and paste it in the second box. Kalshi gives you this file only once.</li>
+        </ol>
+
         <div className="mt-6 space-y-5 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
 
           <Input
-            label="Kalshi API Key"
+            label="Key ID"
             icon={<FaKey />}
             value={apiKey}
             onChange={setApiKey}
-            placeholder="Paste your Kalshi API key"
+            placeholder="Paste the Key ID from step 3"
           />
 
           <TextArea
-            label="Kalshi Private Key"
+            label="Private key (from the file)"
             icon={<FaLock />}
             value={privateKey}
             onChange={setPrivateKey}

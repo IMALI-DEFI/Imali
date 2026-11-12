@@ -460,11 +460,12 @@ export default function Activation() {
           </StepCard>
         )}
 
-        <StepCard number={needs.billing ? "2" : "1"} title="Connect Trading Accounts" description="Link your exchange accounts" status={connectionsDone}>
+        <StepCard number={needs.billing ? "2" : "1"} title="Connect Trading Accounts" description="Paste the codes from your trading apps" status={connectionsDone}>
           <div className="space-y-6">
             {needs.okx && !status.okx && (
               <form onSubmit={connectOKX} className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5 space-y-4">
                 <h3 className="text-lg font-semibold text-blue-300">OKX Exchange</h3>
+                <p className="text-sm text-white/60">Need help finding these 3 codes? <a href="/connect-okx" className="text-cyan-300 underline">Follow the step-by-step guide</a>.</p>
                 <ModeToggle isLive={okx.isLive} onChange={(isLive) => setOkx({ ...okx, isLive })} disabled={busy === "okx"} />
                 <SimpleInput label="API Key" value={okx.apiKey} onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })} placeholder="Enter API key" disabled={busy === "okx"} />
                 <SimpleInput label="Secret Key" type="password" value={okx.apiSecret} onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "okx"} />
@@ -476,6 +477,7 @@ export default function Activation() {
             {needs.alpaca && !status.alpaca && (
               <form onSubmit={connectAlpaca} className="border border-green-500/30 rounded-xl p-4 bg-green-500/5 space-y-4">
                 <h3 className="text-lg font-semibold text-green-300">Alpaca Trading</h3>
+                <p className="text-sm text-white/60">Need help finding your keys? <a href="/connect-alpaca" className="text-cyan-300 underline">Follow the step-by-step guide</a>.</p>
                 <ModeToggle isLive={alpaca.isLive} onChange={(isLive) => setAlpaca({ ...alpaca, isLive })} disabled={busy === "alpaca"} />
                 <SimpleInput label="API Key ID" value={alpaca.apiKey} onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })} placeholder="Enter Alpaca key" disabled={busy === "alpaca"} />
                 <SimpleInput label="Secret Key" type="password" value={alpaca.apiSecret} onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "alpaca"} />
@@ -487,7 +489,7 @@ export default function Activation() {
               <form onSubmit={connectWallet} className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5 space-y-4">
                 <h3 className="text-lg font-semibold text-purple-300">DeFi Wallet</h3>
                 <InfoBox type="tip">
-                  Connect MetaMask and sign a verification message. This proves wallet ownership but does not move funds or authorize trades.
+                  Connect MetaMask and tap Sign. This just proves the wallet is yours. It can't move your money or make trades.
                 </InfoBox>
                 <ActionButton type="submit" loading={busy === "wallet"} color="purple">
                   Connect and Verify Wallet

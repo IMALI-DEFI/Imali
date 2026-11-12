@@ -473,7 +473,11 @@ export default function Login() {
         </div>
 
         <div className="mt-6 border-t border-white/10 pt-4 text-center text-xs text-gray-500">
-          Demo: demo@imali-defi.com / demo123
+          Just want to look around?{" "}
+          <Link to="/trade-demo" className="text-emerald-300 underline hover:text-emerald-200">
+            Try the practice robot
+          </Link>{" "}
+          — no account needed.
         </div>
       </div>
 

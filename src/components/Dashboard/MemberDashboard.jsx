@@ -1087,9 +1087,8 @@ const KalshiIntelligencePanel = () => {
           </h3>
 
           <p className="mt-1 max-w-3xl text-sm text-white/55">
-            IMALI scans prediction markets, compares market prices with external data,
-            calculates potential edge, and applies risk filters before an opportunity
-            is approved.
+            IMALI looks at yes/no markets, checks the odds against real-world data,
+            and only shows ideas that pass its safety checks.
           </p>
         </div>
 
@@ -1174,7 +1173,7 @@ const KalshiIntelligencePanel = () => {
                 </h4>
 
                 <p className="text-xs sm:text-sm text-white/45">
-                  Opportunities shown here are analysis results, not executed orders.
+                  These are ideas only. Nothing was bought.
                 </p>
               </div>
 
@@ -1306,8 +1305,7 @@ const KalshiIntelligencePanel = () => {
           </div>
 
           <div className="mt-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3 text-xs text-cyan-100/70">
-            Prediction-market execution is currently disabled. This panel is read-only
-            and does not submit Kalshi orders.
+            Look-only for now: IMALI won't place Kalshi bets for you.
           </div>
         </>
       )}
@@ -2975,7 +2973,7 @@ getStrategy, state.debug.failedRequests]);
 
   const handleStartBot = useCallback(async () => {
     if (["options", "kalshi"].includes(activeTab.id)) {
-      showError(`${activeTab.label} has a dedicated execution workflow; this generic bot launcher cannot safely start it.`);
+      showError(`${activeTab.label} has its own setup below. Use that to start it.`);
       return;
     }
     if (!state.laneStrategiesReady) {
@@ -3586,8 +3584,8 @@ getStrategy, state.debug.failedRequests]);
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
           {state.loading && <p role="status">Loading dashboard data…</p>}
           {!hasPaidAccess && !isAdminUser && <section className="rounded-2xl border border-white/20 p-4">
-            <h3>Limited dashboard access</h3><p>No active paid subscription is confirmed. Review plans to access paid features.</p>
-            <button className="rounded-xl bg-emerald-700 px-5 py-3 mt-3" onClick={() => navigate('/billing')}>Review plans</button>
+            <h3>You're on the free plan</h3><p>Practice trading is free. To trade real money, pick a plan.</p>
+            <button className="rounded-xl bg-emerald-700 px-5 py-3 mt-3" onClick={() => navigate('/billing')}>See plans</button>
           </section>}
           {!isConnected && <p className="fun-quest"><span className="text-2xl">🔌</span><span className="font-bold">Connect an account so your robot can see your balances.</span></p>}
           {!state.botRunning && <p className="fun-quest"><span className="text-2xl">😴</span><span className="font-bold">Your robot is resting. Check your setup, then turn it on.</span></p>}
@@ -3916,7 +3914,7 @@ getStrategy, state.debug.failedRequests]);
                       : tab.id === "wallets"
                       ? "Connect and manage blockchain wallets."
                       : tab.id === "activation"
-                      ? "Review trading activation and account readiness."
+                      ? "See what's left to set up."
                       : tab.label
                   }
                 >
@@ -3938,10 +3936,10 @@ getStrategy, state.debug.failedRequests]);
                 <span className="text-3xl">⚠️</span>
                 <div>
                   <h3 className="text-lg sm:text-xl font-black text-amber-300">
-                    {state.userTier.toUpperCase()} Plan Selected — Billing Incomplete
+                    {state.userTier.toUpperCase()} plan — add a card to finish
                   </h3>
                   <p className="text-sm text-white/60 mt-1">
-                    Paper trading is still available. Add a payment method to activate {state.userTier} live features.
+                    You can still practice. Add a card to turn on real-money trading.
                   </p>
                   <button
                     onClick={() => navigate("/billing", { state: { tier: state.userTier, updateCard: true } })}
@@ -3957,17 +3955,17 @@ getStrategy, state.debug.failedRequests]);
           {/* Cross-exchange reported realized P&L; not a verified live-only total. */}
           <section className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-slate-900/80 to-cyan-500/10 p-5 sm:p-6" aria-label="Combined trading profit and loss">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div><p className="text-sm font-semibold text-emerald-300">Combined reported P&L</p><h3 className="mt-1 text-xs text-white/55">Realized trading P&L across reporting connected exchanges</h3></div>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">{combinedPnl.rows.length} of {combinedExchangeKeys.length} exchanges reporting</span>
+              <div><p className="text-sm font-semibold text-emerald-300">Total profit or loss</p><h3 className="mt-1 text-xs text-white/55">Money won or lost on finished trades, from all your connected accounts</h3></div>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">{combinedPnl.rows.length} of {combinedExchangeKeys.length} accounts reporting</span>
             </div>
             <p className={`mt-4 text-3xl font-black sm:text-4xl ${combinedPnlValue < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
               {combinedPnl.loading && !combinedPnl.updatedAt ? 'Loading…' : !combinedPnl.rows.length ? 'Unavailable' : `${combinedPnlValue >= 0 ? '+' : '−'}${formatMoney(Math.abs(combinedPnlValue))}`}
             </p>
-            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()}: ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a supported trading account to see reported results.'}</p>
+            <p className="mt-2 text-xs text-white/50">{combinedPnl.rows.length ? combinedPnl.rows.map(row=>`${row.exchange.toUpperCase()}: ${row.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(row.amount))}`).join(' · ') : 'Connect a trading account to see your results here.'}</p>
             <p className="mt-3 text-xs text-amber-200/80">
-              {combinedPnl.unavailable.length ? `Partial total: no usable figures for ${combinedPnl.unavailable.join(', ')}. ` : ''}
-              {combinedModes.length === 1 && combinedModes[0] === 'live' ? 'Reported live mode. ' : combinedModes.length === 1 && combinedModes[0] === 'paper' ? 'Reported paper mode. ' : 'Live/paper classification is not fully verified. '}
-              Open-position P&L is excluded unless included by the upstream exchange's reported field. DEX wallet data is not yet included.
+              {combinedPnl.unavailable.length ? `Missing: ${combinedPnl.unavailable.join(', ')}. ` : ''}
+              {combinedModes.length === 1 && combinedModes[0] === 'live' ? 'Real money. ' : combinedModes.length === 1 && combinedModes[0] === 'paper' ? 'Practice money. ' : 'Mix of real and practice money. '}
+              Trades that are still open aren't counted yet. Wallet (DEX) trades aren't included yet.
             </p>
           </section>
 
@@ -3979,9 +3977,9 @@ getStrategy, state.debug.failedRequests]);
                   <FaCheckCircle />
                 </div>
                 <div>
-                  <h3 className="text-lg sm:text-xl font-black">Paper Trading Ready</h3>
+                  <h3 className="text-lg sm:text-xl font-black">Practice trading is ready</h3>
                   <p className="text-sm text-emerald-100/80">
-                    No exchange API key or credit card is required for Starter paper trading.
+                    You don't need a card or any keys to practice.
                   </p>
                 </div>
               </div>
@@ -4008,7 +4006,7 @@ getStrategy, state.debug.failedRequests]);
 
           {starterPaperOnly && (
             <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-xs sm:text-sm">
-              Starter accounts support paper trading only. Upgrade to Pro for live trading.
+              Free accounts use practice money only. Get Pro to trade real money.
             </div>
           )}
 
@@ -4068,8 +4066,8 @@ getStrategy, state.debug.failedRequests]);
                 </div>
 
                 <p className="mt-1 text-xs sm:text-sm text-white/45">
-                  Same AI signal stream published to IMALI Telegram.
-                  Signals are analysis alerts, not confirmed live executions.
+                  Market tips from our AI (the same ones we post on Telegram).
+                  These are ideas only, not trades your robot made.
                 </p>
               </div>
 
