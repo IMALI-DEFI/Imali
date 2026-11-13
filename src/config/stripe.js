@@ -7,7 +7,7 @@ const STRIPE_CONFIG = {
     // TRADING PLATFORM PRICE IDs
     // ==============================================
     STARTER_PRICE_ID: process.env.STRIPE_PRICE_STARTER || 'price_1RmmEbG8grx7xEaapklgSZAw',
-    PRO_PRICE_ID: process.env.STRIPE_PRICE_PRO || 'price_1RmmGYG8grx7xEaaqyRXzeBE',
+    PRO_PRICE_ID: process.env.STRIPE_PRICE_PRO || 'price_1UbSt1G8grx7xEaaMUH1EXjn',
     ELITE_PRICE_ID: process.env.STRIPE_PRICE_ELITE || 'price_1RmmNtG8grx7xEaasmCAMpnN',
     STOCK_PRICE_ID: process.env.STRIPE_PRICE_STOCK || 'price_T2W4B9t5z3uzjE',
     BUNDLE_PRICE_ID: process.env.STRIPE_PRICE_BUNDLE || 'price_T2W6d6sUA0TIvs',
@@ -42,7 +42,7 @@ const STRIPE_CONFIG = {
       // Trading platform
       const tradingPriceMap = {
         'starter': process.env.STRIPE_PRICE_STARTER || 'price_1RmmEbG8grx7xEaapklgSZAw',
-        'pro': process.env.STRIPE_PRICE_PRO || 'price_1RmmGYG8grx7xEaaqyRXzeBE',
+        'pro': process.env.STRIPE_PRICE_PRO || 'price_1UbSt1G8grx7xEaaMUH1EXjn',
         'elite': process.env.STRIPE_PRICE_ELITE || 'price_1RmmNtG8grx7xEaasmCAMpnN',
         'stock': process.env.STRIPE_PRICE_STOCK || 'price_T2W4B9t5z3uzjE',
         'bundle': process.env.STRIPE_PRICE_BUNDLE || 'price_T2W6d6sUA0TIvs',
