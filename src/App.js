@@ -37,6 +37,7 @@ import PublicDashboard from "./pages/PublicDashboard";
 import ReferralSystem from "./pages/ReferralPartner";
 import LandingPages from "./pages/LandingPages";
 import PainLanding from "./pages/PainLanding";
+import PortfolioGrader from "./pages/PortfolioGrader";
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
 import SEOLanding from "./pages/SEOLanding";
@@ -281,6 +282,8 @@ function MainAppRoutes() {
             <Route path="/socialB" element={<LandingPages />} />
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
+            <Route path="/grader" element={<PortfolioGrader />} />
+            <Route path="/portfolio-grader" element={<Navigate to="/grader" replace />} />
             <Route path="/too-many-apps" element={<PainLanding />} />
             <Route path="/learn-to-trade" element={<PainLanding />} />
             <Route path="/no-time-to-trade" element={<PainLanding />} />
