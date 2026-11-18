@@ -7,6 +7,7 @@ const PRIMARY = [
   { to: "/", label: "Home", emoji: "🏠", end: true },
   { to: "/how-it-works", label: "How It Works", emoji: "🧭" },
   { to: "/live", label: "Watch Live", emoji: "📺" },
+  { to: "/grader", label: "Free Grader", emoji: "🎯" },
   { to: "/pricing", label: "Plans", emoji: "💎" },
   { to: "/blog", label: "Learn", emoji: "📰" },
 ];

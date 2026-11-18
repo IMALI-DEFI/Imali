@@ -82,6 +82,23 @@ export default function Home() {
           </Link>
         </section>
 
+        {/* PORTFOLIO GRADER */}
+        <section className="fun-card p-6 sm:p-8 grid gap-6 lg:grid-cols-[1fr_auto] items-center">
+          <div>
+            <span className="fun-pill">🎯 Free tool · 30 seconds</span>
+            <h2 className="mt-3 text-3xl sm:text-4xl font-black">What grade does your portfolio get?</h2>
+            <p className="fun-help mt-3 text-lg">
+              Type in what you hold and get an A–F grade on risk, spread, cash and how many apps you juggle.
+              No account and no exchange keys needed.
+            </p>
+            <Link to="/grader" className="fun-btn fun-gold mt-5 fun-pulse">🎯 Grade My Portfolio →</Link>
+          </div>
+          <Link to="/grader" className="mx-auto block text-center hover:-translate-y-1 transition" aria-label="Open the free portfolio grader">
+            <div className="grid place-items-center w-40 h-40 rounded-full border-[10px] border-[#4ff0a0] text-7xl font-black text-[#4ff0a0] shadow-[0_0_40px_#4ff0a055]">B+</div>
+            <p className="mt-3 font-black text-[#ffe07a]">Tap to get yours →</p>
+          </Link>
+        </section>
+
         <ShadowLabCard />
 
         <RecentSocialShowcase />
