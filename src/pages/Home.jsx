@@ -46,6 +46,9 @@ export default function Home() {
             </Link>
           </div>
           <p className="text-sm text-white/60 mt-3">The demo uses pretend money. No sign-up needed.</p>
+          <Link to="/grader" className="fun-pill mt-3 inline-flex hover:-translate-y-0.5 transition" style={{ borderColor: "#4ff0a0" }}>
+            🎯 <strong className="ml-1">New:</strong>&nbsp;Grade your portfolio A–F free →
+          </Link>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <span className="fun-pill">🔒 Your money stays in your account</span>
             <span className="fun-pill">🛑 Stop-loss safety net</span>
