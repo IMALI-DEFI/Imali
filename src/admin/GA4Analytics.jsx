@@ -1,6 +1,7 @@
 // src/admin/GA4Analytics.jsx
 import React, { useEffect, useState } from 'react';
 import {apiFetch} from '../context/AuthContext';
+import GameAnalytics from './GameAnalytics';
 
 // Track GA4 events helper
 const trackGA4 = (eventName, params = {}) => {
@@ -114,6 +115,7 @@ export default function GA4Analytics({ apiBase, showToast }) {
           { [['Direct',253],['Email',146],['Organic Social',85],['AI Assistant',29],['Organic Search',25],['Unassigned',19],['Referral',9]].map(([name,n])=><div key={name} className="imali-traffic-channel"><span>{name}</span><div className="imali-traffic-track"><div style={{width:(n/253*100)+'%'}}/></div><strong>{n}</strong></div>)}
         </div>
       </section>
+      <GameAnalytics />
       <TrafficDefinitions />
       <PartnerReferralTracking />
       <UpgradeAttribution />
