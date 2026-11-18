@@ -83,7 +83,7 @@ export default function RecentSocialShowcase() {
 
       <div className={`fun-card flex flex-col justify-center ${p ? "" : "lg:col-span-2"}`}>
         <h3 className="text-xl font-black">🎁 Share IMALI. Earn recurring commission.</h3>
-        <p className="fun-help text-sm mt-1">Join the partner program and earn 25% recurring commission on eligible referred subscriptions.</p>
+        <p className="fun-help text-sm mt-1">Join the partner program and earn 25% recurring commission on eligible referred subscriptions for up to 12 months.</p>
         <Link to="/referrals" className="fun-btn fun-green mt-4 self-start"><FaUsers /> Join the Partner Program</Link>
       </div>
     </section>

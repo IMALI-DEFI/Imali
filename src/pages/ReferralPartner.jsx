@@ -31,6 +31,7 @@ import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
 
 import { MascotLogo } from "../components/game/GameKit";
+import PartnerEarningsCalculator from "../components/PartnerEarningsCalculator";
 // Glass Card Component
 const GlassCard = ({ children, className = "", gradient = "from-white/5 to-white/5" }) => (
   <div className={`relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-xl shadow-xl ${className}`}>
@@ -629,8 +630,9 @@ const ReferralSystem = () => {
             Grow IMALI Together
           </h1>
           <p className="mx-auto mt-3 max-w-2xl px-4 text-sm text-white/60 sm:text-base">
-            Invite friends. Earn subscription credits. Upgrade faster.
+            Share your link and earn 25% commission on every paid plan your referrals buy, for up to 12 months.
           </p>
+          <PartnerEarningsCalculator dark className="mx-auto mt-6 max-w-xl" />
         </div>
 
         {/* Connection Status */}

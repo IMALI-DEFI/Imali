@@ -25,6 +25,7 @@ import {
   FaArrowRight,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
+import PartnerEarningsCalculator from "./PartnerEarningsCalculator";
 import referralBot from "../assets/images/cards/referralbot.png";
 
 const accentMap = {
@@ -58,7 +59,7 @@ const defaultReferralData = {
   pendingRewards: 0,
   earned: 0,
   paid_out: 0,
-  rewardPercentage: 20,
+  rewardPercentage: 25,
   rewardCurrency: "USDC",
   qualifiedReferrals: 0,
   nftTier: "Starter Referral NFT",
@@ -260,7 +261,7 @@ export default function ReferralSystem() {
         pendingRewards: info.pending || stats.pending_rewards || 0,
         earned: info.earned || 0,
         paid_out: info.paid_out || 0,
-        rewardPercentage: info.reward_percentage || stats.reward_percentage || 20,
+        rewardPercentage: info.reward_percentage || stats.reward_percentage || 25,
         rewardCurrency: info.reward_currency || "USDC",
         qualifiedReferrals: stats.qualified_referrals || 0,
         nftTier: computeNftTier(totalReferred),
@@ -495,8 +496,10 @@ export default function ReferralSystem() {
               </h1>
 
               <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-                Choose how you want to participate. You can use a wallet, sign up with email, or browse first.
+                Earn 25% of every plan your referrals buy for up to 12 months. Choose how you want to participate: a wallet, email, or browse first.
               </p>
+
+              <PartnerEarningsCalculator className="mx-auto mb-8 max-w-xl" />
 
               <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="rounded-2xl border-2 border-emerald-200 bg-white p-6 text-left">
@@ -621,6 +624,7 @@ export default function ReferralSystem() {
             <p className="mb-6 text-gray-600">
               Sign up or connect a wallet to activate your referral dashboard.
             </p>
+            <PartnerEarningsCalculator className="mx-auto mb-8 max-w-xl" />
             <div className="flex justify-center gap-4">
               <button
                 onClick={() => setShowSignupForm(true)}
@@ -686,8 +690,9 @@ export default function ReferralSystem() {
             Boost With Referrals
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-gray-600">
-            Share your link, invite new users, and grow your Referral NFT as your network expands.
+            Share your link and earn 25% of every plan your referrals buy for up to 12 months.
           </p>
+          <PartnerEarningsCalculator className="mx-auto mt-6 max-w-xl" />
         </div>
 
         {walletOnlyMode && (
